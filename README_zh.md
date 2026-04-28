@@ -98,6 +98,15 @@ cmd; writer:codex, reviewer:claude; qa:gemini(worktree)
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.0.21</b> - Claude Hook 资产投影</summary>
+
+- **继承 CodeIsland Hook 资产**：managed Claude 启动现在会在继承的 Claude hooks 调用 `$HOME/.codeisland/...` 时复制源 home 中对应的 `.codeisland/`，避免隔离 Claude home 内缺少 hook 脚本
+- **保持配置边界**：第三方 hook 资产只会在开启 Claude config 继承、且继承的 hook payload 明确引用对应 home-relative 路径时复制
+- **诊断脱敏扩展**：诊断包现在会排除复制到 provider-state 下的 `.codeisland/` 资产，同时继续包含普通 managed Claude settings 以便排障
+
+</details>
+
+<details>
 <summary><b>v6.0.20</b> - Claude 官方登录 source home 修复</summary>
 
 - **Claude 官方登录 source home 修复**：managed Claude 启动现在会把 `.ccb/agents/*/provider-state/*/home` 识别为隔离运行时 home，而不是用户源 home，因此官方浏览器登录凭据会从真实账号 home 复制

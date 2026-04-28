@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v6.0.21 (2026-04-28)
+
+### Claude Hook Asset Projection
+
+- **CodeIsland Hook Assets Inherited**: managed Claude startup now copies referenced source-home hook assets such as `.codeisland/` when inherited Claude hooks call `$HOME/.codeisland/...`, preventing missing-hook failures inside isolated Claude homes
+- **Config Boundary Preserved**: third-party hook assets are copied only when Claude config inheritance is enabled and the inherited hook payload actually references that home-relative asset path
+- **Diagnostics Redaction Extended**: diagnostic bundles now exclude copied `.codeisland/` provider-state assets while still including ordinary managed Claude settings for support
+
 ## v6.0.20 (2026-04-28)
 
 ### Claude Official Login Source Home Fix

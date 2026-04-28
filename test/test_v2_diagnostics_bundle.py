@@ -218,3 +218,35 @@ def test_export_diagnostic_bundle_excludes_claude_credentials(tmp_path: Path) ->
         for entry in manifest['entries']
     )
     assert f'{summary.bundle_id}/project/.ccb/agents/demo/provider-state/claude/home/.claude/.credentials.json' not in members
+
+
+def test_export_diagnostic_bundle_excludes_claude_home_hook_assets(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-bundle-claude-hook-assets'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('demo:claude\n', encoding='utf-8')
+    context = CliContextBuilder().build(
+        ParsedDoctorCommand(project=None, bundle=True),
+        cwd=project_root,
+        bootstrap_if_missing=False,
+    )
+
+    provider_state_dir = context.paths.agent_provider_state_dir('demo', 'claude')
+    managed_home = provider_state_dir / 'home'
+    (managed_home / '.claude').mkdir(parents=True, exist_ok=True)
+    (managed_home / '.claude' / 'settings.json').write_text('{"theme":"dark"}\n', encoding='utf-8')
+    (managed_home / '.codeisland').mkdir(parents=True, exist_ok=True)
+    (managed_home / '.codeisland' / 'state.json').write_text('{"secret":"token"}\n', encoding='utf-8')
+    (managed_home / '.codeisland' / 'codeisland-hook.sh').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+
+    summary = export_diagnostic_bundle(context, ParsedDoctorCommand(project=None, bundle=True))
+    bundle_path = Path(summary.bundle_path)
+    manifest = _read_tar_json(bundle_path, f'{summary.bundle_id}/manifest.json')
+    members = _archive_members(bundle_path)
+
+    assert any(
+        entry['archive_path'] == 'project/.ccb/agents/demo/provider-state/claude/home/.claude/settings.json'
+        and entry['status'] == 'included'
+        for entry in manifest['entries']
+    )
+    assert all('/.codeisland/' not in entry['archive_path'] for entry in manifest['entries'])
+    assert all('/.codeisland/' not in member for member in members)

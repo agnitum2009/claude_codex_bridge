@@ -7,6 +7,7 @@ _TAIL_SUFFIXES = {'.log', '.jsonl', '.txt', '.yaml', '.yml'}
 _COPY_SUFFIXES = {'.json', '.pid'}
 _PROVIDER_STATE_SUFFIXES = _TAIL_SUFFIXES | _COPY_SUFFIXES | {'.toml'}
 _PROVIDER_STATE_SECRET_FILENAMES = {'.credentials.json', 'auth.json', 'oauth_creds.json'}
+_PROVIDER_STATE_SECRET_DIRNAMES = {'.codeisland'}
 
 
 def project_root_sources(context) -> tuple[tuple[str, Path], ...]:
@@ -63,6 +64,8 @@ def iter_provider_state_files(category: str, root: Path) -> list[tuple[str, Path
     files: list[tuple[str, Path]] = []
     for path in sorted(root.rglob('*')):
         if not path.is_file() or path.suffix.lower() not in _PROVIDER_STATE_SUFFIXES:
+            continue
+        if any(part.lower() in _PROVIDER_STATE_SECRET_DIRNAMES for part in path.parts):
             continue
         if path.name.lower() in _PROVIDER_STATE_SECRET_FILENAMES:
             continue

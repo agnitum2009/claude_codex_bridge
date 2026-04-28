@@ -505,6 +505,69 @@ def test_materialize_claude_home_config_refreshes_inherited_skill_assets(tmp_pat
     assert (layout.claude_dir / 'CLAUDE.md').read_text(encoding='utf-8') == 'claude-md-v2\n'
 
 
+def test_materialize_claude_home_config_projects_referenced_home_hook_assets(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_settings = source_home / '.claude' / 'settings.json'
+    source_hook = source_home / '.codeisland' / 'codeisland-hook.sh'
+    source_settings.parent.mkdir(parents=True, exist_ok=True)
+    source_hook.parent.mkdir(parents=True, exist_ok=True)
+    source_settings.write_text(
+        json.dumps(
+            {
+                'hooks': {
+                    'Stop': [
+                        {
+                            'hooks': [
+                                {
+                                    'type': 'command',
+                                    'command': '$HOME/.codeisland/codeisland-hook.sh',
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    source_hook.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+
+    assert (layout.home_root / '.codeisland' / 'codeisland-hook.sh').read_text(encoding='utf-8') == '#!/bin/sh\nexit 0\n'
+
+
+def test_materialize_claude_home_config_does_not_project_home_hook_assets_without_config_inheritance(
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_settings = source_home / '.claude' / 'settings.json'
+    source_hook = source_home / '.codeisland' / 'codeisland-hook.sh'
+    source_settings.parent.mkdir(parents=True, exist_ok=True)
+    source_hook.parent.mkdir(parents=True, exist_ok=True)
+    source_settings.write_text(
+        json.dumps(
+            {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': '${HOME}/.codeisland/codeisland-hook.sh'}]}]}},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    source_hook.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+
+    layout = materialize_claude_home_config(
+        target_home,
+        source_home=source_home,
+        profile=ProviderProfileSpec(inherit_config=False),
+    )
+
+    assert not (layout.home_root / '.codeisland').exists()
+
+
 def test_materialize_claude_home_config_respects_inherit_skills_flag(tmp_path: Path) -> None:
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'

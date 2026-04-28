@@ -14,6 +14,7 @@ _CLAUDE_RUNTIME_SETTINGS_KEYS = ('hooks', 'permissions')
 _CLAUDE_AUTH_ENV_KEYS = ('ANTHROPIC_AUTH_TOKEN',)
 _CLAUDE_API_AUTH_ENV_KEYS = ('ANTHROPIC_API_KEY',)
 _CLAUDE_ROUTE_ENV_KEYS = ('ANTHROPIC_BASE_URL',)
+_CLAUDE_HOME_HOOK_ASSET_DIRS = ('.codeisland',)
 
 
 def resolve_claude_home_layout(runtime_dir: Path, profile) -> ClaudeHomeLayout:
@@ -117,6 +118,19 @@ def _materialize_inherited_assets(source_home: Path, target_layout: ClaudeHomeLa
     if _inherits_skills(profile):
         _sync_tree(source_home / '.claude' / 'skills', target_layout.claude_dir / 'skills')
         _sync_file(source_home / '.claude' / 'CLAUDE.md', target_layout.claude_dir / 'CLAUDE.md')
+    _materialize_home_hook_assets(source_home, target_layout, profile=profile)
+
+
+def _materialize_home_hook_assets(source_home: Path, target_layout: ClaudeHomeLayout, *, profile) -> None:
+    if not _inherits_config(profile):
+        return
+    source_settings = _read_json_object(source_home / '.claude' / 'settings.json')
+    hooks_payload = source_settings.get('hooks')
+    if not isinstance(hooks_payload, dict):
+        return
+    for dirname in _CLAUDE_HOME_HOOK_ASSET_DIRS:
+        if _payload_mentions_home_asset(hooks_payload, dirname):
+            _sync_tree(source_home / dirname, target_layout.home_root / dirname)
 
 
 def _materialize_settings(source_home: Path, target_layout: ClaudeHomeLayout, *, profile) -> None:
@@ -285,6 +299,23 @@ def _read_json_object(path: Path) -> dict[str, object]:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _payload_mentions_home_asset(value: object, dirname: str) -> bool:
+    if isinstance(value, str):
+        return any(
+            marker in value
+            for marker in (
+                f'$HOME/{dirname}/',
+                f'${{HOME}}/{dirname}/',
+                f'~/{dirname}/',
+            )
+        )
+    if isinstance(value, dict):
+        return any(_payload_mentions_home_asset(child, dirname) for child in value.values())
+    if isinstance(value, list):
+        return any(_payload_mentions_home_asset(child, dirname) for child in value)
+    return False
 
 
 def _ensure_trust_file(path: Path) -> None:

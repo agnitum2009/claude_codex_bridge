@@ -148,6 +148,11 @@ When `ccb` starts a managed Claude agent:
 - when inheritance is enabled, it must refresh inherited Claude `skills/`,
   `commands/`, and `.claude/CLAUDE.md` projections into the managed home on
   each managed launch so source-home updates become visible after restart
+- when inherited Claude hooks reference allowlisted source-home hook assets
+  through home-relative paths such as `$HOME/.codeisland/...`, startup may copy
+  those referenced assets into the managed home so the inherited hook command
+  remains executable under the isolated `HOME`; those copied assets remain
+  provider-state and must be excluded from diagnostics
 - it must install Claude hook/trust state only inside that managed home
 - it must write the effective `claude_home`, `claude_projects_root`, and
   `claude_session_env_root` into the agent session file
