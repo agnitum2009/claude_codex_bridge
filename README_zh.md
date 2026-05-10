@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.0-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.1-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -291,6 +291,15 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.1</b> - Ask Skill 和记忆注入清理</summary>
+
+- **只安装 Ask Skill**：Claude、Codex 和 Droid/Factory 安装现在只发布 `ask` skill，并清理 `ping`、`pend`、`all-plan`、`file-op` 等旧 CCB helper skill。
+- **移除全局记忆注入**：安装器不再向全局 `CLAUDE.md`、安装目录 `AGENTS.md` 或 `.clinerules` 写入 CCB 协作块；已存在的 CCB 标记块会在安装时清理。
+- **删除旧 Skill 源模板**：仓库内的 skill 模板现在只保留各 provider 的 `ask` skill 资产。
+
+</details>
+
+<details>
 <summary><b>v6.1.0</b> - CCBD Ask 稳定化和 Observer 收敛</summary>
 
 - **Ask Submit Fastpath 稳定化**：`ccb ask` 不再等待 provider readiness、mailbox history projection 或长 maintenance tick，提交回执保持有界

@@ -24,6 +24,10 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Constants
 $script:CCB_START_MARKER = "<!-- CCB_CONFIG_START -->"
 $script:CCB_END_MARKER = "<!-- CCB_CONFIG_END -->"
+$script:CCB_ROLES_START_MARKER = "<!-- CCB_ROLES_START -->"
+$script:CCB_ROLES_END_MARKER = "<!-- CCB_ROLES_END -->"
+$script:CCB_RUBRICS_START_MARKER = "<!-- REVIEW_RUBRICS_START -->"
+$script:CCB_RUBRICS_END_MARKER = "<!-- REVIEW_RUBRICS_END -->"
 
 $script:SCRIPTS_TO_LINK = @(
   "ccb",
@@ -31,7 +35,7 @@ $script:SCRIPTS_TO_LINK = @(
 )
 
 $script:CLAUDE_MARKDOWN = @(
-  # Old CCB commands removed - replaced by unified ask/ping/pend skills
+  # Old CCB command markdown removed; ask is the only installed CCB skill.
 )
 
 $script:LEGACY_SCRIPTS = @(
@@ -420,8 +424,17 @@ function Install-CodexSkills {
     New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null
   }
 
-  Write-Host "Installing Codex skills (PowerShell SKILL.md templates)..."
-  Get-ChildItem -Path $skillsSrc -Directory | ForEach-Object {
+  $deprecatedSkills = @("ping", "pend", "autonew", "all-plan", "file-op")
+  foreach ($skill in $deprecatedSkills) {
+    $skillPath = Join-Path $skillsDst $skill
+    if (Test-Path $skillPath) {
+      Remove-Item -Recurse -Force $skillPath
+      Write-Host "  Removed obsolete skill: $skill"
+    }
+  }
+
+  Write-Host "Installing Codex ask skill (PowerShell SKILL.md template)..."
+  Get-ChildItem -Path $skillsSrc -Directory | Where-Object { $_.Name -eq "ask" } | ForEach-Object {
     $skillName = $_.Name
     $srcDir = $_.FullName
     $dstDir = Join-Path $skillsDst $skillName
@@ -471,8 +484,17 @@ function Install-DroidSkills {
     New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null
   }
 
-  Write-Host "Installing Droid/Factory skills..."
-  Get-ChildItem -Path $skillsSrc -Directory | ForEach-Object {
+  $deprecatedSkills = @("ping", "pend", "autonew", "all-plan")
+  foreach ($skill in $deprecatedSkills) {
+    $skillPath = Join-Path $skillsDst $skill
+    if (Test-Path $skillPath) {
+      Remove-Item -Recurse -Force $skillPath
+      Write-Host "  Removed obsolete skill: $skill"
+    }
+  }
+
+  Write-Host "Installing Droid/Factory ask skill..."
+  Get-ChildItem -Path $skillsSrc -Directory | Where-Object { $_.Name -eq "ask" } | ForEach-Object {
     $skillName = $_.Name
     $srcDir = $_.FullName
     $dstDir = Join-Path $skillsDst $skillName
@@ -530,7 +552,6 @@ function Install-DroidDelegation {
 function Install-ClaudeConfig {
   $claudeDir = Join-Path $env:USERPROFILE ".claude"
   $commandsDir = Join-Path $claudeDir "commands"
-  $claudeMd = Join-Path $claudeDir "CLAUDE.md"
   $settingsJson = Join-Path $claudeDir "settings.json"
 
   if (-not (Test-Path $claudeDir)) {
@@ -554,10 +575,18 @@ function Install-ClaudeConfig {
     if (-not (Test-Path $skillsDir)) {
       New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
     }
-    Write-Host "Installing Claude skills (PowerShell SKILL.md templates)..."
-    Get-ChildItem -Path $srcSkills -Directory | ForEach-Object {
-      if ($_.Name -eq "docs") { return }
 
+    $deprecatedSkills = @("ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
+    foreach ($skill in $deprecatedSkills) {
+      $skillPath = Join-Path $skillsDir $skill
+      if (Test-Path $skillPath) {
+        Remove-Item -Recurse -Force $skillPath
+        Write-Host "  Removed obsolete skill: $skill"
+      }
+    }
+
+    Write-Host "Installing Claude ask skill (PowerShell SKILL.md template)..."
+    Get-ChildItem -Path $srcSkills -Directory | Where-Object { $_.Name -eq "ask" } | ForEach-Object {
       $skillName = $_.Name
       $srcDir = $_.FullName
       $dstDir = Join-Path $skillsDir $skillName
@@ -587,54 +616,9 @@ function Install-ClaudeConfig {
 
       Write-Host "  Updated skill: $skillName"
     }
-
-    $srcDocs = Join-Path $srcSkills "docs"
-    if (Test-Path $srcDocs) {
-      $dstDocs = Join-Path $skillsDir "docs"
-      if (Test-Path $dstDocs) { Remove-Item -Recurse -Force $dstDocs }
-      Copy-Item -Recurse -Force $srcDocs $dstDocs
-      Write-Host "  Installed skills docs: docs/"
-    }
   }
 
-  $claudeMdTemplate = Join-Path $installPrefix "config\claude-md-ccb.md"
-  if (-not (Test-Path $claudeMdTemplate)) {
-    Write-Warning "Template not found: $claudeMdTemplate; skipping CLAUDE.md injection"
-  } else {
-    $codexRules = Get-Content -Raw $claudeMdTemplate
-
-  if (Test-Path $claudeMd) {
-    $content = Get-Content -Raw $claudeMd
-
-    if ($content -match [regex]::Escape($script:CCB_START_MARKER)) {
-      $pattern = '(?s)<!-- CCB_CONFIG_START -->.*?<!-- CCB_CONFIG_END -->'
-      $newContent = [regex]::Replace($content, $pattern, $codexRules.Trim())
-      $newContent | Out-File -Encoding UTF8 -FilePath $claudeMd
-      Write-Host "Updated CLAUDE.md with CCB collaboration rules"
-    } elseif ($content -match '##\s+(Codex|Gemini|OpenCode)\s+Collaboration Rules' -or $content -match '##\s+(Codex|Gemini|OpenCode)\s+协作规则') {
-      $patterns = @(
-        '(?s)## Codex Collaboration Rules.*?(?=\n## (?!Gemini)|\Z)',
-        '(?s)## Codex 协作规则.*?(?=\n## |\Z)',
-        '(?s)## Gemini Collaboration Rules.*?(?=\n## |\Z)',
-        '(?s)## Gemini 协作规则.*?(?=\n## |\Z)',
-        '(?s)## OpenCode Collaboration Rules.*?(?=\n## |\Z)',
-        '(?s)## OpenCode 协作规则.*?(?=\n## |\Z)'
-      )
-      foreach ($p in $patterns) {
-        $content = [regex]::Replace($content, $p, '')
-      }
-      $content = ($content.TrimEnd() + "`n")
-      ($content + $codexRules + "`n") | Out-File -Encoding UTF8 -FilePath $claudeMd
-      Write-Host "Updated CLAUDE.md with CCB collaboration rules"
-    } else {
-      Add-Content -Path $claudeMd -Value $codexRules
-      Write-Host "Updated CLAUDE.md with CCB collaboration rules"
-    }
-  } else {
-    $codexRules | Out-File -Encoding UTF8 -FilePath $claudeMd
-    Write-Host "Created CLAUDE.md with CCB collaboration rules"
-  }
-  } # end claudeMdTemplate check
+  Remove-CCBMemoryInjections
 
   $allowList = @(
     "Bash(ccb ask *)", "Bash(ccb ping *)", "Bash(ccb pend *)"
@@ -672,45 +656,34 @@ function Install-ClaudeConfig {
     Write-Host "Updated settings.json with permissions"
   }
 
-  # --- AGENTS.md injection ---
-  $agentsMdTemplate = Join-Path $installPrefix "config\agents-md-ccb.md"
-  $agentsMd = Join-Path $installPrefix "AGENTS.md"
-  if (Test-Path $agentsMdTemplate) {
-    $templateContent = Get-Content -Raw $agentsMdTemplate
-    if (Test-Path $agentsMd) {
-      $agentsContent = Get-Content -Raw $agentsMd
-      if ($agentsContent -match '<!-- CCB_ROLES_START -->' -or $agentsContent -match '<!-- REVIEW_RUBRICS_START -->') {
-        $agentsContent = [regex]::Replace($agentsContent, '(?s)<!-- CCB_ROLES_START -->.*?<!-- CCB_ROLES_END -->', '')
-        $agentsContent = [regex]::Replace($agentsContent, '(?s)<!-- REVIEW_RUBRICS_START -->.*?<!-- REVIEW_RUBRICS_END -->', '')
-        $agentsContent = $agentsContent.TrimEnd() + "`n`n" + $templateContent.Trim() + "`n"
-        $agentsContent | Out-File -Encoding UTF8 -FilePath $agentsMd
-      } else {
-        Add-Content -Path $agentsMd -Value ("`n" + $templateContent)
-      }
-    } else {
-      $templateContent | Out-File -Encoding UTF8 -FilePath $agentsMd
-    }
-    Write-Host "Updated AGENTS.md with review rubrics"
-  }
+}
 
-  # --- .clinerules injection ---
-  $clinerulesTpl = Join-Path $installPrefix "config\clinerules-ccb.md"
+function Remove-MarkedMemoryBlock {
+  param(
+    [string]$Path,
+    [string]$StartMarker,
+    [string]$EndMarker,
+    [string]$Label
+  )
+  if (-not (Test-Path $Path)) { return }
+  $content = Get-Content -Raw $Path -Encoding UTF8
+  if (-not $content.Contains($StartMarker)) { return }
+  $pattern = "(?s)\r?\n?$([regex]::Escape($StartMarker)).*?$([regex]::Escape($EndMarker))\r?\n?"
+  $content = [regex]::Replace($content, $pattern, "`n").Trim() + "`n"
+  [System.IO.File]::WriteAllText($Path, $content, $script:utf8NoBom)
+  Write-Host "Removed CCB memory block from $Label"
+}
+
+function Remove-CCBMemoryInjections {
+  $claudeMd = Join-Path $env:USERPROFILE ".claude\CLAUDE.md"
+  Remove-MarkedMemoryBlock -Path $claudeMd -StartMarker $script:CCB_START_MARKER -EndMarker $script:CCB_END_MARKER -Label "CLAUDE.md"
+
+  $agentsMd = Join-Path $installPrefix "AGENTS.md"
+  Remove-MarkedMemoryBlock -Path $agentsMd -StartMarker $script:CCB_ROLES_START_MARKER -EndMarker $script:CCB_ROLES_END_MARKER -Label "AGENTS.md"
+  Remove-MarkedMemoryBlock -Path $agentsMd -StartMarker $script:CCB_RUBRICS_START_MARKER -EndMarker $script:CCB_RUBRICS_END_MARKER -Label "AGENTS.md"
+
   $clinerules = Join-Path $installPrefix ".clinerules"
-  if (Test-Path $clinerulesTpl) {
-    $tplContent = Get-Content -Raw $clinerulesTpl
-    if (Test-Path $clinerules) {
-      $crContent = Get-Content -Raw $clinerules
-      if ($crContent -match '<!-- CCB_ROLES_START -->') {
-        $crContent = [regex]::Replace($crContent, '(?s)<!-- CCB_ROLES_START -->.*?<!-- CCB_ROLES_END -->', $tplContent.Trim())
-        $crContent | Out-File -Encoding UTF8 -FilePath $clinerules
-      } else {
-        Add-Content -Path $clinerules -Value ("`n" + $tplContent)
-      }
-    } else {
-      $tplContent | Out-File -Encoding UTF8 -FilePath $clinerules
-    }
-    Write-Host "Updated .clinerules with role assignments"
-  }
+  Remove-MarkedMemoryBlock -Path $clinerules -StartMarker $script:CCB_ROLES_START_MARKER -EndMarker $script:CCB_ROLES_END_MARKER -Label ".clinerules"
 }
 
 function Uninstall-Native {
@@ -737,7 +710,7 @@ function Uninstall-Native {
 
   # 3. Remove Claude skills
   $claudeSkillsDir = Join-Path $env:USERPROFILE ".claude\skills"
-  $ccbSkills = @("ask", "ping", "pend", "autonew", "all-plan", "docs")
+  $ccbSkills = @("ask", "ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
   if (Test-Path $claudeSkillsDir) {
     Write-Host "Removing CCB Claude skills..."
     foreach ($skill in $ccbSkills) {

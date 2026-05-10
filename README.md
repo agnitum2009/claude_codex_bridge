@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.0-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.1-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -293,6 +293,15 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.1</b> - Ask Skill and Memory Injection Cleanup</summary>
+
+- **Ask Skill Kept as the Only Installed Skill**: Claude, Codex, and Droid/Factory installs now publish only the `ask` skill and remove older CCB helper skills such as `ping`, `pend`, `all-plan`, and `file-op`.
+- **Global Memory Injection Removed**: installers no longer append CCB collaboration blocks into global `CLAUDE.md`, installed `AGENTS.md`, or `.clinerules`; existing CCB-marked blocks are cleaned during install.
+- **Legacy Skill Sources Removed**: repository skill templates now keep only the provider-specific `ask` skill assets.
+
+</details>
+
+<details>
 <summary><b>v6.1.0</b> - CCBD Ask Stability and Observer Convergence</summary>
 
 - **Ask Submit Fastpath Stabilized**: `ccb ask` returns bounded receipts without waiting on provider readiness, mailbox history projection, or long maintenance ticks
