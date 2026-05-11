@@ -88,16 +88,24 @@ function Show-Usage {
   Write-Host "  - Python 3.10+"
 }
 
-function Find-Python {
-  if (Get-Command py -ErrorAction SilentlyContinue) { return "py -3" }
-  if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
-  if (Get-Command python3 -ErrorAction SilentlyContinue) { return "python3" }
-  return $null
+function Test-IsWindowsStoreAliasPath {
+  param([string]$PathText)
+  if ([string]::IsNullOrWhiteSpace($PathText)) {
+    return $false
+  }
+  $normalized = $PathText.Trim().Trim('"').ToLowerInvariant()
+  return (
+    $normalized -like "*\microsoft\windowsapps\python.exe" -or
+    $normalized -like "*\microsoft\windowsapps\python3.exe"
+  )
 }
 
-function Require-Python310 {
+function Get-PythonVersionInfo {
   param([string]$PythonCmd)
 
+  if ([string]::IsNullOrWhiteSpace($PythonCmd)) {
+    throw "Python command is empty"
+  }
   # Handle commands with arguments (e.g., "py -3")
   $cmdParts = $PythonCmd -split ' ', 2
   $fileName = $cmdParts[0]
@@ -105,14 +113,14 @@ function Require-Python310 {
 
   # Use ProcessStartInfo for reliable execution across different Python installations
   # (e.g., Miniconda, custom paths). The & operator can fail in some environments.
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $fileName
   try {
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $fileName
     # Combine base arguments with Python code arguments
     if ($baseArgs) {
-      $psi.Arguments = "$baseArgs -c `"import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro} {v.major} {v.minor}')`""
+      $psi.Arguments = "$baseArgs -c `"import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}|{v.major}|{v.minor}|{sys.executable}')`""
     } else {
-      $psi.Arguments = "-c `"import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro} {v.major} {v.minor}')`""
+      $psi.Arguments = "-c `"import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}|{v.major}|{v.minor}|{sys.executable}')`""
     }
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -126,30 +134,115 @@ function Require-Python310 {
 
     $vinfo = $process.StandardOutput.ReadToEnd().Trim()
     if ($process.ExitCode -ne 0 -or [string]::IsNullOrEmpty($vinfo)) {
-      throw $process.StandardError.ReadToEnd()
+      $stderr = $process.StandardError.ReadToEnd().Trim()
+      if ([string]::IsNullOrWhiteSpace($stderr)) {
+        $stderr = "exit code $($process.ExitCode)"
+      }
+      throw $stderr
     }
 
-    $vparts = $vinfo -split " "
-    if ($vparts.Length -lt 3) {
+    $vparts = $vinfo -split "\|", 4
+    if ($vparts.Length -lt 4) {
       throw "Unexpected version output: $vinfo"
     }
 
     $version = $vparts[0]
     $major = [int]$vparts[1]
     $minor = [int]$vparts[2]
+    return @{
+      Command = $PythonCmd
+      Version = $version
+      Major = $major
+      Minor = $minor
+      Executable = $vparts[3]
+    }
   } catch {
-    Write-Host "[ERROR] Failed to query Python version using: $PythonCmd"
-    Write-Host "   Error details: $_"
+    $errorText = $_.Exception.Message
+    if ([string]::IsNullOrWhiteSpace($errorText)) {
+      $errorText = [string]$_
+    }
+    throw "Failed to query Python version using '$PythonCmd': $errorText"
+  }
+}
+
+function Get-PythonCandidates {
+  $candidates = New-Object System.Collections.Generic.List[string]
+
+  function Add-Candidate {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return }
+    $trimmed = $Value.Trim()
+    if (Test-IsWindowsStoreAliasPath $trimmed) { return }
+    if ($candidates -notcontains $trimmed) {
+      $candidates.Add($trimmed)
+    }
+  }
+
+  Add-Candidate $env:CCB_PYTHON_CMD
+  Add-Candidate "py -3"
+  Add-Candidate "python"
+  Add-Candidate "python3"
+
+  try {
+    $wherePython = & where.exe python 2>$null
+    foreach ($item in @($wherePython)) {
+      $candidatePath = [string]$item
+      if ([string]::IsNullOrWhiteSpace($candidatePath)) { continue }
+      Add-Candidate $candidatePath.Trim()
+    }
+  } catch {}
+
+  $globPatterns = @(
+    "$env:LOCALAPPDATA\Programs\Python\Python*\python.exe",
+    "$env:ProgramFiles\Python*\python.exe",
+    "$env:ProgramFiles\Python\Python*\python.exe",
+    "$env:ProgramFiles(x86)\Python*\python.exe",
+    "$env:ProgramFiles(x86)\Python\Python*\python.exe"
+  )
+  foreach ($pattern in $globPatterns) {
+    try {
+      Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+        Add-Candidate $_.FullName
+      }
+    } catch {}
+  }
+
+  return @($candidates)
+}
+
+function Find-Python {
+  foreach ($candidate in Get-PythonCandidates) {
+    try {
+      $info = Get-PythonVersionInfo -PythonCmd $candidate
+      if (
+        $info.Major -eq 3 -and
+        $info.Minor -ge 10 -and
+        -not (Test-IsWindowsStoreAliasPath $info.Executable)
+      ) {
+        return $candidate
+      }
+    } catch {}
+  }
+  return $null
+}
+
+function Require-Python310 {
+  param([string]$PythonCmd)
+
+  try {
+    $info = Get-PythonVersionInfo -PythonCmd $PythonCmd
+  } catch {
+    Write-Host "[ERROR] $($_.Exception.Message)"
     exit 1
   }
 
-  if (($major -ne 3) -or ($minor -lt 10)) {
-    Write-Host "[ERROR] Python version too old: $version"
+  if (($info.Major -ne 3) -or ($info.Minor -lt 10)) {
+    Write-Host "[ERROR] Python version too old: $($info.Version)"
     Write-Host "   ccb requires Python 3.10+"
     Write-Host "   Download: https://www.python.org/downloads/"
     exit 1
   }
-  Write-Host "[OK] Python $version"
+  Write-Host "[OK] Python $($info.Version) ($($info.Executable))"
 }
 
 function Confirm-BackendEnv {
@@ -195,6 +288,12 @@ function Install-Native {
 
   Write-Host "Installing ccb to $InstallPrefix ..."
   Write-Host "Using Python: $pythonCmd"
+  $pythonInfo = Get-PythonVersionInfo -PythonCmd $pythonCmd
+  $pythonExecutable = $pythonInfo.Executable
+  if ([string]::IsNullOrWhiteSpace($pythonExecutable)) {
+    Write-Host "[ERROR] Failed to resolve a concrete Python executable."
+    exit 1
+  }
 
   $cleanInstall = $false
   $cleanEnv = ($env:CCB_CLEAN_INSTALL -as [string])
@@ -272,7 +371,8 @@ function Install-Native {
       # Script is installed alongside the wrapper under $InstallPrefix\bin
       $relPath = $script
     }
-    $wrapperContent = "@echo off`r`nset `"PYTHON=python`"`r`nwhere python >NUL 2>&1 || set `"PYTHON=py -3`"`r`n%PYTHON% `"%~dp0$relPath`" %*"
+    $escapedPythonExecutable = $pythonExecutable.Replace('"', '""')
+    $wrapperContent = "@echo off`r`nset `"PYTHON=$escapedPythonExecutable`"`r`nif not exist `"%PYTHON%`" set `"PYTHON=python`"`r`nwhere python >NUL 2>&1 || if /I `"%PYTHON%`"==`"python`" set `"PYTHON=py -3`"`r`n%PYTHON% `"%~dp0$relPath`" %*"
     [System.IO.File]::WriteAllText($batPath, $wrapperContent, $script:utf8NoBom)
     # .cmd wrapper for PowerShell/CMD users (and tools preferring .cmd over raw shebang scripts)
     [System.IO.File]::WriteAllText($cmdPath, $wrapperContent, $script:utf8NoBom)

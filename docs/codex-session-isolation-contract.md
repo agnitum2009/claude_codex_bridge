@@ -111,10 +111,15 @@ For new managed launches, `codex_home` is mandatory. A session file without
 `codex_home` is legacy evidence that must be migrated or rejected before it can
 be used as normal managed authority.
 
-Credential and config projection is not conversation identity. `ccb` may project
-the user's source Codex credentials and config into the private managed home so
-the provider can authenticate, but projected credential files remain secret
-material and must not be exported by diagnostics.
+Credential, config, and memory projection is not conversation identity. `ccb`
+may project the user's source Codex credentials and config into the private
+managed home so the provider can authenticate, but projected credential files
+remain secret material and must not be exported by diagnostics. The managed
+`CODEX_HOME/AGENTS.md` file is a CCB-generated memory bundle, not user data; it
+combines inheritable source-home `AGENTS.md`, project shared `.ccb/ccb_memory.md`,
+provider-native project `AGENTS.md`, and agent-private
+`.ccb/agents/<agent>/memory.md` when present. `inherit_memory=false` must remove
+that generated `AGENTS.md` without disabling skill or command projection.
 
 Codex plugin-bundle projection is also not conversation identity, but it is
 startup authority. Managed homes that preserve plugin-related source-home config
@@ -130,7 +135,12 @@ When `ccb` starts a managed Codex agent:
 - it must ensure `CODEX_SESSION_ROOT == CODEX_HOME/sessions`
 - it must create the managed home and session root before launching Codex
 - it must materialize required Codex config and credential projections into the managed home without treating them as session identity
-- it must refresh only inheritable Codex config, auth, skills, commands, and plugin-bundle projections into the managed home on each managed launch so source-home updates become visible after restart
+- it must refresh only inheritable Codex config, auth, skills, commands,
+  plugin-bundle, and memory projections into the managed home on each managed
+  launch so source-home and project-memory updates become visible after restart
+- it must obtain `project_root`, `workspace_path`, and agent event-path context
+  from the launcher's `prepare_launch_context` output rather than reverse
+  engineering identity from provider runtime paths
 - for plugin-bundle projection, startup must treat `.tmp/plugins/` plus
   `.tmp/plugins.sha` when present as one managed-home authority unit rather
   than cherry-picking only marketplace or manifest fragments

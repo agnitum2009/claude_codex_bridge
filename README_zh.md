@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -100,6 +100,8 @@ tmux 复制粘贴：鼠标左键拖拽即可复制，`Ctrl+Shift+V` 粘贴。
 ## 配置控制
 
 `ccb` 的行为由 `.ccb/ccb.config` 控制。它是项目级、用户自己维护的配置文件；如果不存在，CCB 会使用代码内置默认配置，不会自动写入新文件。
+
+`.ccb/ccb_memory.md` 是项目全局记忆文档。
 
 <details>
 <summary><b>布局</b></summary>
@@ -291,6 +293,13 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.4</b> - 项目共享记忆 V1</summary>
+
+- `.ccb/ccb_memory.md` 是项目全局记忆文档。
+
+</details>
+
+<details>
 <summary><b>v6.1.2</b> - Provider 存储边界加固</summary>
 
 - **存储分类显式化**：`ccb doctor storage` 现在区分 authority、session state、secret、workspace、user content、projected config、rebuildable cache 和 startup authority bundle。

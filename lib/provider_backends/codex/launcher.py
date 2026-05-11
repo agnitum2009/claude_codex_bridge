@@ -21,6 +21,7 @@ def build_runtime_launcher() -> ProviderRuntimeLauncher:
         provider='codex',
         launch_mode='codex_tmux',
         prepare_runtime=prepare_runtime,
+        prepare_launch_context=prepare_launch_context,
         build_start_cmd=build_start_cmd,
         build_session_payload=build_session_payload,
         post_launch=post_launch,
@@ -31,8 +32,31 @@ def prepare_runtime(runtime_dir: Path) -> dict[str, object]:
     return _prepare_runtime_impl(runtime_dir)
 
 
-def build_start_cmd(command: ParsedStartCommand, spec: AgentSpec, runtime_dir: Path, launch_session_id: str) -> str:
-    return _build_start_cmd_impl(command, spec, runtime_dir, launch_session_id)
+def prepare_launch_context(
+    context: CliContext,
+    spec: AgentSpec,
+    plan: WorkspacePlan,
+    runtime_dir: Path,
+    prepared_state: dict[str, object],
+) -> dict[str, object]:
+    del runtime_dir
+    payload = dict(prepared_state)
+    payload['agent_name'] = spec.name
+    payload['project_root'] = str(context.project.project_root)
+    payload['workspace_path'] = str(prepared_state.get('run_cwd') or plan.workspace_path)
+    payload['agent_events_path'] = str(context.paths.agent_events_path(spec.name))
+    return payload
+
+
+def build_start_cmd(
+    command: ParsedStartCommand,
+    spec: AgentSpec,
+    runtime_dir: Path,
+    launch_session_id: str,
+    *,
+    prepared_state: dict[str, object] | None = None,
+) -> str:
+    return _build_start_cmd_impl(command, spec, runtime_dir, launch_session_id, prepared_state=prepared_state)
 
 
 def build_session_payload(

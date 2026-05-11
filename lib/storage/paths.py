@@ -92,6 +92,23 @@ class PathLayout(
     def shared_cache_dir(self) -> Path:
         return self.runtime_state_root / 'shared-cache'
 
+    @property
+    def project_memory_path(self) -> Path:
+        return self.ccb_dir / 'ccb_memory.md'
+
+    @property
+    def memory_seed_path(self) -> Path:
+        return self.runtime_state_root / 'state' / 'memory.seed.json'
+
+    @property
+    def runtime_memory_dir(self) -> Path:
+        return self.runtime_state_root / 'runtime' / 'memory'
+
+    def runtime_memory_bundle_path(self, agent_name: str) -> Path:
+        from agents.models import normalize_agent_name
+
+        return self.runtime_memory_dir / f'{normalize_agent_name(agent_name)}.md'
+
     def provider_shared_cache_dir(self, provider: str) -> Path:
         normalized = normalized_segment(provider, label='provider')
         if normalized != str(provider or '').strip().lower() or normalized not in _SHARED_CACHE_PROVIDERS:

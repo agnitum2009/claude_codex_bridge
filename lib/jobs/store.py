@@ -60,11 +60,16 @@ class JobEventStore:
         target_name: str,
         start_line: int = 0,
     ) -> tuple[int, list[JobEvent]]:
-        return self._store.read_since(
+        line_no, rows = self._store.read_since(
             self._layout.target_events_path(target_kind, target_name),
             start_line,
-            loader=_job_event_from_record,
         )
+        events: list[JobEvent] = []
+        for row in rows:
+            if row.get('record_type') != 'job_event':
+                continue
+            events.append(_job_event_from_record(row))
+        return line_no, events
 
 
 class SubmissionStore:

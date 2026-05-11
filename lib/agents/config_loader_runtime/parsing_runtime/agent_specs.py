@@ -186,6 +186,7 @@ def _apply_agent_api_shortcut(
         inherit_config=inherit_config,
         inherit_skills=provider_profile.inherit_skills,
         inherit_commands=provider_profile.inherit_commands,
+        inherit_memory=provider_profile.inherit_memory,
     )
 
 

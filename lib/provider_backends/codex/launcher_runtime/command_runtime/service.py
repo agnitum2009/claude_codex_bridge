@@ -17,13 +17,22 @@ def build_start_cmd(
     launch_session_id: str,
     *,
     load_resolved_provider_profile_fn: Callable[[Path], object | None],
-    prepare_codex_home_overrides_fn: Callable[[Path, object | None], dict[str, str]],
+    prepare_codex_home_overrides_fn: Callable[..., dict[str, str]],
     provider_start_parts_fn: Callable[[str], list[str]],
     load_resume_session_id_fn: Callable[[object, Path], str | None],
     build_codex_shell_prefix_fn: Callable[..., list[str]],
+    prepared_state: dict[str, object] | None = None,
 ) -> str:
     profile = load_resolved_provider_profile_fn(runtime_dir)
-    codex_home_overrides = prepare_codex_home_overrides_fn(runtime_dir, profile)
+    launch_context = prepared_state or {}
+    project_root = _path_or_none(launch_context.get('project_root'))
+    if project_root is None:
+        raise RuntimeError('Codex launch requires prepare_launch_context before build_start_cmd')
+    codex_home_overrides = prepare_codex_home_overrides_fn(
+        runtime_dir,
+        profile,
+        refresh_home=False,
+    )
     codex_args = _codex_args(
         command,
         spec,
@@ -53,6 +62,16 @@ def build_codex_shell_prefix(*, profile, provider_api_env_keys_fn: Callable[[str
     if profile is None or profile.inherit_api:
         return []
     return [f'unset {key}' for key in sorted(provider_api_env_keys_fn('codex'))]
+
+
+def _path_or_none(value: object) -> Path | None:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        return Path(raw).expanduser()
+    except Exception:
+        return None
 
 
 def _codex_args(command, spec, runtime_dir: Path, *, profile, provider_start_parts_fn, load_resume_session_id_fn) -> list[str]:

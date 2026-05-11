@@ -202,7 +202,49 @@ Managed Claude session authority rules:
 Managed provider startup mutation rules:
 
 - startup preparation must not create, delete, or rewrite project-level provider dotfiles such as `.claude/settings.json`, `.claude/settings.local.json`, `.gemini/settings.json`, `.codex/*`, or equivalent provider-owned workspace config
+- startup may create `.ccb/ccb_memory.md` under the project anchor when it is missing, but must
+  treat it as user-editable project memory after creation
+- startup may import legacy project-root `CCB.md` into `.ccb/ccb_memory.md`
+  when the new file is missing, but must not delete or rewrite the legacy file
+- startup must materialize project memory as an idempotent preparation step
+  before launching a managed provider process:
+  - source files are `.ccb/ccb_memory.md`, provider-native project memory such as
+    `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`, and optional
+    `.ccb/agents/<agent>/memory.md`
+  - generated seed metadata belongs under
+    `<runtime_state_root>/state/memory.seed.json`
+  - generated runtime bundles belong under
+    `<runtime_state_root>/runtime/memory/<agent>.md`
+  - providers that require project-relative memory paths may create generated
+    bridge files under `project_root/.ccb/runtime/memory/<agent>.md`
+  - unchanged generated content should not be rewritten only to refresh mtime
+  - failures to create or refresh project-memory files should degrade with a
+    warning unless a provider requires that generated file to start correctly
+- `prepare_provider_workspace` is the single writer for generated provider
+  memory/config projections during normal pane startup; provider command
+  builders should only read the already prepared paths/env and must not refresh
+  auth/config/session material as a side effect
+- managed provider home projection must receive project root, agent name, and
+  workspace path explicitly from the startup context; it must not recover
+  project identity by walking up from relocated runtime-state paths
+- when `prepare_provider_workspace` asks a launcher to resolve the provider run
+  cwd before a pane launch session exists, it must call `resolve_run_cwd` with
+  `launch_session_id = None`; providers must not treat that prepare-phase value
+  as persisted session authority
+- pane-backed provider launchers may declare a `prepare_launch_context` hook
+  when command assembly needs project-scoped context:
+  - the runtime launcher must call `prepare_runtime`, then
+    `prepare_launch_context`, then pass the final `prepared_state` into
+    `build_start_cmd`
+  - `prepare_launch_context` may add fields such as `project_root`,
+    `workspace_path`, and `agent_events_path`; those fields are
+    launch-preparation state, not persisted provider session authority
+  - providers that require these fields must fail fast when they are absent
+    instead of silently inferring project identity from runtime paths
+  - `build_session_payload` receives the same final `prepared_state` used by
+    command assembly
 - provider bootstrap config needed for managed launches must live under `.ccb/agents/<agent>/provider-state/<provider>/` or an explicit validated provider-profile runtime home
+- managed OpenCode startup writes `.ccb/agents/<agent>/provider-state/opencode/opencode.json` as a generated `OPENCODE_CONFIG` file; it reads and merges project `opencode.json` without modifying that project file, and it uses project-relative memory instructions through `.ccb/runtime/memory/<agent>.md`
 - agent workspaces may still be created or reconciled as workspace mounts, but provider configuration/trust state must remain inside the managed provider boundary rather than the project worktree
 - a configured `git-worktree` workspace requires the project root to be a git repository; startup must fail rather than silently copying a non-git project tree
 - the project control plane (`ccb`, keeper, `ccbd`) must not inherit provider-runtime session identity or managed-home variables from the caller shell:

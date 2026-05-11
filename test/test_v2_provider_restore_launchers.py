@@ -31,6 +31,16 @@ def _spec(name: str, provider: str) -> AgentSpec:
     )
 
 
+def _prepared(runtime_dir: Path) -> dict[str, object]:
+    runtime = Path(runtime_dir)
+    project_root = runtime.parent
+    for parent in runtime.parents:
+        if parent.name == '.ccb':
+            project_root = parent.parent
+            break
+    return {'project_root': project_root}
+
+
 def test_claude_restore_prefers_project_session_work_dir(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     runtime_dir = project_root / '.ccb' / 'agents' / 'reviewer' / 'provider-runtime' / 'claude'
@@ -178,6 +188,7 @@ def test_claude_build_start_cmd_skips_continue_without_history(monkeypatch, tmp_
         _spec('reviewer', 'claude'),
         runtime_dir,
         'launch-1',
+        prepared_state=_prepared(runtime_dir),
     )
 
     assert '--continue' not in cmd
@@ -192,6 +203,7 @@ def test_gemini_build_start_cmd_skips_resume_without_history(tmp_path: Path) -> 
         _spec('reviewer', 'gemini'),
         runtime_dir,
         'launch-1',
+        prepared_state=_prepared(runtime_dir),
     )
 
     assert '--resume latest' not in cmd
@@ -215,6 +227,7 @@ def test_gemini_build_start_cmd_ignores_ambient_global_history_for_fresh_agent(m
         _spec('reviewer', 'gemini'),
         runtime_dir,
         'launch-1',
+        prepared_state={**_prepared(runtime_dir), 'workspace_path': workspace_path},
     )
 
     assert '--resume latest' not in cmd
@@ -326,6 +339,7 @@ def test_claude_build_start_cmd_ignores_non_managed_persisted_home(monkeypatch, 
         _spec('reviewer', 'claude'),
         runtime_dir,
         'launch-1',
+        prepared_state=_prepared(runtime_dir),
     )
 
     expected_home = tmp_path / 'repo' / '.ccb' / 'agents' / 'reviewer' / 'provider-state' / 'claude' / 'home'
@@ -402,6 +416,7 @@ def test_claude_build_start_cmd_skips_continue_when_restore_disabled_even_with_h
         _spec('reviewer', 'claude'),
         runtime_dir,
         'launch-1',
+        prepared_state=_prepared(runtime_dir),
     )
 
     assert '--continue' not in cmd
@@ -507,6 +522,7 @@ def test_gemini_build_start_cmd_skips_resume_when_restore_disabled_even_with_his
         _spec('reviewer', 'gemini'),
         runtime_dir,
         'launch-1',
+        prepared_state={**_prepared(runtime_dir), 'workspace_path': workspace_path},
     )
 
     assert '--resume latest' not in cmd

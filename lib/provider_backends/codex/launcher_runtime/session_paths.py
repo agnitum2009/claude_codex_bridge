@@ -19,6 +19,8 @@ def load_resume_session_id(spec, runtime_dir: Path, profile=None) -> str | None:
         return None
     if not _provider_authority_matches(data, profile=profile):
         return None
+    if not _resume_session_binding_is_usable(data):
+        return None
     return payload_resume_session_id(data)
 
 
@@ -93,6 +95,36 @@ def payload_resume_session_id(data: dict) -> str | None:
 
 def _provider_authority_matches(data: dict, *, profile) -> bool:
     return resume_authority_matches(data, profile=profile)
+
+
+def _resume_session_binding_is_usable(data: dict) -> bool:
+    session_path = _path_or_none(data.get('codex_session_path'))
+    if session_path is None:
+        return True
+    if not session_path.is_file():
+        return False
+    session_root = _path_or_none(data.get('codex_session_root'))
+    if session_root is not None and not _is_within(session_path, session_root):
+        return False
+    return True
+
+
+def _path_or_none(value: object) -> Path | None:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        return Path(raw).expanduser()
+    except Exception:
+        return None
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        Path(path).expanduser().resolve().relative_to(Path(root).expanduser().resolve())
+        return True
+    except Exception:
+        return False
 
 
 __all__ = ['load_resume_session_id', 'session_file_for_runtime_dir', 'state_dir_for_runtime_dir']

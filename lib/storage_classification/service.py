@@ -34,6 +34,7 @@ _SECRET_FILENAMES = {
 _CLAUDE_PROJECTED_NAMES = {'settings.json', 'CLAUDE.md'}
 _GEMINI_PROJECTED_NAMES = {'settings.json', 'trustedFolders.json'}
 _CODEX_PROJECTED_NAMES = {'config.toml'}
+_OPENCODE_PROJECTED_NAMES = {'opencode.json'}
 _CODEX_SESSION_NAMES = {
     '.ccb-session-namespace.json',
     'history.jsonl',
@@ -122,6 +123,8 @@ def _classify_relative(layout: PathLayout, path: Path, relative_path: str, *, si
 
     if parts[0] == 'ccb.config':
         return _entry(path, relative_path, StorageClass.AUTHORITY, size, root_kind=root_kind)
+    if parts[0] == 'ccb_memory.md':
+        return _entry(path, relative_path, StorageClass.USER_CONTENT, size, reason='project_shared_memory', root_kind=root_kind)
     if parts[0] in {'runtime-root.json', 'runtime-root-ref.json'}:
         return _entry(path, relative_path, StorageClass.AUTHORITY, size, root_kind=root_kind)
     if parts[0].startswith('.') and parts[0].endswith('-session'):
@@ -132,6 +135,19 @@ def _classify_relative(layout: PathLayout, path: Path, relative_path: str, *, si
         return _classify_agent(path, relative_path, parts, size=size, root_kind=root_kind)
     if len(parts) >= 3 and parts[0] == 'provider-profiles':
         return _classify_provider_home(path, relative_path, parts[2], parts[1], parts[3:], size=size, root_kind=root_kind)
+    if parts == ('state', 'memory.seed.json'):
+        return _entry(path, relative_path, StorageClass.AUTHORITY, size, reason='project_memory_seed', root_kind=root_kind)
+    if len(parts) == 3 and parts[0] == 'runtime' and parts[1] == 'memory' and parts[2].endswith('.md'):
+        agent = parts[2][:-3]
+        return _entry(
+            path,
+            relative_path,
+            StorageClass.RUNTIME_EPHEMERAL,
+            size,
+            agent=agent,
+            reason='project_memory_bundle',
+            root_kind=root_kind,
+        )
     if len(parts) >= 2 and parts[0] == 'shared-cache':
         return _entry(
             path,
@@ -171,6 +187,8 @@ def _classify_agent(path: Path, relative_path: str, parts: tuple[str, ...], *, s
     name = parts[-1]
     if len(parts) == 3 and name in _AGENT_AUTHORITY_FILES:
         return _entry(path, relative_path, StorageClass.AUTHORITY, size, agent=agent, root_kind=root_kind)
+    if len(parts) == 3 and name == 'memory.md':
+        return _entry(path, relative_path, StorageClass.USER_CONTENT, size, agent=agent, reason='agent_private_memory', root_kind=root_kind)
     if len(parts) == 3 and name.endswith('.jsonl'):
         return _entry(path, relative_path, StorageClass.AUTHORITY, size, agent=agent, reason='agent_event_log', root_kind=root_kind)
     if len(parts) >= 4 and parts[2] == 'provider-runtime':
@@ -207,6 +225,8 @@ def _classify_provider_home(
         return _classify_claude_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
     if provider == 'gemini':
         return _classify_gemini_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
+    if provider == 'opencode':
+        return _classify_opencode_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
     return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
 
 
@@ -328,6 +348,24 @@ def _classify_gemini_home(
         return _entry(path, relative_path, StorageClass.REBUILDABLE_CACHE, size, provider=provider, agent=agent, reason='tool_cache', root_kind=root_kind)
     if remainder[0] == '.gemini':
         return _entry(path, relative_path, StorageClass.SESSION, size, provider=provider, agent=agent, root_kind=root_kind)
+    return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
+
+
+def _classify_opencode_home(
+    path: Path,
+    relative_path: str,
+    remainder: tuple[str, ...],
+    *,
+    size: int,
+    provider: str,
+    agent: str,
+    root_kind: str,
+) -> StorageEntry:
+    name = remainder[-1]
+    if name in _OPENCODE_PROJECTED_NAMES:
+        return _entry(path, relative_path, StorageClass.PROJECTED_CONFIG, size, provider=provider, agent=agent, root_kind=root_kind)
+    if remainder[0] in {'.cache', '.tmp'}:
+        return _entry(path, relative_path, StorageClass.REBUILDABLE_CACHE, size, provider=provider, agent=agent, root_kind=root_kind)
     return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
 
 

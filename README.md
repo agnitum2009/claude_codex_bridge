@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -100,6 +100,8 @@ Tmux copy/paste: drag with the left mouse button to copy, and use `Ctrl+Shift+V`
 ## Config Control
 
 `ccb` is controlled by `.ccb/ccb.config`. This file is project-local and user-authored; if it is missing, CCB uses the built-in default without writing a new config file.
+
+`.ccb/ccb_memory.md` is the project-wide shared memory document.
 
 <details>
 <summary><b>Layout</b></summary>
@@ -293,6 +295,13 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.4</b> - Shared Project Memory V1</summary>
+
+- `.ccb/ccb_memory.md` is the project-wide shared memory document.
+
+</details>
+
+<details>
 <summary><b>v6.1.2</b> - Provider Storage Boundary Hardening</summary>
 
 - **Storage Classes Made Explicit**: `ccb doctor storage` now separates authority, session state, secrets, workspaces, user content, projected config, rebuildable cache, and startup authority bundles.

@@ -7,6 +7,7 @@ This document defines the non-drifting user-facing contract for project configur
 It is the authoritative design anchor for:
 
 - `.ccb/ccb.config`
+- `.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md` project memory placement
 - compact layout grammar
 - built-in default config fallback
 - pane naming and pane color identity
@@ -20,6 +21,34 @@ It is the authoritative design anchor for:
 - CCB must not read an implicit global `~/.ccb/ccb.config` or install-location config as a fallback.
 - User help text, validation output, diagnostics, and docs must point to `.ccb/ccb.config`.
 - `.ccb/config.yaml` is not part of the contract and must not be read or written by current code.
+
+### 2.1 Project Shared Memory Files
+
+Project memory files are user context, not startup/layout authority.
+
+- `.ccb/ccb_memory.md` under the project anchor is the shared CCB project memory file.
+  - Startup may create it only when missing.
+  - Startup must not overwrite user edits.
+  - Teams may whitelist and commit it when they want shared agent collaboration rules.
+- `.ccb/agents/<agent>/memory.md` is optional agent-private memory.
+  - It is user-editable local data and must not be deleted or rewritten by
+    normal startup.
+  - `<agent>` is the normalized logical agent name from `.ccb/ccb.config`.
+  - This path is anchored under the project `.ccb/` directory and does not move
+    with relocated runtime state.
+- Generated project-memory metadata and runtime bundles are CCB-owned state:
+  - `<runtime_state_root>/state/memory.seed.json` records template seed
+    metadata for the initial `.ccb/ccb_memory.md`.
+  - `<runtime_state_root>/runtime/memory/<agent>.md` is generated runtime
+    memory for providers that need a stable file path.
+  - `project_root/.ccb/runtime/memory/<agent>.md` may be generated as a
+    provider compatibility bridge for tools such as OpenCode that consume
+    project-relative instruction paths.
+- When runtime state is relocated, user-editable memory remains under the
+  project anchor while generated runtime memory follows `runtime_state_root`.
+- `.ccb/` is local/runtime state by default. Projects that want to commit
+  selected files such as `.ccb/ccb.config` must opt in with their own
+  `.gitignore` whitelist.
 
 ## 3. Compact Layout Grammar
 
@@ -239,5 +268,7 @@ General rule:
 ## 9. Update Discipline
 
 - If `.ccb/ccb.config` grammar changes, update this document in the same patch.
+- If project memory file placement or generated memory path semantics change,
+  update this document in the same patch.
 - If bootstrap layout defaults change, update this document in the same patch.
 - If pane naming, split sizing, or pane theming rules change materially, update this document in the same patch.

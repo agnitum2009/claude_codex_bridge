@@ -33,6 +33,12 @@ def _spec(name: str, provider: str = "codex", *, provider_profile: ProviderProfi
     )
 
 
+def _write_project_memory(project_root: Path, text: str) -> None:
+    path = project_root / '.ccb' / 'ccb_memory.md'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding='utf-8')
+
+
 def _write_codex_plugin_source(
     home: Path,
     *,
@@ -296,7 +302,7 @@ def test_materialize_codex_profile_does_not_migrate_when_session_authority_is_ma
     assert session_file.read_text(encoding='utf-8') == '{not json}\n'
 
 
-def test_materialize_codex_profile_does_not_migrate_legacy_home_with_symlink(
+def test_materialize_codex_profile_migrates_legacy_sessions_with_unrelated_tmp_symlink(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -311,8 +317,10 @@ def test_materialize_codex_profile_does_not_migrate_legacy_home_with_symlink(
     legacy_session.write_text('{"type":"session"}\n', encoding='utf-8')
     outside = tmp_path / 'outside'
     outside.mkdir(parents=True, exist_ok=True)
+    tmp_dir = legacy_home / 'tmp' / 'arg0'
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     try:
-        os.symlink(outside, legacy_home / 'linked-outside')
+        os.symlink(outside, tmp_dir / 'linked-outside')
     except OSError:
         pytest.skip('symlink creation is not available in this test environment')
     session_file = layout.ccb_dir / session_filename_for_agent('codex', 'agent1')
@@ -322,6 +330,61 @@ def test_materialize_codex_profile_does_not_migrate_legacy_home_with_symlink(
             {
                 'codex_home': str(legacy_home),
                 'codex_session_root': str(legacy_home / 'sessions'),
+                'codex_session_path': str(legacy_session),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    profile = materialize_provider_profile(
+        layout=layout,
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    runtime_home = Path(profile.runtime_home or '')
+    assert not legacy_session.exists()
+    assert (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').is_file()
+    assert (tmp_dir / 'linked-outside').is_symlink()
+    events = [
+        json.loads(line)
+        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
+        if line.strip()
+    ]
+    assert events[-1]['event_type'] == 'codex_profile_migration'
+    assert events[-1]['status'] == 'migrated'
+    assert events[-1]['reason'] == 'legacy_profile_runtime_home_migrated'
+
+
+def test_materialize_codex_profile_does_not_migrate_session_material_with_symlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    layout = PathLayout(project_root)
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+    legacy_home = layout.provider_profiles_dir / 'agent1' / 'codex'
+    legacy_session_root = legacy_home / 'sessions'
+    legacy_session = legacy_session_root / '2026' / '05' / '10' / 'legacy.jsonl'
+    legacy_session.parent.mkdir(parents=True, exist_ok=True)
+    legacy_session.write_text('{"type":"session"}\n', encoding='utf-8')
+    outside = tmp_path / 'outside'
+    outside.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(outside, legacy_session_root / 'linked-outside')
+    except OSError:
+        pytest.skip('symlink creation is not available in this test environment')
+    session_file = layout.ccb_dir / session_filename_for_agent('codex', 'agent1')
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    session_file.write_text(
+        json.dumps(
+            {
+                'codex_home': str(legacy_home),
+                'codex_session_root': str(legacy_session_root),
                 'codex_session_path': str(legacy_session),
             },
             ensure_ascii=False,
@@ -947,7 +1010,7 @@ def test_materialize_claude_home_config_refreshes_inherited_skill_assets(tmp_pat
 
     assert (layout.claude_dir / 'skills' / 'review' / 'SKILL.md').read_text(encoding='utf-8') == 'skill-v1\n'
     assert (layout.claude_dir / 'commands' / 'check.md').read_text(encoding='utf-8') == 'command-v1\n'
-    assert (layout.claude_dir / 'CLAUDE.md').read_text(encoding='utf-8') == 'claude-md-v1\n'
+    assert not (layout.claude_dir / 'CLAUDE.md').exists()
 
     (source_claude_dir / 'skills' / 'review' / 'SKILL.md').write_text('skill-v2\n', encoding='utf-8')
     (source_claude_dir / 'commands' / 'check.md').write_text('command-v2\n', encoding='utf-8')
@@ -957,7 +1020,137 @@ def test_materialize_claude_home_config_refreshes_inherited_skill_assets(tmp_pat
 
     assert (layout.claude_dir / 'skills' / 'review' / 'SKILL.md').read_text(encoding='utf-8') == 'skill-v2\n'
     assert (layout.claude_dir / 'commands' / 'check.md').read_text(encoding='utf-8') == 'command-v2\n'
-    assert (layout.claude_dir / 'CLAUDE.md').read_text(encoding='utf-8') == 'claude-md-v2\n'
+    assert not (layout.claude_dir / 'CLAUDE.md').exists()
+
+
+def test_materialize_claude_home_config_writes_project_memory_bundle(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-home'
+    target_home = project_root / '.ccb' / 'agents' / 'reviewer' / 'provider-state' / 'claude' / 'home'
+    source_claude_dir = source_home / '.claude'
+    source_claude_dir.mkdir(parents=True, exist_ok=True)
+    (source_claude_dir / 'CLAUDE.md').write_text('user claude memory\n', encoding='utf-8')
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared ask memory\n')
+    (project_root / 'CLAUDE.md').write_text('project claude memory\n', encoding='utf-8')
+    private_memory = project_root / '.ccb' / 'agents' / 'reviewer' / 'memory.md'
+    private_memory.parent.mkdir(parents=True, exist_ok=True)
+    private_memory.write_text('reviewer private memory\n', encoding='utf-8')
+
+    layout = materialize_claude_home_config(
+        target_home,
+        source_home=source_home,
+        project_root=project_root,
+        agent_name='reviewer',
+        workspace_path=tmp_path / 'worktree',
+    )
+
+    text = (layout.claude_dir / 'CLAUDE.md').read_text(encoding='utf-8')
+    assert '# CCB Managed Agent Memory' in text
+    assert '## Provider User Memory' in text
+    assert 'user claude memory' in text
+    assert '## CCB Shared Project Memory' in text
+    assert 'shared ask memory' in text
+    assert '## Provider-Native Project Memory' in text
+    assert 'project claude memory' in text
+    assert '## Agent Private Memory' in text
+    assert 'reviewer private memory' in text
+
+
+def test_materialize_claude_home_config_respects_inherit_memory_flag(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_claude_dir = source_home / '.claude'
+    source_claude_dir.mkdir(parents=True, exist_ok=True)
+    (source_claude_dir / 'skills' / 'review').mkdir(parents=True, exist_ok=True)
+    (source_claude_dir / 'skills' / 'review' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+    (source_claude_dir / 'CLAUDE.md').write_text('claude-md\n', encoding='utf-8')
+
+    layout = materialize_claude_home_config(
+        target_home,
+        profile=ProviderProfileSpec(inherit_skills=True, inherit_memory=False),
+        source_home=source_home,
+    )
+
+    assert (layout.claude_dir / 'skills' / 'review' / 'SKILL.md').read_text(encoding='utf-8') == 'skill\n'
+    assert not (layout.claude_dir / 'CLAUDE.md').exists()
+
+
+def test_materialize_claude_home_config_skips_memory_without_project_context(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_claude_dir = source_home / '.claude'
+    source_claude_dir.mkdir(parents=True, exist_ok=True)
+    (source_claude_dir / 'CLAUDE.md').write_text('source-only memory\n', encoding='utf-8')
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+
+    assert not (layout.claude_dir / 'CLAUDE.md').exists()
+
+
+def test_materialize_codex_home_config_writes_project_memory_bundle(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    target_home = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'AGENTS.md').write_text('user codex memory\n', encoding='utf-8')
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared ask memory\n')
+    (project_root / 'AGENTS.md').write_text('project codex memory\n', encoding='utf-8')
+    private_memory = project_root / '.ccb' / 'agents' / 'agent1' / 'memory.md'
+    private_memory.parent.mkdir(parents=True, exist_ok=True)
+    private_memory.write_text('agent1 private memory\n', encoding='utf-8')
+
+    codex_home_config.materialize_codex_home_config(
+        target_home,
+        source_home=source_home,
+        project_root=project_root,
+        agent_name='agent1',
+        workspace_path=tmp_path / 'worktree',
+    )
+
+    text = (target_home / 'AGENTS.md').read_text(encoding='utf-8')
+    assert '# CCB Managed Agent Memory' in text
+    assert 'provider: codex' in text
+    assert '## Provider User Memory' in text
+    assert 'user codex memory' in text
+    assert '## CCB Shared Project Memory' in text
+    assert 'shared ask memory' in text
+    assert '## Provider-Native Project Memory' in text
+    assert 'project codex memory' in text
+    assert '## Agent Private Memory' in text
+    assert 'agent1 private memory' in text
+
+
+def test_materialize_codex_home_config_respects_inherit_memory_flag(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    target_home = tmp_path / 'managed-codex-home'
+    target_home.mkdir(parents=True, exist_ok=True)
+    (target_home / 'AGENTS.md').write_text('stale managed memory\n', encoding='utf-8')
+
+    codex_home_config.materialize_codex_home_config(
+        target_home,
+        profile=ProviderProfileSpec(inherit_memory=False),
+        source_home=source_home,
+        project_root=project_root,
+        agent_name='agent1',
+    )
+
+    assert not (target_home / 'AGENTS.md').exists()
+
+
+def test_materialize_codex_home_config_skips_memory_without_project_context(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-codex-home'
+    target_home = tmp_path / 'managed-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    target_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'AGENTS.md').write_text('source-only memory\n', encoding='utf-8')
+    (target_home / 'AGENTS.md').write_text('existing managed memory\n', encoding='utf-8')
+
+    codex_home_config.materialize_codex_home_config(target_home, source_home=source_home)
+
+    assert (target_home / 'AGENTS.md').read_text(encoding='utf-8') == 'existing managed memory\n'
 
 
 def test_materialize_claude_home_config_projects_referenced_home_hook_assets(tmp_path: Path) -> None:
@@ -1023,24 +1216,32 @@ def test_materialize_claude_home_config_does_not_project_home_hook_assets_withou
     assert not (layout.home_root / '.codeisland').exists()
 
 
-def test_materialize_claude_home_config_respects_inherit_skills_flag(tmp_path: Path) -> None:
+def test_materialize_claude_home_config_respects_inherit_skills_without_disabling_memory(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
     source_home = tmp_path / 'system-home'
-    target_home = tmp_path / 'managed-home'
+    target_home = project_root / '.ccb' / 'agents' / 'reviewer' / 'provider-state' / 'claude' / 'home'
     source_claude_dir = source_home / '.claude'
     (source_claude_dir / 'skills' / 'review').mkdir(parents=True, exist_ok=True)
     (source_claude_dir / 'commands').mkdir(parents=True, exist_ok=True)
     (source_claude_dir / 'skills' / 'review' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
     (source_claude_dir / 'commands' / 'check.md').write_text('command\n', encoding='utf-8')
     (source_claude_dir / 'CLAUDE.md').write_text('claude-md\n', encoding='utf-8')
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared memory\n')
 
     layout = materialize_claude_home_config(
         target_home,
         profile=ProviderProfileSpec(inherit_skills=False, inherit_commands=True),
         source_home=source_home,
+        project_root=project_root,
+        agent_name='reviewer',
     )
 
     assert not (layout.claude_dir / 'skills').exists()
-    assert not (layout.claude_dir / 'CLAUDE.md').exists()
+    memory_text = (layout.claude_dir / 'CLAUDE.md').read_text(encoding='utf-8')
+    assert '# CCB Managed Agent Memory' in memory_text
+    assert 'claude-md' in memory_text
+    assert 'shared memory' in memory_text
     assert (layout.claude_dir / 'commands' / 'check.md').read_text(encoding='utf-8') == 'command\n'
 
 
@@ -1513,3 +1714,75 @@ def test_materialize_gemini_home_config_merges_trusted_folders(tmp_path: Path) -
     payload = json.loads(layout.trusted_folders_path.read_text(encoding='utf-8'))
     assert payload['/system/project'] == 'TRUST_FOLDER'
     assert payload['/managed/project'] == 'TRUST_FOLDER'
+
+
+def test_materialize_gemini_home_config_writes_project_memory_bundle(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_gemini = source_home / '.gemini'
+    source_gemini.mkdir(parents=True, exist_ok=True)
+    (source_gemini / 'GEMINI.md').write_text('user gemini memory\n', encoding='utf-8')
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared ask memory\n')
+    (project_root / 'GEMINI.md').write_text('project gemini memory\n', encoding='utf-8')
+    private_memory = project_root / '.ccb' / 'agents' / 'reviewer' / 'memory.md'
+    private_memory.parent.mkdir(parents=True, exist_ok=True)
+    private_memory.write_text('reviewer private memory\n', encoding='utf-8')
+
+    layout = materialize_gemini_home_config(
+        target_home,
+        source_home=source_home,
+        project_root=project_root,
+        agent_name='reviewer',
+        workspace_path=tmp_path / 'worktree',
+    )
+
+    text = (layout.gemini_dir / 'GEMINI.md').read_text(encoding='utf-8')
+    settings = json.loads(layout.settings_path.read_text(encoding='utf-8'))
+    assert '# CCB Managed Agent Memory' in text
+    assert '## Provider User Memory' in text
+    assert 'user gemini memory' in text
+    assert '## CCB Shared Project Memory' in text
+    assert 'shared ask memory' in text
+    assert '## Provider-Native Project Memory' in text
+    assert 'project gemini memory' in text
+    assert '## Agent Private Memory' in text
+    assert 'reviewer private memory' in text
+    assert settings['contextFileName'] == 'GEMINI.md'
+
+
+def test_materialize_gemini_home_config_respects_inherit_memory_flag(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    target_gemini = target_home / '.gemini'
+    target_gemini.mkdir(parents=True, exist_ok=True)
+    (target_gemini / 'GEMINI.md').write_text('stale managed memory\n', encoding='utf-8')
+    (target_gemini / 'settings.json').write_text('{"contextFileName":"GEMINI.md"}\n', encoding='utf-8')
+
+    layout = materialize_gemini_home_config(
+        target_home,
+        profile=ProviderProfileSpec(inherit_memory=False),
+        source_home=source_home,
+        project_root=project_root,
+        agent_name='reviewer',
+    )
+
+    settings = json.loads(layout.settings_path.read_text(encoding='utf-8'))
+    assert not (layout.gemini_dir / 'GEMINI.md').exists()
+    assert 'contextFileName' not in settings
+
+
+def test_materialize_gemini_home_config_skips_memory_without_project_context(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_gemini = source_home / '.gemini'
+    target_gemini = target_home / '.gemini'
+    source_gemini.mkdir(parents=True, exist_ok=True)
+    target_gemini.mkdir(parents=True, exist_ok=True)
+    (source_gemini / 'GEMINI.md').write_text('source-only memory\n', encoding='utf-8')
+
+    layout = materialize_gemini_home_config(target_home, source_home=source_home)
+
+    assert not (layout.gemini_dir / 'GEMINI.md').exists()

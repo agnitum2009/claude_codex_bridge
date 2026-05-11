@@ -51,12 +51,35 @@ def resolve_codex_home_layout(runtime_dir: Path, profile) -> CodexHomeLayout:
     )
 
 
-def prepare_codex_home_overrides(runtime_dir: Path, profile) -> dict[str, str]:
+def prepare_codex_home_overrides(
+    runtime_dir: Path,
+    profile,
+    *,
+    refresh_home: bool = False,
+    project_root: Path | None = None,
+    agent_name: str | None = None,
+    workspace_path: Path | None = None,
+    memory_projection_event_path: Path | None = None,
+    memory_projection_marker_path: Path | None = None,
+) -> dict[str, str]:
     layout = resolve_codex_home_layout(runtime_dir, profile)
     layout.codex_home.mkdir(parents=True, exist_ok=True)
     layout.session_root.mkdir(parents=True, exist_ok=True)
-    _prepare_managed_home(_system_codex_home(), layout.codex_home, profile=profile)
-    _ensure_session_namespace_authority(runtime_dir, layout.codex_home, layout.session_root, profile=profile)
+    marker_ready = _session_namespace_marker_exists(layout.codex_home)
+    if refresh_home:
+        _prepare_managed_home(
+            _system_codex_home(),
+            layout.codex_home,
+            profile=profile,
+            project_root=project_root,
+            agent_name=agent_name,
+            workspace_path=workspace_path,
+            memory_projection_event_path=memory_projection_event_path,
+            memory_projection_marker_path=memory_projection_marker_path,
+        )
+        _ensure_session_namespace_authority(runtime_dir, layout.codex_home, layout.session_root, profile=profile)
+    elif not marker_ready and not any(layout.session_root.iterdir()):
+        _write_session_namespace_marker(layout.codex_home / _SESSION_NAMESPACE_MARKER, current_provider_authority_fingerprint(profile))
 
     return {
         'CODEX_HOME': str(layout.codex_home),
@@ -205,8 +228,27 @@ def _system_codex_home() -> Path:
     return Path(os.environ.get('CODEX_HOME') or (Path.home() / '.codex')).expanduser()
 
 
-def _prepare_managed_home(source_home: Path, target_home: Path, *, profile) -> None:
-    materialize_codex_home_config(target_home, profile=profile, source_home=source_home)
+def _prepare_managed_home(
+    source_home: Path,
+    target_home: Path,
+    *,
+    profile,
+    project_root: Path | None,
+    agent_name: str | None,
+    workspace_path: Path | None,
+    memory_projection_event_path: Path | None,
+    memory_projection_marker_path: Path | None,
+) -> None:
+    materialize_codex_home_config(
+        target_home,
+        profile=profile,
+        source_home=source_home,
+        project_root=project_root,
+        agent_name=agent_name,
+        workspace_path=workspace_path,
+        memory_projection_event_path=memory_projection_event_path,
+        memory_projection_marker_path=memory_projection_marker_path,
+    )
 
 
 def _ensure_session_namespace_authority(runtime_dir: Path, codex_home: Path, session_root: Path, *, profile) -> None:
@@ -223,6 +265,10 @@ def _ensure_session_namespace_authority(runtime_dir: Path, codex_home: Path, ses
         _archive_session_root(codex_home, session_root, label=stored_marker or stored_provider_authority_fingerprint(session_data))
         _scrub_project_session_binding(session_file)
     _write_session_namespace_marker(marker_path, current_fingerprint)
+
+
+def _session_namespace_marker_exists(codex_home: Path) -> bool:
+    return (Path(codex_home) / _SESSION_NAMESPACE_MARKER).is_file()
 
 
 def _read_session_namespace_marker(marker_path: Path) -> str | None:

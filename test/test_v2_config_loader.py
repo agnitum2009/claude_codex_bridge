@@ -238,6 +238,7 @@ inherit_auth = true
 inherit_config = true
 inherit_skills = false
 inherit_commands = false
+inherit_memory = false
 
 [agents.agent1.provider_profile.env]
 OPENAI_API_KEY = "sk-test"
@@ -253,6 +254,7 @@ OPENAI_API_KEY = "sk-test"
     assert spec.provider_profile.inherit_auth is True
     assert spec.provider_profile.inherit_skills is False
     assert spec.provider_profile.inherit_commands is False
+    assert spec.provider_profile.inherit_memory is False
     assert spec.provider_profile.env == {'OPENAI_API_KEY': 'sk-test'}
 
 

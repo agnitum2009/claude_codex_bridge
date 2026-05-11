@@ -90,6 +90,7 @@ Examples:
 - `.ccb/ccbd/lifecycle.json`
 - `.ccb/ccbd/lease.json`
 - `.ccb/ccbd/keeper.json`
+- `<runtime_state_root>/state/memory.seed.json`
 - `.ccb/agents/<agent>/agent.json`
 - `.ccb/agents/<agent>/runtime.json`
 - `.ccb/agents/<agent>/helper.json`
@@ -125,6 +126,8 @@ recreated by a fresh launch, but live processes can depend on them.
 Examples:
 
 - `.ccb/agents/<agent>/provider-runtime/<provider>/`
+- `<runtime_state_root>/runtime/memory/<agent>.md`
+- `project_root/.ccb/runtime/memory/<agent>.md` provider compatibility bridge
 - bridge pids, FIFOs, runtime logs, session switch records
 - project sockets and heartbeat artifacts
 
@@ -146,6 +149,9 @@ Rules:
 
 - cleanup must not treat these files as ordinary cache
 - diagnostics may summarize them but must not split manifest and payload
+- generated OpenCode `provider-state/opencode/opencode.json` is
+  `PROJECTED_CONFIG`; project `opencode.json` remains user content outside the
+  provider-state tree
 - sharing is allowed only after content-addressed whole-bundle storage and
   atomic replacement are implemented
 - default behavior remains per-agent/per-home storage
@@ -230,6 +236,9 @@ cache.
 Examples:
 
 - `.ccb/history/` handoff/context-transfer documents
+- `.ccb/ccb_memory.md` project shared memory, when present under the project anchor
+- `.ccb/agents/<agent>/memory.md` agent-private memory anchored under the
+  project `.ccb/` directory
 - user-authored notes under the project anchor
 
 Cleanup must preserve this class unless a future explicit user-content command

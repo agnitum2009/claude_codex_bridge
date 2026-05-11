@@ -86,6 +86,7 @@ def materialize_provider_profile(
             inherit_config=profile_spec.inherit_config,
             inherit_skills=profile_spec.inherit_skills,
             inherit_commands=profile_spec.inherit_commands,
+            inherit_memory=profile_spec.inherit_memory,
         )
 
     _write_profile_record(runtime_dir, profile)
@@ -179,6 +180,7 @@ def _materialize_codex_profile(
         inherit_config=profile_spec.inherit_config,
         inherit_skills=profile_spec.inherit_skills,
         inherit_commands=profile_spec.inherit_commands,
+        inherit_memory=profile_spec.inherit_memory,
     )
 
 
@@ -202,6 +204,7 @@ def _materialize_api_profile(
         inherit_config=profile_spec.inherit_config,
         inherit_skills=profile_spec.inherit_skills,
         inherit_commands=profile_spec.inherit_commands,
+        inherit_memory=profile_spec.inherit_memory,
     )
 
 
@@ -228,6 +231,7 @@ def _materialize_claude_profile(
         inherit_config=profile_spec.inherit_config,
         inherit_skills=profile_spec.inherit_skills,
         inherit_commands=profile_spec.inherit_commands,
+        inherit_memory=profile_spec.inherit_memory,
     )
 
 
@@ -261,6 +265,7 @@ _CODEX_RUNTIME_HOME_SENTINELS = (
 _CODEX_SESSION_MIGRATION_SENTINELS = (
     Path('sessions'),
     Path('archived-sessions'),
+    Path('auth.json'),
     Path('history.jsonl'),
     Path('logs_2.sqlite'),
     Path('state_5.sqlite'),
@@ -268,6 +273,8 @@ _CODEX_SESSION_MIGRATION_SENTINELS = (
     Path('log'),
     Path('logs'),
     Path('shell_snapshots'),
+    Path('.tmp') / 'plugins',
+    Path('.tmp') / 'plugins.sha',
 )
 _MIGRATION_ABORT = object()
 
@@ -313,7 +320,7 @@ def _migrate_legacy_codex_profile_runtime_home(
             target_home=target,
         )
         return False
-    if _tree_contains_symlink(source):
+    if _session_migration_material_contains_symlink(source):
         _record_codex_profile_migration_event(
             layout,
             spec,
@@ -340,7 +347,7 @@ def _migrate_legacy_codex_profile_runtime_home(
         )
         return False
     target.mkdir(parents=True, exist_ok=True)
-    _merge_tree(source, target)
+    _merge_legacy_codex_session_material(source, target)
     if prepared_session_authority is not None:
         session_file, payload = prepared_session_authority
         atomic_write_json(session_file, payload)
@@ -359,6 +366,7 @@ def _migrate_legacy_codex_profile_runtime_home(
 def _discard_migrated_codex_projection(runtime_home: Path) -> None:
     _remove_tree_if_exists(runtime_home / '.tmp' / 'plugins')
     (runtime_home / '.tmp' / 'plugins.sha').unlink(missing_ok=True)
+    (runtime_home / 'AGENTS.md').unlink(missing_ok=True)
 
 
 def _remove_tree_if_exists(path: Path) -> None:
@@ -393,6 +401,22 @@ def _merge_tree(source: Path, target: Path) -> None:
         if child.is_dir() and destination.is_dir() and not destination.is_symlink():
             _merge_tree(child, destination)
     _remove_empty_dir(source)
+
+
+def _merge_legacy_codex_session_material(source: Path, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    for relative in _CODEX_SESSION_MIGRATION_SENTINELS:
+        child = source / relative
+        if not child.exists() or child.is_symlink():
+            continue
+        destination = target / relative
+        if child.is_dir():
+            _merge_tree(child, destination)
+            continue
+        if not destination.exists() and not destination.is_symlink():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(child), str(destination))
+    _remove_empty_parents(source, stop_at=source)
 
 
 def _prepare_legacy_codex_session_authority(
@@ -430,7 +454,19 @@ def _has_legacy_codex_session_material(source_home: Path) -> bool:
     return any((source_home / relative).exists() for relative in _CODEX_SESSION_MIGRATION_SENTINELS)
 
 
+def _session_migration_material_contains_symlink(source_home: Path) -> bool:
+    for relative in _CODEX_SESSION_MIGRATION_SENTINELS:
+        root = source_home / relative
+        if not root.exists() and not root.is_symlink():
+            continue
+        if _tree_contains_symlink(root):
+            return True
+    return False
+
+
 def _tree_contains_symlink(root: Path) -> bool:
+    if root.is_symlink():
+        return True
     try:
         for current, dirnames, filenames in os.walk(root, followlinks=False):
             current_path = Path(current)

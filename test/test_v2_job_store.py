@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ccbd.api_models import DeliveryScope, JobEvent, JobRecord, JobStatus, MessageEnvelope, SubmissionRecord, TargetKind
@@ -91,6 +92,49 @@ def test_event_and_submission_stores_roundtrip(tmp_path: Path) -> None:
     latest = submission_store.get_latest('sub-1')
     assert latest is not None
     assert latest.job_ids == ['job-1', 'job-2']
+
+
+def test_event_store_skips_provider_diagnostics_in_event_log(tmp_path: Path) -> None:
+    layout = PathLayout(tmp_path / 'repo')
+    event_store = JobEventStore(layout)
+    event_store.append(
+        JobEvent(
+            event_id='evt-1',
+            job_id='job-1',
+            agent_name='agent1',
+            type='job_started',
+            payload={'status': 'running'},
+            timestamp='2026-03-18T00:00:00Z',
+        )
+    )
+    events_path = layout.agent_events_path('agent1')
+    with events_path.open('a', encoding='utf-8') as handle:
+        handle.write(
+            json.dumps(
+                {
+                    'record_type': 'agent_event',
+                    'event_type': 'codex_memory_projection_ok',
+                    'provider': 'codex',
+                    'agent_name': 'agent1',
+                },
+                ensure_ascii=False,
+            )
+            + '\n'
+        )
+    event_store.append(
+        JobEvent(
+            event_id='evt-2',
+            job_id='job-1',
+            agent_name='agent1',
+            type='job_completed',
+            payload={'status': 'completed'},
+            timestamp='2026-03-18T00:00:01Z',
+        )
+    )
+
+    line_no, events = event_store.read_since('agent1', 0)
+    assert line_no == 3
+    assert [event.event_id for event in events] == ['evt-1', 'evt-2']
 
 
 def test_submission_store_preserves_user_sender(tmp_path: Path) -> None:
