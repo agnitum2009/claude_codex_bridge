@@ -148,3 +148,91 @@ def test_required_dev_workflows_depend_on_branch() -> None:
         "Tests",
         "CCBD Real Platform Smoke",
     }
+
+
+def test_release_artifacts_run_match_is_scoped_to_tag_or_commit() -> None:
+    checker = _load_checker()
+
+    assert checker._release_artifacts_run_matches(
+        {"headBranch": "v9.9.9", "headSha": "other", "event": "push"},
+        version="v9.9.9",
+        tag_commit="abc123",
+    )
+    assert checker._release_artifacts_run_matches(
+        {"headBranch": "main", "headSha": "abc123", "event": "workflow_dispatch"},
+        version="v9.9.9",
+        tag_commit="abc123",
+    )
+    assert not checker._release_artifacts_run_matches(
+        {"headBranch": "main", "headSha": "wrong", "event": "workflow_dispatch"},
+        version="v9.9.9",
+        tag_commit="abc123",
+    )
+
+
+def test_published_wait_does_not_hide_failed_release_workflow() -> None:
+    checker = _load_checker()
+
+    assert not checker._published_state_is_pending(
+        release_payload={"assets": []},
+        run_payload=[
+            {
+                "name": "Release Artifacts",
+                "headBranch": "v9.9.9",
+                "headSha": "abc123",
+                "status": "completed",
+                "conclusion": "failure",
+            }
+        ],
+        version="v9.9.9",
+        tag_commit="abc123",
+    )
+
+
+def test_check_sha256sums_requires_entries_for_tarballs(monkeypatch, tmp_path: Path) -> None:
+    checker = _load_checker()
+
+    def fake_run(cmd: list[str], cwd: Path, *, timeout: int = 60):
+        assert cmd[:3] == ["gh", "release", "download"]
+        target_dir = Path(cmd[cmd.index("--dir") + 1])
+        (target_dir / "SHA256SUMS").write_text(
+            "0" * 64 + "  ccb-linux-x86_64.tar.gz\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker, "run", fake_run)
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    checker.check_sha256sums(tmp_path, "v9.9.9", "SeemSeam/claude_codex_bridge", issues, warnings)
+
+    assert any("ccb-macos-universal.tar.gz" in item for item in issues)
+
+
+def test_check_git_tag_reports_missing_published_tag(tmp_path: Path) -> None:
+    checker = _load_checker()
+    repo = _init_repo_with_remote(tmp_path)
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    checker.check_git_tag(repo, "v9.9.9", "published", issues, warnings)
+
+    assert any("Local git tag v9.9.9 does not exist" in item for item in issues)
+
+
+def test_active_skill_sync_warns_when_runtime_copy_differs(tmp_path: Path) -> None:
+    checker = _load_checker()
+    source = tmp_path / "dev_tools" / "skills" / "ccb-github"
+    active = tmp_path / ".ccb" / "agents" / "agent4" / "provider-state" / "codex" / "home" / "skills" / "ccb-github"
+    for base, marker in ((source, "source"), (active, "active")):
+        (base / "agents").mkdir(parents=True)
+        (base / "scripts").mkdir(parents=True)
+        (base / "SKILL.md").write_text("same\n", encoding="utf-8")
+        (base / "agents" / "openai.yaml").write_text("same\n", encoding="utf-8")
+        (base / "scripts" / "check_release_state.py").write_text(f"{marker}\n", encoding="utf-8")
+
+    warnings: list[str] = []
+    checker.check_active_skill_sync(tmp_path, warnings)
+
+    assert any("Active ccb-github skill copy differs" in item for item in warnings)

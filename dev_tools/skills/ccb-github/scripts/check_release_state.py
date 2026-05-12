@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import re
 import subprocess
@@ -21,6 +22,7 @@ EXPECTED_ASSETS = {
 }
 CHECKSUMMED_ASSETS = EXPECTED_ASSETS - {"SHA256SUMS"}
 REQUIRED_TAG_WORKFLOWS = {"Release Artifacts"}
+RELEASE_RUN_LIMIT = 50
 BRANCH_VALIDATION_WORKFLOWS = {
     "Tests",
     "CCBD Real Platform Smoke",
@@ -84,6 +86,10 @@ def fail(issues: list[str], message: str, *, fix: str | None = None) -> None:
 
 def warn(warnings: list[str], message: str) -> None:
     warnings.append(f"WARN: {message}")
+
+
+def _stderr(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
 
 
 def infer_repo(root: Path) -> str:
@@ -363,6 +369,42 @@ def check_local_files(root: Path, version: str, repo: str, issues: list[str], wa
     warn(warnings, "Manually inspect README What's New / 最新亮点 for stale prose; this cannot be proven by version regex alone")
 
 
+def _file_sha256(path: Path) -> str | None:
+    try:
+        payload = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    return hashlib.sha256(payload).hexdigest()
+
+
+def check_active_skill_sync(root: Path, warnings: list[str]) -> None:
+    source_dir = root / "dev_tools" / "skills" / "ccb-github"
+    if not source_dir.is_dir():
+        return
+    ccb_dir = root / ".ccb"
+    if not ccb_dir.is_dir():
+        return
+    tracked_files = (
+        "SKILL.md",
+        "agents/openai.yaml",
+        "scripts/check_release_state.py",
+    )
+    active_dirs = sorted(ccb_dir.glob("agents/*/provider-state/codex/home/skills/ccb-github"))
+    for active_dir in active_dirs:
+        if active_dir.resolve() == source_dir.resolve():
+            continue
+        mismatched = [
+            relative
+            for relative in tracked_files
+            if _file_sha256(source_dir / relative) != _file_sha256(active_dir / relative)
+        ]
+        if mismatched:
+            warn(
+                warnings,
+                f"Active ccb-github skill copy differs from dev_tools at {active_dir}: {', '.join(mismatched)}",
+            )
+
+
 def check_readme_surface(
     *,
     body: str,
@@ -590,7 +632,7 @@ def repo_default_branch(root: Path, repo: str, warnings: list[str]) -> str:
     return (payload.get("defaultBranchRef") or {}).get("name") or ""
 
 
-def read_github_runs(root: Path, repo: str, limit: int = 50) -> list[dict[str, object]] | None:
+def read_github_runs(root: Path, repo: str, limit: int = RELEASE_RUN_LIMIT) -> list[dict[str, object]] | None:
     runs = run(
         [
             "gh",
@@ -649,6 +691,7 @@ def check_dev_branch_workflows(
 
     deadline = time.monotonic() + max(wait_seconds, 0)
     latest_by_name: dict[str, dict[str, object]] = {}
+    last_wait_status = ""
     while True:
         run_payload = read_github_runs(root, repo)
         if run_payload is None:
@@ -674,6 +717,10 @@ def check_dev_branch_workflows(
                 break
         if all_done or wait_seconds <= 0 or time.monotonic() >= deadline:
             break
+        wait_status = _format_workflow_wait_status(latest_by_name, required)
+        if wait_status != last_wait_status:
+            _stderr(f"Waiting for dev workflows: {wait_status}")
+            last_wait_status = wait_status
         time.sleep(max(poll_interval, 1))
 
     for workflow_name in sorted(required):
@@ -713,23 +760,180 @@ def check_dev_state(
     )
 
 
-def check_github(root: Path, version: str, repo: str, issues: list[str], warnings: list[str]) -> None:
-    if not gh_auth_is_ready(root, issues):
-        return
+def _format_workflow_wait_status(workflows: dict[str, dict[str, object]], required: set[str]) -> str:
+    parts = []
+    for workflow_name in sorted(required):
+        item = workflows.get(workflow_name)
+        if item is None:
+            parts.append(f"{workflow_name}=missing")
+        else:
+            parts.append(f"{workflow_name}={item.get('status')}/{item.get('conclusion') or '-'}")
+    return ", ".join(parts)
 
+
+def _read_release_payload(root: Path, version: str, repo: str) -> tuple[dict[str, object] | None, str]:
     release = run(["gh", "release", "view", version, "--repo", repo, "--json", "tagName,url,assets,isDraft"], root)
     if release.returncode != 0:
-        fail(
-            issues,
-            f"GitHub release {version} not found for {repo}: {release.stderr.strip() or release.stdout.strip()}",
-            fix=f"create the release page first: gh release create {version} --repo {repo} --title {version} --notes-file <notes-file>",
-        )
-        return
-
+        return None, release.stderr.strip() or release.stdout.strip()
     try:
         payload = json.loads(release.stdout)
     except json.JSONDecodeError as exc:
-        fail(issues, f"Could not parse gh release JSON: {exc}")
+        return None, f"Could not parse gh release JSON: {exc}"
+    return payload, ""
+
+
+def _release_workflow_candidates(
+    run_payload: list[dict[str, object]],
+    *,
+    workflow_name: str,
+    version: str,
+    tag_commit: str,
+) -> list[dict[str, object]]:
+    return [
+        item
+        for item in run_payload
+        if item.get("name") == workflow_name and _release_artifacts_run_matches(item, version=version, tag_commit=tag_commit)
+    ]
+
+
+def _latest_release_workflows(
+    run_payload: list[dict[str, object]],
+    *,
+    version: str,
+    tag_commit: str,
+) -> dict[str, dict[str, object]]:
+    latest: dict[str, dict[str, object]] = {}
+    for workflow_name in sorted(REQUIRED_TAG_WORKFLOWS):
+        candidates = _release_workflow_candidates(
+            run_payload,
+            workflow_name=workflow_name,
+            version=version,
+            tag_commit=tag_commit,
+        )
+        if candidates:
+            latest[workflow_name] = candidates[0]
+    return latest
+
+
+def _published_state_is_pending(
+    *,
+    release_payload: dict[str, object] | None,
+    run_payload: list[dict[str, object]] | None,
+    version: str,
+    tag_commit: str,
+) -> bool:
+    if release_payload is None or run_payload is None:
+        return False
+    latest = _latest_release_workflows(run_payload, version=version, tag_commit=tag_commit)
+    for workflow_name in REQUIRED_TAG_WORKFLOWS:
+        item = latest.get(workflow_name)
+        if item and item.get("status") == "completed" and item.get("conclusion") != "success":
+            return False
+    asset_names = {asset.get("name") for asset in release_payload.get("assets", [])}
+    if EXPECTED_ASSETS - asset_names:
+        return True
+    for workflow_name in REQUIRED_TAG_WORKFLOWS:
+        item = latest.get(workflow_name)
+        if item is None:
+            return True
+        if item.get("status") != "completed":
+            return True
+    return False
+
+
+def _published_wait_status(
+    *,
+    release_payload: dict[str, object] | None,
+    run_payload: list[dict[str, object]] | None,
+    version: str,
+    tag_commit: str,
+) -> str:
+    if release_payload is None:
+        return "release=missing"
+    asset_names = {str(asset.get("name")) for asset in release_payload.get("assets", [])}
+    missing_assets = sorted(EXPECTED_ASSETS - asset_names)
+    latest = _latest_release_workflows(run_payload or [], version=version, tag_commit=tag_commit)
+    workflows = _format_workflow_wait_status(latest, REQUIRED_TAG_WORKFLOWS)
+    assets = "assets=ready" if not missing_assets else f"assets=missing({','.join(missing_assets)})"
+    return f"{assets}; {workflows}"
+
+
+def _read_published_release_state(
+    *,
+    root: Path,
+    version: str,
+    repo: str,
+    tag_commit: str,
+    wait_seconds: int,
+    poll_interval: int,
+    issues: list[str],
+) -> tuple[dict[str, object] | None, list[dict[str, object]] | None]:
+    deadline = time.monotonic() + max(wait_seconds, 0)
+    last_wait_status = ""
+    while True:
+        release_payload, release_error = _read_release_payload(root, version, repo)
+        if release_payload is None:
+            fail(
+                issues,
+                f"GitHub release {version} not found for {repo}: {release_error}",
+                fix=f"create the release page first: gh release create {version} --repo {repo} --title {version} --notes-file <notes-file>",
+            )
+            return None, None
+
+        run_payload = read_github_runs(root, repo, limit=RELEASE_RUN_LIMIT)
+        if run_payload is None:
+            fail(
+                issues,
+                "Could not read GitHub Actions runs",
+                fix="retry after GitHub/API connectivity recovers; final release verification requires workflow status",
+            )
+            return release_payload, None
+
+        pending = _published_state_is_pending(
+            release_payload=release_payload,
+            run_payload=run_payload,
+            version=version,
+            tag_commit=tag_commit,
+        )
+        if not pending or wait_seconds <= 0 or time.monotonic() >= deadline:
+            return release_payload, run_payload
+
+        wait_status = _published_wait_status(
+            release_payload=release_payload,
+            run_payload=run_payload,
+            version=version,
+            tag_commit=tag_commit,
+        )
+        if wait_status != last_wait_status:
+            _stderr(f"Waiting for published release state: {wait_status}")
+            last_wait_status = wait_status
+        time.sleep(max(poll_interval, 1))
+
+
+def check_github(
+    root: Path,
+    version: str,
+    repo: str,
+    issues: list[str],
+    warnings: list[str],
+    *,
+    wait_seconds: int = 0,
+    poll_interval: int = 30,
+) -> None:
+    if not gh_auth_is_ready(root, issues):
+        return
+
+    tag_commit = git_output(root, ["rev-list", "-n", "1", version]) or ""
+    payload, run_payload = _read_published_release_state(
+        root=root,
+        version=version,
+        repo=repo,
+        tag_commit=tag_commit,
+        wait_seconds=wait_seconds,
+        poll_interval=poll_interval,
+        issues=issues,
+    )
+    if payload is None:
         return
 
     if payload.get("tagName") != version:
@@ -784,41 +988,16 @@ def check_github(root: Path, version: str, repo: str, issues: list[str], warning
         warnings=warnings,
     )
 
-    runs = run(
-        [
-            "gh",
-            "run",
-            "list",
-            "--repo",
-            repo,
-            "--limit",
-            "20",
-            "--json",
-            "name,status,conclusion,headBranch,event,databaseId,url,headSha",
-        ],
-        root,
-    )
-    if runs.returncode != 0:
-        fail(
-            issues,
-            f"Could not read GitHub Actions runs: {runs.stderr.strip()}",
-            fix="retry after GitHub/API connectivity recovers; final release verification requires workflow status",
-        )
+    if run_payload is None:
         return
-    try:
-        run_payload = json.loads(runs.stdout)
-    except json.JSONDecodeError as exc:
-        fail(issues, f"Could not parse gh run JSON: {exc}", fix="rerun the published check; GitHub Actions state could not be verified")
-        return
-
-    tag_commit = git_output(root, ["rev-list", "-n", "1", version]) or ""
 
     for workflow_name in sorted(REQUIRED_TAG_WORKFLOWS):
-        candidates = [
-            item
-            for item in run_payload
-            if item.get("name") == workflow_name and _release_artifacts_run_matches(item, version=version, tag_commit=tag_commit)
-        ]
+        candidates = _release_workflow_candidates(
+            run_payload,
+            workflow_name=workflow_name,
+            version=version,
+            tag_commit=tag_commit,
+        )
         successes = [
             item
             for item in candidates
@@ -854,7 +1033,7 @@ def _release_artifacts_run_matches(item: dict[str, object], *, version: str, tag
         return True
     if tag_commit and item.get("headSha") == tag_commit:
         return True
-    return item.get("event") == "workflow_dispatch"
+    return False
 
 
 def _check_branch_validation_runs(run_payload: list[dict[str, object]], *, tag_commit: str, warnings: list[str]) -> None:
@@ -890,7 +1069,7 @@ def main() -> int:
     parser.add_argument("--repo", default=None, help="GitHub repo, e.g. SeemSeam/claude_codex_bridge")
     parser.add_argument("--version", default=None, help="Release version, with or without leading v")
     parser.add_argument("--phase", choices=("dev", "prepare", "published"), default="prepare")
-    parser.add_argument("--wait-seconds", type=int, default=0, help="wait this many seconds for dev GitHub workflows")
+    parser.add_argument("--wait-seconds", type=int, default=0, help="wait this many seconds for GitHub workflows")
     parser.add_argument("--poll-interval", type=int, default=30, help="poll interval in seconds when waiting for workflows")
     args = parser.parse_args()
 
@@ -902,6 +1081,7 @@ def main() -> int:
     issues: list[str] = []
     warnings: list[str] = []
 
+    check_active_skill_sync(root, warnings)
     check_local_git_state(root, args.phase, issues, warnings)
     if args.phase == "dev":
         check_dev_state(
@@ -917,7 +1097,15 @@ def main() -> int:
         check_git_tag(root, version, args.phase, issues, warnings)
 
     if args.phase == "published":
-        check_github(root, version, repo, issues, warnings)
+        check_github(
+            root,
+            version,
+            repo,
+            issues,
+            warnings,
+            wait_seconds=args.wait_seconds,
+            poll_interval=args.poll_interval,
+        )
 
     print(f"CCB release check: {version} ({args.phase})")
     print(f"repo root: {root}")
