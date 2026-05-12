@@ -44,8 +44,21 @@ DEV_HOMEPAGE_PATHS = {
 }
 
 
-def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
+def run(cmd: list[str], cwd: Path, *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        detail = stderr or f"command timed out after {timeout}s"
+        return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=detail)
 
 
 def repo_root(start: Path) -> Path:
@@ -639,7 +652,11 @@ def check_dev_branch_workflows(
     while True:
         run_payload = read_github_runs(root, repo)
         if run_payload is None:
-            warn(warnings, "Could not read GitHub Actions runs for dev workflow check")
+            fail(
+                issues,
+                "Could not read GitHub Actions runs for dev workflow check",
+                fix="retry after GitHub/API connectivity recovers; final dev verification requires workflow status",
+            )
             return
         latest_by_name = {}
         for item in run_payload:
@@ -782,12 +799,16 @@ def check_github(root: Path, version: str, repo: str, issues: list[str], warning
         root,
     )
     if runs.returncode != 0:
-        warn(warnings, f"Could not read GitHub Actions runs: {runs.stderr.strip()}")
+        fail(
+            issues,
+            f"Could not read GitHub Actions runs: {runs.stderr.strip()}",
+            fix="retry after GitHub/API connectivity recovers; final release verification requires workflow status",
+        )
         return
     try:
         run_payload = json.loads(runs.stdout)
     except json.JSONDecodeError as exc:
-        warn(warnings, f"Could not parse gh run JSON: {exc}")
+        fail(issues, f"Could not parse gh run JSON: {exc}", fix="rerun the published check; GitHub Actions state could not be verified")
         return
 
     tag_commit = git_output(root, ["rev-list", "-n", "1", version]) or ""
