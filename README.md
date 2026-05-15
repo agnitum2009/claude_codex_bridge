@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.16-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.17-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **`ccb kill` now fully stops the backend**: remote shutdown waits for the recorded `ccbd` and keeper pids to exit instead of returning as soon as lifecycle says unmounted.
-- **Shared memory handoffs are stricter**: generated managed-memory bundles now inject CCB-owned submit-only `/ask` guidance so older `.ccb/ccb_memory.md` text cannot bring back polling or waiting behavior.
-- **New project memory seeds are cleaner**: `.ccb/ccb_memory.md` templates now describe ask as a fire-and-forget handoff and omit obsolete `ccb -h` guidance.
-- **Claude follows ccswitch after restart**: managed Claude startup now prefers `~/.claude/settings.json` `ANTHROPIC_BASE_URL` over stale shell env, while explicit agent profile URLs still win.
+- **Claude completion events bind to the right request**: Stop hooks now use structured transcript anchors for the current outer `CCB_REQ_ID`, ignoring old request ids embedded in forwarded text or tool output.
+- **Codex sessions survive memory edits**: changing `.ccb/ccb_memory.md` refreshes managed memory without forcing Codex to archive or start a fresh conversation.
+- **Mailbox recovery is included**: terminal `task_request` queue heads can now be cleared when their attempt is already terminal, preventing stuck delivery queues.
+- **Regression coverage tightened**: transcript parsing, provider finish hooks, Codex resume behavior, and mailbox stale-head recovery are covered together.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -306,6 +306,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.17</b> - Completion Binding And Codex Session Hotfix</summary>
+
+- Binds Claude Stop-hook completion artifacts to the structured outer `CCB_REQ_ID`, so forwarded text or tool output cannot redirect completion events to an older job.
+- Keeps Codex session identity independent from memory projection freshness, allowing `.ccb/ccb_memory.md` updates to refresh memory without forcing a fresh conversation.
+- Includes PR #205 mailbox recovery for stale terminal `task_request` queue heads whose attempts are already terminal.
+- Adds regression coverage across transcript parsing, provider finish hooks, Codex resume behavior, and mailbox stale-head cleanup.
+
+</details>
+
+<details>
 <summary><b>v6.1.16</b> - Memory Handoff And Claude Route Hotfix</summary>
 
 - Adds CCB-owned submit-only ask coordination rules to generated managed-memory bundles, preventing stale shared memory text from reintroducing polling/waiting behavior.

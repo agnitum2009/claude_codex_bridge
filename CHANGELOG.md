@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v6.1.17 (2026-05-15)
+
+### Completion Binding And Codex Session Hotfix
+
+- **Claude Completion Request Binding Fixed**: Claude Stop hooks now resolve the current outer `CCB_REQ_ID` from structured transcript/user prompt records, so forwarded text or tool output containing older request ids cannot write completion events to the wrong job.
+- **Codex Session Resume Stabilized**: Codex memory projection fingerprint changes are now diagnostic freshness metadata, not conversation identity; restart no longer archives or resets the Codex session just because `.ccb/ccb_memory.md` changed.
+- **Mailbox Stale Request Recovery Included**: merged PR #205 so terminal `task_request` queue heads can be discarded or acked when their attempt is already terminal, preventing mailbox queues from staying stuck in delivering.
+- **Regression Coverage Added**: adds transcript req_id parsing, provider finish hook, Codex resume, and mailbox stale-head recovery coverage.
+
 ## v6.1.16 (2026-05-14)
 
 ### Memory Handoff And Claude Route Hotfix

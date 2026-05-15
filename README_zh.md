@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.16-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.17-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **`ccb kill` 会真正收停后台**：远程关闭会等待记录下来的 `ccbd` 和 keeper pid 退出，不再只依赖 lifecycle 显示 unmounted。
-- **共享记忆里的 handoff 更收敛**：生成的 managed memory bundle 现在注入 CCB 自己的 submit-only `/ask` 规则，旧 `.ccb/ccb_memory.md` 文本不会再把 polling/waiting 行为带回来。
-- **新项目记忆模板更干净**：新的 `.ccb/ccb_memory.md` 会把 ask 描述为 fire-and-forget handoff，并移除过时的 `ccb -h` 引导。
-- **Claude 重启后跟随 ccswitch**：managed Claude 启动时会优先使用 `~/.claude/settings.json` 里的 `ANTHROPIC_BASE_URL`，不再被旧 shell env 覆盖；显式 agent profile URL 仍然优先。
+- **Claude completion 事件绑定正确请求**：Stop hook 现在从结构化 transcript 锚点读取当前外层 `CCB_REQ_ID`，不会被转发文本或工具输出里的旧 req_id 带偏。
+- **Codex 记忆更新不再打断会话**：修改 `.ccb/ccb_memory.md` 会刷新 managed memory，但不会再强制 Codex archive 或新开对话。
+- **Mailbox stuck 恢复已合入**：已终态 attempt 对应的 terminal `task_request` queue head 可以被清理，避免队列卡在 delivering。
+- **回归覆盖更完整**：覆盖 transcript 解析、provider finish hook、Codex resume 和 mailbox stale-head 恢复。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -297,6 +297,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.17</b> - Completion Binding And Codex Session Hotfix</summary>
+
+- Claude Stop hook completion artifact 现在绑定结构化外层 `CCB_REQ_ID`，转发文本或工具输出不会再把 completion 写到旧 job。
+- Codex session identity 不再依赖 memory projection freshness，`.ccb/ccb_memory.md` 更新只刷新记忆，不强制新开对话。
+- 合入 PR #205 mailbox 恢复：attempt 已终态时，可清理 stale terminal `task_request` queue head。
+- 增加 transcript 解析、provider finish hook、Codex resume 和 mailbox stale-head 清理的回归覆盖。
+
+</details>
+
+<details>
 <summary><b>v6.1.16</b> - Memory Handoff And Claude Route Hotfix</summary>
 
 - 生成的 managed-memory bundle 会加入 CCB 自己的 submit-only ask 协作规则，避免旧共享记忆文本重新引入 polling/waiting 行为。
