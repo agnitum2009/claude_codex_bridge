@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v6.1.20 (2026-05-16)
+
+### Claude Active Version Cache Release
+
+- **Managed Claude Follows Source Active Version**: when the source home uses the standard Claude Code layout, CCB now detects `~/.local/bin/claude -> ~/.local/share/claude/versions/<version>/claude` and makes managed Claude use that active version.
+- **Active Version Is Cached Safely**: the selected source-home Claude version is copied into the CCB provider cache, then managed `.local/bin/claude` points at the cached copy instead of selecting another version already present in shared cache.
+- **Fallback Behavior Preserved**: if the source active-version layout is unavailable, Claude binary routing keeps the previous shared-cache behavior.
+- **Provider Hook Routing Updated**: Claude provider workspace preparation now passes the source home into binary-cache routing so the active-version preference is applied during managed startup.
+
 ## v6.1.19 (2026-05-16)
 
 ### Managed Ask Skill Projection Release

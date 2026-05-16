@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.19-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.20-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **Managed ask skills inherit cleanly**: Claude skills/commands and Droid skills now route through CCB projected assets, matching Codex's inherited-skill model without copy-sync drift.
-- **Droid gets a managed FACTORY_HOME**: each managed Droid agent has a project-scoped Factory home and session root, so Droid session readers follow the managed session log after restart or rotation.
-- **Ask replies are concise by default**: `ccb ask` injects reply guidance, with `--compact` for distilled answers and `--silence` for silent-on-success checks.
-- **Provider storage diagnostics recognize the new projections**: projected Claude and Droid skill assets are classified as managed projected config rather than unknown residue.
+- **Managed Claude follows your active Claude Code version**: CCB now detects the source-home `~/.local/bin/claude` symlink and uses that active version inside managed Claude homes.
+- **Claude binaries are still cached safely**: the active source version is copied into the CCB provider cache, and managed `.local/bin/claude` points at the cached copy.
+- **Shared-cache fallback remains intact**: when the standard source-home active-version layout is missing, CCB keeps the existing shared-cache routing behavior.
+- **Startup routing applies the preference automatically**: Claude provider workspace preparation passes the source home into binary-cache routing during managed startup.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -306,6 +306,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.20</b> - Claude Active Version Cache Release</summary>
+
+- Detects the source home's active Claude Code symlink under `~/.local/bin/claude` and prefers that version for managed Claude startup.
+- Copies the active source-home Claude version into the CCB provider cache, then points managed `.local/bin/claude` at the cached active version.
+- Preserves previous shared-cache fallback behavior when the source active-version layout is unavailable.
+- Updates provider workspace preparation and the Claude binary-cache contract to document the source-home active-version preference.
+
+</details>
+
+<details>
 <summary><b>v6.1.19</b> - Managed Ask Skill Projection Release</summary>
 
 - Routes inherited Claude `skills/` and `commands/` through CCB projected assets instead of copy-sync, so system-installed ask skills reach managed Claude agents without duplicating provider homes.

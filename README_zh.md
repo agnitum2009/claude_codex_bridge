@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.19-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.20-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **Managed ask skill 会干净继承**：Claude skills/commands 和 Droid skills 都通过 CCB projected assets 投射，行为对齐 Codex，避免 copy-sync 漂移。
-- **Droid 获得 managed FACTORY_HOME**：每个 managed Droid agent 都有项目级 Factory home 和 session root，重启或 session rotation 后 reader 会继续跟随 managed session log。
-- **Ask 默认回复更简洁**：`ccb ask` 会注入回复指导，`--compact` 用于压缩回答，`--silence` 用于成功静默的检查任务。
-- **Storage 诊断识别新投射物**：Claude 和 Droid 的 projected skill assets 会被归类为 managed projected config，而不是 unknown residue。
+- **Managed Claude 会跟随系统当前 Claude Code 版本**：CCB 现在会识别 source home 的 `~/.local/bin/claude` symlink，并在 managed Claude home 中使用该 active version。
+- **Claude binary 仍通过缓存安全复用**：source active version 会复制到 CCB provider cache，managed `.local/bin/claude` 指向缓存副本。
+- **Shared-cache fallback 保持不变**：source active-version 布局不可用时，继续使用原有 shared-cache 路由行为。
+- **启动阶段自动应用该偏好**：Claude provider workspace prepare 会把 source home 传入 binary-cache routing。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -297,6 +297,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.20</b> - Claude Active Version Cache Release</summary>
+
+- 识别 source home 下 `~/.local/bin/claude` 指向的 Claude Code active version，并优先用于 managed Claude 启动。
+- 将 source active version 复制进 CCB provider cache，再让 managed `.local/bin/claude` 指向缓存中的 active version。
+- source active-version 布局不可用时，保留原有 shared-cache fallback 行为。
+- 更新 provider workspace prepare 与 Claude binary-cache 契约，记录 source-home active-version 优先级。
+
+</details>
+
+<details>
 <summary><b>v6.1.19</b> - Managed Ask Skill Projection Release</summary>
 
 - Claude 继承的 `skills/` 和 `commands/` 改为通过 CCB projected assets 路由，不再 copy-sync，让系统 ask skill 可进入 managed Claude home。
