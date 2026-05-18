@@ -4,7 +4,10 @@ import json
 import os
 from pathlib import Path
 import shutil
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
+    import tomli as tomllib
 
 import pytest
 
@@ -168,6 +171,190 @@ def test_materialize_codex_profile_disables_external_migration_prompt(tmp_path: 
     assert 'memories = true' in config_text
     assert 'external_migration = false' in config_text
     assert 'external_migration = true' not in config_text
+
+
+def test_materialize_codex_profile_preserves_inline_table_arrays(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                'mcp_servers = [{ name = "puppeteer", enabled = true, args = ["-y", "pkg"] }]',
+                '',
+                '[features]',
+                'external_migration = true',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
+    assert 'mcp_servers = [{ name = "puppeteer", enabled = true, args = ["-y", "pkg"] }]' in config_text
+    assert 'external_migration = false' in config_text
+
+
+def test_materialize_codex_profile_preserves_nested_inline_table_arrays(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                'tools = [{ name = "demo", config = { retries = 2, enabled = true } }]',
+                '',
+                '[features]',
+                'external_migration = true',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
+    assert 'tools = [{ name = "demo", config = { retries = 2, enabled = true } }]' in config_text
+    assert 'external_migration = false' in config_text
+
+
+def test_materialize_codex_profile_disables_external_migration_without_toml_reader(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[features]',
+                'external_migration = true',
+                'memories = true',
+                '',
+                '[projects."/tmp/demo"]',
+                'trust_level = "trusted"',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+    monkeypatch.setattr(codex_home_config, '_import_optional_toml_reader', lambda: None)
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
+    assert config_text.count('[features]') == 1
+    assert 'model = "gpt-5.5"' in config_text
+    assert 'memories = true' in config_text
+    assert 'external_migration = false' in config_text
+    assert 'external_migration = true' not in config_text
+    assert '[projects."/tmp/demo"]' in config_text
+    assert 'trust_level = "trusted"' in config_text
+
+
+def test_materialize_codex_profile_merges_final_features_without_toml_reader(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[features]',
+                'external_migration = true',
+                'memories = true',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+    monkeypatch.setattr(codex_home_config, '_import_optional_toml_reader', lambda: None)
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
+    assert config_text.count('[features]') == 1
+    assert 'memories = true' in config_text
+    assert 'external_migration = false' in config_text
+    assert 'external_migration = true' not in config_text
+
+
+def test_materialize_codex_profile_stops_feature_merge_at_array_table_without_toml_reader(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[features]',
+                'external_migration = true',
+                'memories = true',
+                '',
+                '[[tools]]',
+                'external_migration = true',
+                'name = "not-a-feature"',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+    monkeypatch.setattr(codex_home_config, '_import_optional_toml_reader', lambda: None)
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec('agent1', provider_profile=ProviderProfileSpec(mode='isolated')),
+        workspace_path=project_root,
+    )
+
+    config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
+    assert config_text.count('[features]') == 1
+    assert config_text.count('external_migration = true') == 1
+    assert '[[tools]]' in config_text
+    assert 'name = "not-a-feature"' in config_text
 
 
 def test_materialize_codex_home_config_falls_back_to_marked_copy_when_symlink_fails(tmp_path: Path, monkeypatch) -> None:
@@ -2357,8 +2544,8 @@ def test_render_toml_value_handles_dict_in_mixed_list() -> None:
     assert result == '["literal", { name = "test" }]'
 
 
-def test_render_toml_sections_handles_array_of_tables() -> None:
-    from provider_profiles.codex_home_config import _render_toml_sections
+def test_render_toml_sections_handles_inline_table_arrays() -> None:
+    from provider_profiles.codex_home_config import _render_toml_document
     payload = {
         'skills': {
             'config': [
@@ -2367,13 +2554,9 @@ def test_render_toml_sections_handles_array_of_tables() -> None:
             ]
         }
     }
-    sections = _render_toml_sections(payload)
-    rendered = '\n\n'.join(sections)
-    assert '[[skills.config]]' in rendered
-    assert 'path = "/a/skill.md"' in rendered
-    assert 'enabled = false' in rendered
-    assert 'name = "plugin:skill"' in rendered
-    assert 'enabled = true' in rendered
+    rendered = _render_toml_document(payload)
+    assert 'config = [{ path = "/a/skill.md", enabled = false }, { name = "plugin:skill", enabled = true }]' in rendered
+    assert tomllib.loads(rendered) == payload
 
 
 def test_render_toml_sections_handles_array_of_tables_with_only_child_tables() -> None:
@@ -2419,9 +2602,7 @@ def test_materialize_codex_home_config_with_skills_config_array(tmp_path: Path) 
     )
 
     text = (target_home / 'config.toml').read_text(encoding='utf-8')
-    assert '[[skills.config]]' in text
-    assert 'path = "/a/skill.md"' in text
-    assert 'name = "plugin:other"' in text
+    assert 'config = [{ path = "/a/skill.md", enabled = false }, { name = "plugin:other", enabled = true }]' in text
     parsed = tomllib.loads(text)
     assert parsed['skills']['config'] == [
         {'path': '/a/skill.md', 'enabled': False},

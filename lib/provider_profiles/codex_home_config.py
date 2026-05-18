@@ -40,6 +40,7 @@ _CODEX_PLUGIN_REQUIRED_RELATIVE_PATHS = (
     Path('plugins'),
 )
 _MANAGED_CODEX_DISABLED_FEATURES = ('external_migration',)
+_TOML_TABLE_HEADER_RE = re.compile(r'^\s*\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$')
 
 
 @dataclass(frozen=True)
@@ -217,10 +218,54 @@ def _append_managed_codex_feature_overrides(target: Path) -> None:
         text = target.read_text(encoding='utf-8')
     except Exception:
         return
-    lines = [text.rstrip(), '', '[features]']
-    for feature_name in _MANAGED_CODEX_DISABLED_FEATURES:
-        lines.append(f'{feature_name} = false')
-    target.write_text('\n'.join(lines).lstrip('\n') + '\n', encoding='utf-8')
+    target.write_text(_merge_managed_codex_feature_overrides(text), encoding='utf-8')
+
+
+def _merge_managed_codex_feature_overrides(text: str) -> str:
+    lines = text.splitlines()
+    features_index = _find_toml_table_index(lines, 'features')
+    override_lines = [f'{feature_name} = false' for feature_name in _MANAGED_CODEX_DISABLED_FEATURES]
+
+    if features_index is None:
+        merged = [text.rstrip(), '', '[features]', *override_lines]
+        return '\n'.join(merged).lstrip('\n') + '\n'
+
+    section_end = _toml_table_end(lines, features_index + 1)
+    disabled = set(_MANAGED_CODEX_DISABLED_FEATURES)
+    section_lines = [
+        line
+        for line in lines[features_index + 1 : section_end]
+        if _toml_key_name(line) not in disabled
+    ]
+    insert_at = len(section_lines)
+    while insert_at > 0 and not section_lines[insert_at - 1].strip():
+        insert_at -= 1
+    section_lines[insert_at:insert_at] = override_lines
+    merged_lines = [*lines[: features_index + 1], *section_lines, *lines[section_end:]]
+    return '\n'.join(merged_lines).rstrip() + '\n'
+
+
+def _find_toml_table_index(lines: list[str], table_name: str) -> int | None:
+    needle = f'[{table_name}]'
+    for index, line in enumerate(lines):
+        if line.split('#', 1)[0].strip() == needle:
+            return index
+    return None
+
+
+def _toml_table_end(lines: list[str], start: int) -> int:
+    for index in range(start, len(lines)):
+        if _TOML_TABLE_HEADER_RE.match(lines[index]):
+            return index
+    return len(lines)
+
+
+def _toml_key_name(line: str) -> str | None:
+    candidate = line.split('#', 1)[0]
+    if '=' not in candidate:
+        return None
+    raw_key = candidate.split('=', 1)[0].strip()
+    return raw_key if _BARE_TOML_KEY_RE.match(raw_key) else None
 
 
 def _managed_codex_config_payload(source_config: Path, *, authority: CodexApiAuthority) -> dict[str, object]:
@@ -640,11 +685,10 @@ def _render_toml_document(payload: dict[str, object]) -> str:
     return f'{rendered}\n' if rendered else ''
 
 
-def _render_toml_sections(payload: dict[str, object], *, path: tuple[str, ...] = (), is_array: bool = False) -> list[str]:
+def _render_toml_sections(payload: dict[str, object], *, path: tuple[str, ...] = ()) -> list[str]:
     scalar_lines: list[str] = []
     child_sections: list[str] = []
     child_tables: list[tuple[str, dict[str, object]]] = []
-    array_tables: list[tuple[str, list[dict[str, object]]]] = []
     for raw_key, value in payload.items():
         key = str(raw_key)
         if value is None:
@@ -652,26 +696,20 @@ def _render_toml_sections(payload: dict[str, object], *, path: tuple[str, ...] =
         if isinstance(value, dict):
             child_tables.append((key, value))
             continue
-        if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
-            array_tables.append((key, value))
-            continue
         scalar_lines.append(f'{_render_toml_key(key)} = {_render_toml_value(value)}')
 
     sections: list[str] = []
     if path:
-        header = f'[[{_render_toml_path(path)}]]' if is_array else f'[{_render_toml_path(path)}]'
-        if is_array or scalar_lines:
+        header = f'[{_render_toml_path(path)}]'
+        if scalar_lines:
             sections.append('\n'.join([header, *scalar_lines]))
-        elif not child_tables and not array_tables:
+        elif not child_tables:
             sections.append(header)
     elif scalar_lines:
         sections.append('\n'.join(scalar_lines))
 
     for key, child in child_tables:
         child_sections.extend(_render_toml_sections(child, path=(*path, key)))
-    for key, items in array_tables:
-        for item in items:
-            child_sections.extend(_render_toml_sections(item, path=(*path, key), is_array=True))
     sections.extend(child_sections)
     return sections
 
@@ -702,14 +740,19 @@ def _render_toml_value(value: object) -> str:
     if isinstance(value, (list, tuple)):
         return '[' + ', '.join(_render_toml_value(item) for item in value) + ']'
     if isinstance(value, dict):
-        if not value:
-            return '{}'
-        pairs = ', '.join(
-            f'{_render_toml_key(k)} = {_render_toml_value(v)}'
-            for k, v in value.items()
-        )
-        return '{ ' + pairs + ' }'
+        return _render_toml_inline_table(value)
     raise TypeError(f'unsupported TOML value type: {type(value).__name__}')
+
+
+def _render_toml_inline_table(payload: dict[object, object]) -> str:
+    items = [
+        f'{_render_toml_key(str(key))} = {_render_toml_value(value)}'
+        for key, value in payload.items()
+        if value is not None
+    ]
+    if not items:
+        return '{}'
+    return '{ ' + ', '.join(items) + ' }'
 
 
 __all__ = [

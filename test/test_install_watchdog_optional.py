@@ -54,10 +54,27 @@ def test_install_watchdog_skip_is_successful_and_explicit(tmp_path: Path) -> Non
     assert "done" in completed.stdout
 
 
+def test_install_tomli_skip_is_successful_and_explicit(tmp_path: Path) -> None:
+    completed = _run_install_snippet(
+        tmp_path,
+        """
+        CCB_INSTALL_TOMLI=0
+        require_python_version >/dev/null
+        install_tomli
+        echo done
+        """,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "tomli auto-install skipped" in completed.stdout
+    assert "done" in completed.stdout
+
+
 def test_install_requirements_continue_when_optional_watchdog_is_skipped(tmp_path: Path) -> None:
     completed = _run_install_snippet(
         tmp_path,
         """
+        install_tomli() { echo "tomli stub"; }
         CCB_INSTALL_WATCHDOG=0
         require_terminal_backend() { echo "tmux stub"; }
         install_requirements
@@ -66,8 +83,30 @@ def test_install_requirements_continue_when_optional_watchdog_is_skipped(tmp_pat
     )
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "tomli stub" in completed.stdout
     assert "watchdog auto-install skipped" in completed.stdout
     assert "tmux stub" in completed.stdout
+    assert "requirements-ok" in completed.stdout
+
+
+def test_install_requirements_defers_tomli_to_managed_venv(tmp_path: Path) -> None:
+    completed = _run_install_snippet(
+        tmp_path,
+        """
+        CCB_SOURCE_KIND=release
+        CCB_USE_MANAGED_VENV=1
+        install_tomli() { echo unexpected-system-tomli; exit 9; }
+        install_watchdog() { echo unexpected-system-watchdog; exit 9; }
+        require_terminal_backend() { echo "tmux stub"; }
+        install_requirements
+        echo requirements-ok
+        """,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "managed Python venv" in completed.stdout
+    assert "unexpected-system-tomli" not in completed.stdout
+    assert "unexpected-system-watchdog" not in completed.stdout
     assert "requirements-ok" in completed.stdout
 
 
@@ -88,6 +127,53 @@ def test_install_requirements_defers_watchdog_to_managed_venv(tmp_path: Path) ->
     assert "managed Python venv" in completed.stdout
     assert "unexpected-system-watchdog" not in completed.stdout
     assert "requirements-ok" in completed.stdout
+
+
+def test_install_tomli_for_python_uses_real_virtualenv_scope(tmp_path: Path) -> None:
+    completed = _run_install_snippet(
+        tmp_path,
+        """
+        CCB_SOURCE_KIND=release
+        CCB_USE_MANAGED_VENV=1
+        venv_dir="$HOME/managed-venv"
+        fake_modules="$HOME/fake-modules"
+        pip_argv_marker="$HOME/tomli-pip-argv.txt"
+        python3 -m venv "$venv_dir"
+        mkdir -p "$fake_modules"
+        cat > "$fake_modules/pip.py" <<'PY'
+        import os
+        import pathlib
+        import sys
+
+        pathlib.Path(os.environ["PIP_ARGV_MARKER"]).write_text("\\n".join(sys.argv), encoding="utf-8")
+        if any(arg.startswith("--user") for arg in sys.argv):
+            print("unexpected-user-scope")
+            raise SystemExit(9)
+        pathlib.Path(os.environ["FAKE_MODULES_DIR"], "tomli.py").write_text("__version__ = 'test'\\n", encoding="utf-8")
+        raise SystemExit(0)
+        PY
+        python_has_toml_reader() {
+          "$PYTHON_BIN" - <<'PY'
+        import importlib.util
+        import sys
+
+        raise SystemExit(0 if importlib.util.find_spec("tomli") else 1)
+        PY
+        }
+        PIP_ARGV_MARKER="$pip_argv_marker" \
+        FAKE_MODULES_DIR="$fake_modules" \
+        PYTHONPATH="$fake_modules" \
+          install_tomli_for_python "$venv_dir/bin/python"
+        """,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "unexpected-user-scope" not in completed.stdout
+    assert "TOML parser available" in completed.stdout
+    pip_argv = (tmp_path / "home" / "tomli-pip-argv.txt").read_text(encoding="utf-8")
+    assert "install" in pip_argv
+    assert "tomli>=2.0.0" in pip_argv
+    assert "--user" not in pip_argv
 
 
 def test_install_watchdog_for_python_uses_real_virtualenv_scope(tmp_path: Path) -> None:

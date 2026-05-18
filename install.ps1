@@ -245,6 +245,100 @@ function Require-Python310 {
   Write-Host "[OK] Python $($info.Version) ($($info.Executable))"
 }
 
+function Test-PythonTomlReader {
+  param([string]$PythonCmd)
+
+  try {
+    $cmdParts = $PythonCmd -split ' ', 2
+    $fileName = $cmdParts[0]
+    $baseArgs = if ($cmdParts.Length -gt 1) { $cmdParts[1] } else { "" }
+    $code = "import importlib.util, sys; sys.exit(0 if any(importlib.util.find_spec(m) for m in ('tomllib','tomli','toml')) else 1)"
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $fileName
+    if ($baseArgs) {
+      $psi.Arguments = "$baseArgs -c `"$code`""
+    } else {
+      $psi.Arguments = "-c `"$code`""
+    }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    $process.Start() | Out-Null
+    $process.WaitForExit()
+    return ($process.ExitCode -eq 0)
+  } catch {
+    return $false
+  }
+}
+
+function Install-Tomli {
+  param([string]$PythonCmd)
+
+  if ($env:CCB_INSTALL_TOMLI -eq "0") {
+    Write-Host "INFO: tomli auto-install skipped by CCB_INSTALL_TOMLI=0"
+    return
+  }
+  if (Test-PythonTomlReader -PythonCmd $PythonCmd) {
+    Write-Host "[OK] TOML parser available"
+    return
+  }
+
+  Write-Host "Installing Python dependency: tomli"
+  $cmdParts = $PythonCmd -split ' ', 2
+  $fileName = $cmdParts[0]
+  $baseArgs = if ($cmdParts.Length -gt 1) { $cmdParts[1] } else { "" }
+  $argVariants = @()
+  if ($baseArgs) {
+    $argVariants += "$baseArgs -m pip install --user tomli>=2.0.0"
+    $argVariants += "$baseArgs -m pip install --user --break-system-packages tomli>=2.0.0"
+  } else {
+    $argVariants += "-m pip install --user tomli>=2.0.0"
+    $argVariants += "-m pip install --user --break-system-packages tomli>=2.0.0"
+  }
+
+  $lastError = ""
+  foreach ($args in $argVariants) {
+    try {
+      $psi = New-Object System.Diagnostics.ProcessStartInfo
+      $psi.FileName = $fileName
+      $psi.Arguments = $args
+      $psi.RedirectStandardOutput = $true
+      $psi.RedirectStandardError = $true
+      $psi.UseShellExecute = $false
+      $psi.CreateNoWindow = $true
+
+      $process = New-Object System.Diagnostics.Process
+      $process.StartInfo = $psi
+      $process.Start() | Out-Null
+      $stdout = $process.StandardOutput.ReadToEnd()
+      $stderr = $process.StandardError.ReadToEnd()
+      $process.WaitForExit()
+      if ($process.ExitCode -eq 0 -and (Test-PythonTomlReader -PythonCmd $PythonCmd)) {
+        Write-Host "[OK] TOML parser available"
+        return
+      }
+      $lastError = $stderr.Trim()
+      if ([string]::IsNullOrWhiteSpace($lastError)) {
+        $lastError = $stdout.Trim()
+      }
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+  }
+
+  Write-Host "WARN: tomli install failed; rich TOML config requires Python 3.11+ or tomli/toml"
+  if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+    Write-Host "   Last failure: $lastError"
+  }
+  Write-Host "   Manual install:"
+  Write-Host "   $PythonCmd -m pip install --user tomli>=2.0.0"
+}
+
 function Confirm-BackendEnv {
   if ($Yes -or $env:CCB_INSTALL_ASSUME_YES -eq "1") { return }
 
@@ -285,6 +379,7 @@ function Install-Native {
   }
 
   Require-Python310 -PythonCmd $pythonCmd
+  Install-Tomli -PythonCmd $pythonCmd
 
   Write-Host "Installing ccb to $InstallPrefix ..."
   Write-Host "Using Python: $pythonCmd"

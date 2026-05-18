@@ -96,9 +96,24 @@ msg() {
     watchdog_python_missing)
       en_msg="WARN: python not available; skipping optional watchdog install"
       zh_msg="警告：未找到 Python；跳过可选 watchdog 安装" ;;
+    tomli_installing)
+      en_msg="Installing Python dependency: tomli"
+      zh_msg="正在安装 Python 依赖: tomli" ;;
+    tomli_installed)
+      en_msg="OK: TOML parser available"
+      zh_msg="OK: TOML 解析器可用" ;;
+    tomli_failed)
+      en_msg="WARN: tomli install failed; rich TOML config requires Python 3.11+ or tomli/toml"
+      zh_msg="警告：tomli 安装失败；rich TOML config 需要 Python 3.11+ 或 tomli/toml" ;;
+    tomli_skipped)
+      en_msg="INFO: tomli auto-install skipped by CCB_INSTALL_TOMLI=0"
+      zh_msg="信息：已通过 CCB_INSTALL_TOMLI=0 跳过 tomli 自动安装" ;;
+    tomli_python_missing)
+      en_msg="WARN: python not available; skipping tomli install"
+      zh_msg="警告：未找到 Python；跳过 tomli 安装" ;;
     pip_missing)
-      en_msg="WARN: pip not available for selected Python; skipping optional watchdog install"
-      zh_msg="警告：当前 Python 未提供 pip；跳过可选 watchdog 安装" ;;
+      en_msg="WARN: pip not available for selected Python"
+      zh_msg="警告：当前 Python 未提供 pip" ;;
     root_error)
       en_msg="ERROR: Do not run as root/sudo. Please run as normal user."
       zh_msg="错误：请勿以 root/sudo 身份运行。请使用普通用户执行。" ;;
@@ -210,6 +225,7 @@ Optional environment variables:
   CCB_SOURCE_KIND          Override source kind metadata (default: source if .git exists, else release)
   CCB_USE_MANAGED_VENV     Use install-local Python venv: auto (default), 1, or 0
                            auto = enabled for macOS release installs, disabled for source/dev installs
+  CCB_INSTALL_TOMLI        Auto-install tomli on Python versions without tomllib (default: 1; set 0 to skip)
   CCB_INSTALL_WATCHDOG     Auto-install optional watchdog dependency (default: 1; set 0 to skip)
   CCB_CONFIRM_MAJOR_UPGRADE Set to 1 to confirm replacing a pre-v6 install with v6+
 USAGE
@@ -312,6 +328,21 @@ sys.exit(0 if importlib.util.find_spec("${module}") else 1)
 PY
 }
 
+python_has_toml_reader() {
+  if ! pick_any_python_bin; then
+    return 1
+  fi
+  "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+
+for module_name in ("tomllib", "tomli", "toml"):
+    if importlib.util.find_spec(module_name) is not None:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 python_is_virtual_environment() {
   local python_path="${1:-$PYTHON_BIN}"
   "$python_path" - <<'PY' >/dev/null 2>&1
@@ -320,6 +351,160 @@ import sys
 is_virtualenv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix or hasattr(sys, "real_prefix")
 raise SystemExit(0 if is_virtualenv else 1)
 PY
+}
+
+tomli_manual_install_command() {
+  local use_venv_scope="${1:-0}"
+  if [[ "$use_venv_scope" == "1" ]]; then
+    echo "   $PYTHON_BIN -m pip install 'tomli>=2.0.0'"
+  else
+    echo "   $PYTHON_BIN -m pip install --user 'tomli>=2.0.0'"
+  fi
+}
+
+install_tomli_into_virtualenv() {
+  local python_version python_path
+  python_version="$("$PYTHON_BIN" -c 'import sys; print("{}.{}.{}".format(sys.version_info[0], sys.version_info[1], sys.version_info[2]))' 2>/dev/null || echo unknown)"
+  python_path="$("$PYTHON_BIN" -c 'import sys; print(sys.executable)' 2>/dev/null || command -v "$PYTHON_BIN" 2>/dev/null || echo "$PYTHON_BIN")"
+
+  local pip_log pip_log_cleanup=0 last_failure=""
+  pip_log="$(mktemp "${TMPDIR:-/tmp}/ccb-tomli-pip.XXXXXX.log" 2>/dev/null || mktemp "/tmp/ccb-tomli-pip.XXXXXX.log" 2>/dev/null || true)"
+  if [[ -z "$pip_log" ]]; then
+    pip_log="/dev/null"
+  else
+    pip_log_cleanup=1
+  fi
+
+  if "$PYTHON_BIN" -m pip install "tomli>=2.0.0" >"$pip_log" 2>&1; then
+    if python_has_toml_reader; then
+      if [[ "$pip_log_cleanup" -eq 1 ]]; then
+        rm -f "$pip_log"
+      fi
+      msg tomli_installed
+      return 0
+    fi
+    last_failure="pip install succeeded, but Python $python_path still cannot import tomli"
+  else
+    last_failure="$PYTHON_BIN -m pip install 'tomli>=2.0.0' failed"
+  fi
+
+  msg tomli_failed
+  if [[ -n "$last_failure" ]]; then
+    echo "   Last failure: $last_failure"
+  fi
+  if [[ "$pip_log_cleanup" -eq 1 && -s "$pip_log" ]]; then
+    echo "   pip output:"
+    tail -20 "$pip_log" | sed 's/^/     /'
+  fi
+  if [[ "$pip_log_cleanup" -eq 1 ]]; then
+    rm -f "$pip_log"
+  fi
+  echo "   Manual install:"
+  tomli_manual_install_command 1
+  return 0
+}
+
+install_tomli() {
+  if [[ "${CCB_INSTALL_TOMLI:-1}" == "0" ]]; then
+    msg tomli_skipped
+    return 0
+  fi
+  if python_has_toml_reader; then
+    msg tomli_installed
+    return 0
+  fi
+  if ! pick_any_python_bin; then
+    msg tomli_python_missing
+    return 0
+  fi
+  local python_version python_path
+  python_version="$("$PYTHON_BIN" -c 'import sys; print("{}.{}.{}".format(sys.version_info[0], sys.version_info[1], sys.version_info[2]))' 2>/dev/null || echo unknown)"
+  python_path="$("$PYTHON_BIN" -c 'import sys; print(sys.executable)' 2>/dev/null || command -v "$PYTHON_BIN" 2>/dev/null || echo "$PYTHON_BIN")"
+  msg tomli_installing
+  echo "   Python: $python_path ($python_version)"
+
+  if python_is_virtual_environment; then
+    install_tomli_into_virtualenv
+    return 0
+  fi
+
+  local last_failure=""
+  if command -v uv >/dev/null 2>&1; then
+    if uv pip install --system "tomli>=2.0.0" >/dev/null 2>&1 || \
+       uv pip install "tomli>=2.0.0" >/dev/null 2>&1; then
+      if python_has_toml_reader; then
+        msg tomli_installed
+        return 0
+      fi
+      last_failure="uv installed tomli, but Python $python_path still cannot import it"
+    else
+      last_failure="uv pip install tomli>=2.0.0 failed"
+    fi
+  fi
+
+  if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    msg pip_missing
+    echo "   Install manually for this Python if rich TOML config is needed:"
+    echo "   $PYTHON_BIN -m ensurepip --upgrade"
+    tomli_manual_install_command 0
+    return 0
+  fi
+
+  local pip_log pip_log_cleanup=0
+  pip_log="$(mktemp "${TMPDIR:-/tmp}/ccb-tomli-pip.XXXXXX.log" 2>/dev/null || mktemp "/tmp/ccb-tomli-pip.XXXXXX.log" 2>/dev/null || true)"
+  if [[ -z "$pip_log" ]]; then
+    pip_log="/dev/null"
+  else
+    pip_log_cleanup=1
+  fi
+  if "$PYTHON_BIN" -m pip install --user "tomli>=2.0.0" >"$pip_log" 2>&1; then
+    if python_has_toml_reader; then
+      if [[ "$pip_log_cleanup" -eq 1 ]]; then
+        rm -f "$pip_log"
+      fi
+      msg tomli_installed
+      return 0
+    fi
+    last_failure="pip install --user succeeded, but Python $python_path still cannot import tomli"
+  else
+    last_failure="$PYTHON_BIN -m pip install --user 'tomli>=2.0.0' failed"
+  fi
+
+  if "$PYTHON_BIN" -m pip install --user --break-system-packages "tomli>=2.0.0" >"$pip_log" 2>&1; then
+    if python_has_toml_reader; then
+      if [[ "$pip_log_cleanup" -eq 1 ]]; then
+        rm -f "$pip_log"
+      fi
+      msg tomli_installed
+      return 0
+    fi
+    last_failure="pip install --user --break-system-packages succeeded, but Python $python_path still cannot import tomli"
+  else
+    last_failure="$PYTHON_BIN -m pip install --user --break-system-packages 'tomli>=2.0.0' failed"
+  fi
+
+  msg tomli_failed
+  if [[ -n "$last_failure" ]]; then
+    echo "   Last failure: $last_failure"
+  fi
+  if [[ "$pip_log_cleanup" -eq 1 && -s "$pip_log" ]]; then
+    echo "   pip output:"
+    tail -20 "$pip_log" | sed 's/^/     /'
+  fi
+  if [[ "$pip_log_cleanup" -eq 1 ]]; then
+    rm -f "$pip_log"
+  fi
+  echo "   Manual install:"
+  tomli_manual_install_command 0
+  return 0
+}
+
+install_tomli_for_python() {
+  local python_cmd="$1"
+  local previous_python_bin="$PYTHON_BIN"
+  PYTHON_BIN="$python_cmd"
+  install_tomli
+  PYTHON_BIN="$previous_python_bin"
 }
 
 watchdog_manual_install_command() {
@@ -1119,6 +1304,7 @@ install_managed_venv() {
   if ! "$venv_python" -m pip install --upgrade pip >/dev/null 2>&1; then
     echo "WARN: unable to upgrade pip inside managed venv; continuing"
   fi
+  install_tomli_for_python "$venv_python"
   install_watchdog_for_python "$venv_python"
   echo "OK: Managed Python venv ready"
 }
@@ -2137,8 +2323,9 @@ install_requirements() {
   confirm_backend_env_wsl
   require_python_version
   if use_managed_venv; then
-    echo "INFO: watchdog will be installed inside the managed Python venv"
+    echo "INFO: Python package dependencies will be installed inside the managed Python venv"
   else
+    install_tomli
     install_watchdog
   fi
   require_terminal_backend

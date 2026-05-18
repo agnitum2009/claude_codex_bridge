@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.2.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **Release checker is easier to maintain**: local, Markdown, GitHub, workflow, and asset checks now live in focused helper modules behind the same release-checker CLI.
-- **Provider memory projection has a shared core**: Codex, Claude, Gemini, and OpenCode use common projection event, marker, signature, and materialization helpers while keeping provider-specific behavior.
-- **Startup update code is split by responsibility**: update state, refresh, and flow logic now live in separate modules for easier review and safer changes.
-- **Storage cleanup classification is clearer**: provider-home cleanup rules now have a dedicated boundary and direct tests for precedence and unknown-provider handling.
+- **Codex managed config handles rich TOML**: inherited `config.toml` with inline table arrays now renders cleanly instead of failing on parsed dict values.
+- **Fallback config copy avoids duplicate features sections**: managed Codex homes update existing `[features]` blocks and stop at `[[array_of_tables]]` boundaries when no TOML parser is available.
+- **Installers provision TOML parsing when needed**: Linux/macOS and Windows installers auto-install `tomli>=2.0.0` when no TOML reader exists, with `CCB_INSTALL_TOMLI=0` available to skip.
+- **Managed venv setup installs dependencies in the right scope**: release installs add `tomli` inside the managed venv before optional watchdog setup.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -339,6 +339,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.2.4</b> - Codex Managed Config TOML Hotfix</summary>
+
+- Renders dict values as inline TOML tables so inherited Codex configs with inline table arrays no longer crash during managed-home projection.
+- Updates fallback copied Codex configs in-place without duplicating `[features]`, and respects `[table]` plus `[[array_of_tables]]` section boundaries.
+- Auto-installs `tomli>=2.0.0` from `install.sh` and `install.ps1` when no TOML reader is available, with `CCB_INSTALL_TOMLI=0` skip support.
+- Installs `tomli` inside managed venv release installs before optional watchdog dependency setup.
+
+</details>
+
+<details>
 <summary><b>v6.2.3</b> - Architecture Hotspot Optimization Release</summary>
 
 - Splits the GitHub release checker into focused local, Markdown, GitHub, workflow, and asset helper modules.

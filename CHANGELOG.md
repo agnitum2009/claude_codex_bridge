@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v6.2.4 (2026-05-18)
+
+### Codex Managed Config TOML Hotfix
+
+- **Codex Managed Config Rendering Hardened**: managed Codex `config.toml` inheritance now renders dict values as inline TOML tables, preserving parsed inline-table arrays without crashing on `unsupported TOML value type: dict`.
+- **Fallback Feature Merge Fixed**: when no TOML reader is available, managed Codex fallback copy now updates an existing `[features]` section instead of appending duplicate sections, and it stops correctly at both `[table]` and `[[array_of_tables]]` boundaries.
+- **Installer TOML Parser Dependency Added**: Linux/macOS and Windows installers now auto-install `tomli>=2.0.0` when no `tomllib`/`tomli`/`toml` reader is available, support `CCB_INSTALL_TOMLI=0`, and install `tomli` inside the managed venv before optional watchdog.
+
 ## v6.2.3 (2026-05-18)
 
 ### Architecture Hotspot Optimization Release

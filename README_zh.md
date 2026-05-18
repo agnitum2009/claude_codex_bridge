@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.2.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **Release checker 更易维护**：local、Markdown、GitHub、workflow 和 asset 检查拆到专门 helper module，外层 CLI 保持不变。
-- **Provider memory projection 有共享核心**：Codex、Claude、Gemini 和 OpenCode 共用 projection event、marker、signature 和 materialization helper，同时保留 provider 特定行为。
-- **Startup update 按职责拆分**：update state、refresh 和 flow 逻辑拆成独立模块，后续审查和改动更安全。
-- **Storage cleanup 分类更清晰**：provider-home cleanup 规则有独立边界，并补充 provider precedence 与 unknown-provider 测试。
+- **Codex managed config 支持更复杂 TOML**：继承的 `config.toml` 含 inline table array 时会正常渲染，不再因为 parsed dict value 报错。
+- **Fallback config copy 不再重复追加 features 段**：没有 TOML parser 时会原位更新已有 `[features]`，并正确识别 `[table]` 与 `[[array_of_tables]]` 边界。
+- **安装器会按需补 TOML parser**：Linux/macOS 和 Windows 安装器在没有 TOML reader 时自动安装 `tomli>=2.0.0`，也可用 `CCB_INSTALL_TOMLI=0` 跳过。
+- **Managed venv 依赖安装作用域正确**：release 安装会先在 managed venv 内安装 `tomli`，再处理可选 watchdog。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -330,6 +330,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.2.4</b> - Codex Managed Config TOML Hotfix</summary>
+
+- 将 dict value 渲染为 inline TOML table，避免继承含 inline table array 的 Codex config 时 managed-home projection 崩溃。
+- fallback copy 路径会原位更新已有 `[features]`，不再重复追加，并正确停在 `[table]` 和 `[[array_of_tables]]` 边界。
+- `install.sh` 与 `install.ps1` 在没有 TOML reader 时自动安装 `tomli>=2.0.0`，支持 `CCB_INSTALL_TOMLI=0` 跳过。
+- release 的 managed venv 会先安装 `tomli`，再安装可选 watchdog 依赖。
+
+</details>
+
+<details>
 <summary><b>v6.2.3</b> - Architecture Hotspot Optimization Release</summary>
 
 - 将 GitHub release checker 拆分为 local、Markdown、GitHub、workflow 和 asset 等职责明确的 helper module。
