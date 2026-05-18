@@ -7,6 +7,7 @@ from pathlib import Path
 from storage.paths import PathLayout
 from storage.path_helpers import RuntimeStatePlacement
 from storage_classification import summarize_storage
+from storage_classification.provider_home import classify_provider_home
 
 
 def _write(path: Path, text: str = 'x') -> None:
@@ -16,6 +17,37 @@ def _write(path: Path, text: str = 'x') -> None:
 
 def _records_by_suffix(payload: dict[str, object]) -> dict[str, dict[str, object]]:
     return {str(item['relative_path']): item for item in payload['entries']}
+
+
+def test_provider_home_classifier_preserves_secret_precedence_and_unknowns(tmp_path: Path) -> None:
+    provider_home = tmp_path / 'repo' / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'unknownai' / 'home'
+    secret_path = provider_home / 'auth.json'
+    unknown_path = provider_home / 'notes.txt'
+
+    secret = classify_provider_home(
+        secret_path,
+        'agents/agent1/provider-state/unknownai/home/auth.json',
+        'UnknownAI',
+        'agent1',
+        ('auth.json',),
+        size=2,
+        root_kind='project',
+    )
+    unknown = classify_provider_home(
+        unknown_path,
+        'agents/agent1/provider-state/unknownai/home/notes.txt',
+        'UnknownAI',
+        'agent1',
+        ('notes.txt',),
+        size=5,
+        root_kind='project',
+    )
+
+    assert secret.storage_class.value == 'secret'
+    assert secret.provider == 'unknownai'
+    assert secret.reason == 'provider_secret'
+    assert unknown.storage_class.value == 'unknown'
+    assert unknown.provider == 'unknownai'
 
 
 def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_path: Path) -> None:

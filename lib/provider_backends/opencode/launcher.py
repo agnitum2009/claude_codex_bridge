@@ -16,12 +16,34 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.memory_projection import write_projection_event_and_marker
 from provider_core.runtime_shared import provider_start_parts
 from provider_profiles import load_resolved_provider_profile
 from project_memory import materialize_runtime_memory_bundle
 from project_memory.hashing import sha256_text
 from storage.atomic import atomic_write_text
 from workspace.models import WorkspacePlan
+
+
+_OPENCODE_UNCHANGED_SIGNATURE_FIELDS = (
+    'path',
+    'config_path',
+    'bundle_path',
+    'sha256',
+    'config_sha256',
+    'warnings',
+    'config_merge_status',
+    'config_merge_reason',
+)
+_OPENCODE_SKIPPED_SIGNATURE_FIELDS = (
+    'reason',
+    'path',
+    'config_path',
+    'bundle_path',
+    'sha256',
+    'config_sha256',
+    'warnings',
+)
 
 
 def build_runtime_launcher() -> ProviderRuntimeLauncher:
@@ -397,19 +419,36 @@ def _memory_projection_result(
         'reason': reason,
         'path': str(path),
         'sha256': sha256,
-        'config_path': str(config_path or ''),
-        'config_sha256': str(config_sha256 or ''),
+        'config_path': _text_or_empty(config_path),
+        'config_sha256': _text_or_empty(config_sha256),
         'source_count': source_count,
-        'warnings': tuple(str(item) for item in warnings if str(item)),
-        'error_detail': str(error_detail or ''),
-        'project_config_path': str(project_config_path or ''),
-        'project_config_sha256': str(project_config_sha256 or ''),
-        'config_merge_status': str(config_merge_status or ''),
-        'config_merge_reason': str(config_merge_reason or ''),
+        'warnings': _warning_tuple(warnings),
+        'error_detail': _text_or_empty(error_detail),
+        'project_config_path': _text_or_empty(project_config_path),
+        'project_config_sha256': _text_or_empty(project_config_sha256),
+        'config_merge_status': _text_or_empty(config_merge_status),
+        'config_merge_reason': _text_or_empty(config_merge_reason),
     }
     if bundle_path is not None:
         result['bundle_path'] = str(bundle_path)
     return result
+
+
+def _text_or_empty(value: object) -> str:
+    return str(value) if value else ''
+
+
+def _text_or_default(value: object, default: str) -> str:
+    text = _text_or_empty(value)
+    return text if text else default
+
+
+def _warning_tuple(warnings: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    return tuple(text for item in warnings if (text := str(item)))
+
+
+def _warning_list(result: dict[str, object]) -> list[object]:
+    return list(result.get('warnings') or ())
 
 
 def _record_memory_projection_event(
@@ -421,30 +460,43 @@ def _record_memory_projection_event(
 ) -> None:
     if event_path is None:
         return
-    status = str(result.get('status') or 'unknown')
-    reason = str(result.get('reason') or '')
-    signature = {
-        'status': status,
-        'reason': reason,
-        'path': str(result.get('path') or ''),
-        'config_path': str(result.get('config_path') or ''),
-        'bundle_path': str(result.get('bundle_path') or ''),
-        'sha256': str(result.get('sha256') or ''),
-        'config_sha256': str(result.get('config_sha256') or ''),
-        'warnings': list(result.get('warnings') or ()),
-        'config_merge_status': str(result.get('config_merge_status') or ''),
-        'config_merge_reason': str(result.get('config_merge_reason') or ''),
-    }
+    signature = _opencode_memory_projection_signature(result)
     marker = Path(marker_path)
     if _same_memory_projection_signature(marker, signature):
         return
-    event = {
+    event = _opencode_memory_projection_event(result, signature, agent_name=agent_name)
+    write_projection_event_and_marker(event, signature, event_path=event_path, marker_path=marker)
+
+
+def _opencode_memory_projection_signature(result: dict[str, object]) -> dict[str, object]:
+    return {
+        'status': _text_or_default(result.get('status'), 'unknown'),
+        'reason': _text_or_empty(result.get('reason')),
+        'path': _text_or_empty(result.get('path')),
+        'config_path': _text_or_empty(result.get('config_path')),
+        'bundle_path': _text_or_empty(result.get('bundle_path')),
+        'sha256': _text_or_empty(result.get('sha256')),
+        'config_sha256': _text_or_empty(result.get('config_sha256')),
+        'warnings': _warning_list(result),
+        'config_merge_status': _text_or_empty(result.get('config_merge_status')),
+        'config_merge_reason': _text_or_empty(result.get('config_merge_reason')),
+    }
+
+
+def _opencode_memory_projection_event(
+    result: dict[str, object],
+    signature: dict[str, object],
+    *,
+    agent_name: str,
+) -> dict[str, object]:
+    status = str(signature['status'])
+    return {
         'record_type': 'agent_event',
         'event_type': f'opencode_memory_projection_{status}',
         'provider': 'opencode',
         'agent_name': agent_name,
         'status': status,
-        'reason': reason,
+        'reason': signature['reason'],
         'projection_path': signature['path'],
         'config_path': signature['config_path'],
         'bundle_path': signature['bundle_path'],
@@ -453,22 +505,13 @@ def _record_memory_projection_event(
         'config_sha256': signature['config_sha256'],
         'source_count': int(result.get('source_count') or 0),
         'warnings': signature['warnings'],
-        'error_detail': str(result.get('error_detail') or ''),
-        'project_config_path': str(result.get('project_config_path') or ''),
-        'project_config_sha256': str(result.get('project_config_sha256') or ''),
+        'error_detail': _text_or_empty(result.get('error_detail')),
+        'project_config_path': _text_or_empty(result.get('project_config_path')),
+        'project_config_sha256': _text_or_empty(result.get('project_config_sha256')),
         'config_merge_status': signature['config_merge_status'],
         'config_merge_reason': signature['config_merge_reason'],
         'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
-    try:
-        target = Path(event_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + '\n')
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps(signature, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    except OSError:
-        return
 
 
 def _record_opencode_config_merge_failed_event(
@@ -480,16 +523,30 @@ def _record_opencode_config_merge_failed_event(
 ) -> None:
     if event_path is None or result.get('config_merge_status') != 'failed':
         return
-    signature = {
-        'status': 'failed',
-        'reason': str(result.get('config_merge_reason') or ''),
-        'project_config_path': str(result.get('project_config_path') or ''),
-        'project_config_sha256': str(result.get('project_config_sha256') or ''),
-    }
+    signature = _opencode_config_merge_failed_signature(result)
     marker = Path(marker_path).with_name('opencode-config-merge.json')
     if _same_memory_projection_signature(marker, signature):
         return
-    event = {
+    event = _opencode_config_merge_failed_event(result, signature, agent_name=agent_name)
+    write_projection_event_and_marker(event, signature, event_path=event_path, marker_path=marker)
+
+
+def _opencode_config_merge_failed_signature(result: dict[str, object]) -> dict[str, object]:
+    return {
+        'status': 'failed',
+        'reason': _text_or_empty(result.get('config_merge_reason')),
+        'project_config_path': _text_or_empty(result.get('project_config_path')),
+        'project_config_sha256': _text_or_empty(result.get('project_config_sha256')),
+    }
+
+
+def _opencode_config_merge_failed_event(
+    result: dict[str, object],
+    signature: dict[str, object],
+    *,
+    agent_name: str,
+) -> dict[str, object]:
+    return {
         'record_type': 'agent_event',
         'event_type': 'opencode_config_merge_failed',
         'provider': 'opencode',
@@ -498,52 +555,42 @@ def _record_opencode_config_merge_failed_event(
         'reason': signature['reason'],
         'project_config_path': signature['project_config_path'],
         'project_config_sha256': signature['project_config_sha256'],
-        'warnings': list(result.get('warnings') or ()),
+        'warnings': _warning_list(result),
         'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
-    try:
-        target = Path(event_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + '\n')
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps(signature, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    except OSError:
-        return
 
 
 def _same_memory_projection_signature(path: Path, payload: dict[str, object]) -> bool:
-    try:
-        existing = json.loads(Path(path).read_text(encoding='utf-8'))
-    except Exception:
-        return False
-    if not isinstance(existing, dict):
+    existing = _read_memory_projection_signature(path)
+    if existing is None:
         return False
     if existing == payload:
         return True
     if payload.get('status') == 'skipped' and payload.get('reason') == 'unchanged':
-        return (
-            bool(payload.get('sha256'))
-            and existing.get('path') == payload.get('path')
-            and existing.get('config_path') == payload.get('config_path')
-            and existing.get('bundle_path') == payload.get('bundle_path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('config_sha256') == payload.get('config_sha256')
-            and existing.get('warnings') == payload.get('warnings')
-            and existing.get('config_merge_status') == payload.get('config_merge_status')
-            and existing.get('config_merge_reason') == payload.get('config_merge_reason')
+        return bool(payload.get('sha256')) and _signature_fields_match(
+            existing,
+            payload,
+            _OPENCODE_UNCHANGED_SIGNATURE_FIELDS,
         )
     if payload.get('status') == 'skipped':
-        return (
-            existing.get('reason') == payload.get('reason')
-            and existing.get('path') == payload.get('path')
-            and existing.get('config_path') == payload.get('config_path')
-            and existing.get('bundle_path') == payload.get('bundle_path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('config_sha256') == payload.get('config_sha256')
-            and existing.get('warnings') == payload.get('warnings')
-        )
+        return _signature_fields_match(existing, payload, _OPENCODE_SKIPPED_SIGNATURE_FIELDS)
     return False
+
+
+def _read_memory_projection_signature(path: Path) -> dict[str, object] | None:
+    try:
+        existing = json.loads(Path(path).read_text(encoding='utf-8'))
+    except Exception:
+        return None
+    return existing if isinstance(existing, dict) else None
+
+
+def _signature_fields_match(
+    existing: dict[str, object],
+    payload: dict[str, object],
+    fields: tuple[str, ...],
+) -> bool:
+    return all(existing.get(field) == payload.get(field) for field in fields)
 
 
 def _inherits_memory(profile) -> bool:

@@ -1502,7 +1502,9 @@ def test_codex_launcher_build_start_cmd_does_not_require_toml_parser_for_config_
 
     isolated_home = runtime_dir / 'codex-state' / 'home'
     assert f'CODEX_HOME={shlex.quote(str(isolated_home))}' in cmd
-    assert (isolated_home / 'config.toml').read_text(encoding='utf-8') == 'model = "gpt-5"\n'
+    config_text = (isolated_home / 'config.toml').read_text(encoding='utf-8')
+    assert 'model = "gpt-5"' in config_text
+    assert 'external_migration = false' in config_text
     assert (isolated_home / 'skills' / 'demo' / 'SKILL.md').read_text(encoding='utf-8') == 'skill\n'
 
 
@@ -1958,6 +1960,7 @@ def test_codex_launcher_build_start_cmd_api_override_clears_global_route_config(
     assert 'base_url = "https://api.rootflowai.com"' in config_text
     assert 'wire_api = "responses"' in config_text
     assert 'requires_openai_auth = false' in config_text
+    assert 'external_migration = false' in config_text
     assert 'https://api.ikuncode.cc/v1' not in config_text
     assert 'env_key' not in config_text
     assert (profile_home / 'auth.json').read_text(encoding='utf-8') == '{"OPENAI_API_KEY":"profile-key"}\n'
@@ -2261,7 +2264,9 @@ def test_codex_launcher_build_start_cmd_refreshes_managed_home_projection(monkey
     _codex_start_cmd(command, spec, runtime_dir, 'sess-refresh-1')
 
     isolated_home = runtime_dir / 'codex-state' / 'home'
-    assert (isolated_home / 'config.toml').read_text(encoding='utf-8') == 'model = "gpt-5"\n'
+    config_text = (isolated_home / 'config.toml').read_text(encoding='utf-8')
+    assert 'model = "gpt-5"' in config_text
+    assert 'external_migration = false' in config_text
     assert (isolated_home / 'auth.json').read_text(encoding='utf-8') == '{"OPENAI_API_KEY":"old-key"}\n'
     assert (isolated_home / '.tmp' / 'plugins.sha').read_text(encoding='utf-8') == 'plugins-sha-v1\n'
     assert (
@@ -2280,7 +2285,9 @@ def test_codex_launcher_build_start_cmd_refreshes_managed_home_projection(monkey
 
     _codex_start_cmd(command, spec, runtime_dir, 'sess-refresh-2')
 
-    assert (isolated_home / 'config.toml').read_text(encoding='utf-8') == 'model = "gpt-5.1"\n'
+    config_text = (isolated_home / 'config.toml').read_text(encoding='utf-8')
+    assert 'model = "gpt-5.1"' in config_text
+    assert 'external_migration = false' in config_text
     assert (isolated_home / 'auth.json').read_text(encoding='utf-8') == '{"OPENAI_API_KEY":"new-key"}\n'
     assert (isolated_home / '.tmp' / 'plugins.sha').read_text(encoding='utf-8') == 'plugins-sha-v2\n'
     marketplace_payload = json.loads(

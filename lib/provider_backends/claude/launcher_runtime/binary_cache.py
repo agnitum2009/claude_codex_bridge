@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
@@ -7,6 +8,15 @@ from provider_core.projected_assets import tree_content_fingerprint, write_proje
 
 _PROJECTION_LABEL = 'claude-binary-versions'
 _IGNORED_VERSION_ENTRIES = {'.DS_Store'}
+
+
+@dataclass(frozen=True)
+class _RouteContext:
+    home: Path
+    versions_dir: Path
+    shared_versions_dir: Path
+    source_active_version: Path | None
+    source_active_version_name: str
 
 
 def route_claude_binary_cache(
@@ -19,104 +29,20 @@ def route_claude_binary_cache(
     shared_versions_dir = Path(shared_cache_root).expanduser().resolve(strict=False) / 'versions'
     versions_dir = home / '.local' / 'share' / 'claude' / 'versions'
     source_active_version = _source_active_version(source_home, managed_home=home)
-    source_active_version_name = source_active_version.name if source_active_version is not None else ''
+    context = _RouteContext(
+        home=home,
+        versions_dir=versions_dir,
+        shared_versions_dir=shared_versions_dir,
+        source_active_version=source_active_version,
+        source_active_version_name=source_active_version.name if source_active_version is not None else '',
+    )
 
-    try:
-        shared_versions_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        return _result(
-            status='skipped',
-            reason='shared_cache_unavailable',
-            versions_dir=versions_dir,
-            shared_versions_dir=shared_versions_dir,
-            error_detail=str(exc),
-        )
+    failure = _ensure_shared_versions_dir(context)
+    if failure is not None:
+        return failure
 
     if versions_dir.is_symlink():
-        if _same_path(versions_dir, shared_versions_dir):
-            failure = _copy_source_active_version_to_shared(
-                source_active_version,
-                shared_versions_dir=shared_versions_dir,
-                versions_dir=versions_dir,
-            )
-            if failure is not None:
-                return failure
-            active_version_name = _ensure_claude_link(
-                home,
-                shared_versions_dir,
-                preferred_version_name=source_active_version_name,
-            )
-            write_projected_marker(
-                versions_dir,
-                label=_PROJECTION_LABEL,
-                mode='symlink',
-                source=shared_versions_dir,
-            )
-            return _result(
-                status='ok',
-                reason='already_shared',
-                versions_dir=versions_dir,
-                shared_versions_dir=shared_versions_dir,
-                version_names=_version_names(shared_versions_dir),
-                active_version_name=active_version_name,
-            )
-        try:
-            source_versions_dir = versions_dir.resolve(strict=True)
-        except Exception as exc:
-            return _result(
-                status='skipped',
-                reason='versions_symlink_target_unavailable',
-                versions_dir=versions_dir,
-                shared_versions_dir=shared_versions_dir,
-                error_detail=str(exc),
-            )
-        if not source_versions_dir.is_dir():
-            return _result(
-                status='skipped',
-                reason='versions_dir_symlink_not_shared',
-                versions_dir=versions_dir,
-                shared_versions_dir=shared_versions_dir,
-            )
-        scan = _scan_versions_dir(source_versions_dir)
-        if scan['unknown_entries']:
-            return _result(
-                status='skipped',
-                reason='versions_dir_symlink_not_shared',
-                versions_dir=versions_dir,
-                shared_versions_dir=shared_versions_dir,
-                version_names=scan['version_names'],
-                warnings=scan['unknown_entries'],
-            )
-        failure = _copy_versions_to_shared(
-            version_paths=scan['version_paths'],
-            shared_versions_dir=shared_versions_dir,
-            versions_dir=versions_dir,
-            version_names=scan['version_names'],
-        )
-        if failure is not None:
-            return failure
-        failure = _copy_source_active_version_to_shared(
-            source_active_version,
-            shared_versions_dir=shared_versions_dir,
-            versions_dir=versions_dir,
-        )
-        if failure is not None:
-            return failure
-        linked = _link_versions_dir(
-            versions_dir,
-            shared_versions_dir,
-            reason='migrated_symlink' if scan['version_paths'] else 'linked_empty',
-            version_names=_version_names(shared_versions_dir),
-        )
-        if linked.get('status') == 'ok':
-            linked['active_version_name'] = _ensure_claude_link(
-                home,
-                shared_versions_dir,
-                preferred_version_name=source_active_version_name,
-            ) or ''
-        if scan['ignored_entries'] and linked.get('status') == 'ok':
-            linked['warnings'] = tuple(scan['ignored_entries'])
-        return linked
+        return _route_symlinked_versions_dir(context)
 
     if versions_dir.exists() and not versions_dir.is_dir():
         return _result(
@@ -127,69 +53,168 @@ def route_claude_binary_cache(
         )
 
     if not versions_dir.exists():
-        failure = _copy_source_active_version_to_shared(
-            source_active_version,
-            shared_versions_dir=shared_versions_dir,
-            versions_dir=versions_dir,
-        )
-        if failure is not None:
-            return failure
-        linked = _link_versions_dir(
-            versions_dir,
-            shared_versions_dir,
-            reason='linked_empty',
-            version_names=_version_names(shared_versions_dir),
-        )
-        if linked.get('status') == 'ok':
-            linked['active_version_name'] = _ensure_claude_link(
-                home,
-                shared_versions_dir,
-                preferred_version_name=source_active_version_name,
-            ) or ''
-        return linked
+        return _route_missing_versions_dir(context)
 
-    scan = _scan_versions_dir(versions_dir)
+    return _route_local_versions_dir(context)
+
+
+def _ensure_shared_versions_dir(context: _RouteContext) -> dict[str, object] | None:
+    try:
+        context.shared_versions_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        return _result(
+            status='skipped',
+            reason='shared_cache_unavailable',
+            versions_dir=context.versions_dir,
+            shared_versions_dir=context.shared_versions_dir,
+            error_detail=str(exc),
+        )
+    return None
+
+
+def _route_symlinked_versions_dir(context: _RouteContext) -> dict[str, object]:
+    if _same_path(context.versions_dir, context.shared_versions_dir):
+        return _route_already_shared_versions_dir(context)
+    try:
+        source_versions_dir = context.versions_dir.resolve(strict=True)
+    except Exception as exc:
+        return _result(
+            status='skipped',
+            reason='versions_symlink_target_unavailable',
+            versions_dir=context.versions_dir,
+            shared_versions_dir=context.shared_versions_dir,
+            error_detail=str(exc),
+        )
+    if not source_versions_dir.is_dir():
+        return _result(
+            status='skipped',
+            reason='versions_dir_symlink_not_shared',
+            versions_dir=context.versions_dir,
+            shared_versions_dir=context.shared_versions_dir,
+        )
+    scan = _scan_versions_dir(source_versions_dir)
+    if scan['unknown_entries']:
+        return _result(
+            status='skipped',
+            reason='versions_dir_symlink_not_shared',
+            versions_dir=context.versions_dir,
+            shared_versions_dir=context.shared_versions_dir,
+            version_names=scan['version_names'],
+            warnings=scan['unknown_entries'],
+        )
+    return _migrate_scanned_versions(
+        context,
+        scan,
+        reason='migrated_symlink' if scan['version_paths'] else 'linked_empty',
+    )
+
+
+def _route_already_shared_versions_dir(context: _RouteContext) -> dict[str, object]:
+    failure = _copy_source_active_version_to_shared(
+        context.source_active_version,
+        shared_versions_dir=context.shared_versions_dir,
+        versions_dir=context.versions_dir,
+    )
+    if failure is not None:
+        return failure
+    active_version_name = _ensure_claude_link(
+        context.home,
+        context.shared_versions_dir,
+        preferred_version_name=context.source_active_version_name,
+    )
+    write_projected_marker(
+        context.versions_dir,
+        label=_PROJECTION_LABEL,
+        mode='symlink',
+        source=context.shared_versions_dir,
+    )
+    return _result(
+        status='ok',
+        reason='already_shared',
+        versions_dir=context.versions_dir,
+        shared_versions_dir=context.shared_versions_dir,
+        version_names=_version_names(context.shared_versions_dir),
+        active_version_name=active_version_name,
+    )
+
+
+def _route_missing_versions_dir(context: _RouteContext) -> dict[str, object]:
+    failure = _copy_source_active_version_to_shared(
+        context.source_active_version,
+        shared_versions_dir=context.shared_versions_dir,
+        versions_dir=context.versions_dir,
+    )
+    if failure is not None:
+        return failure
+    linked = _link_versions_dir(
+        context.versions_dir,
+        context.shared_versions_dir,
+        reason='linked_empty',
+        version_names=_version_names(context.shared_versions_dir),
+    )
+    return _with_active_version(linked, context)
+
+
+def _route_local_versions_dir(context: _RouteContext) -> dict[str, object]:
+    scan = _scan_versions_dir(context.versions_dir)
     if scan['unknown_entries']:
         return _result(
             status='skipped',
             reason='unknown_versions_entries',
-            versions_dir=versions_dir,
-            shared_versions_dir=shared_versions_dir,
+            versions_dir=context.versions_dir,
+            shared_versions_dir=context.shared_versions_dir,
             version_names=scan['version_names'],
             warnings=scan['unknown_entries'],
         )
+    return _migrate_scanned_versions(
+        context,
+        scan,
+        reason='migrated' if scan['version_paths'] else 'linked_empty',
+    )
 
+
+def _migrate_scanned_versions(
+    context: _RouteContext,
+    scan: dict[str, object],
+    *,
+    reason: str,
+) -> dict[str, object]:
     failure = _copy_versions_to_shared(
         version_paths=scan['version_paths'],
-        shared_versions_dir=shared_versions_dir,
-        versions_dir=versions_dir,
+        shared_versions_dir=context.shared_versions_dir,
+        versions_dir=context.versions_dir,
         version_names=scan['version_names'],
     )
     if failure is not None:
         return failure
     failure = _copy_source_active_version_to_shared(
-        source_active_version,
-        shared_versions_dir=shared_versions_dir,
-        versions_dir=versions_dir,
+        context.source_active_version,
+        shared_versions_dir=context.shared_versions_dir,
+        versions_dir=context.versions_dir,
     )
     if failure is not None:
         return failure
 
     linked = _link_versions_dir(
-        versions_dir,
-        shared_versions_dir,
-        reason='migrated' if scan['version_paths'] else 'linked_empty',
-        version_names=_version_names(shared_versions_dir),
+        context.versions_dir,
+        context.shared_versions_dir,
+        reason=reason,
+        version_names=_version_names(context.shared_versions_dir),
     )
-    if linked.get('status') == 'ok':
-        linked['active_version_name'] = _ensure_claude_link(
-            home,
-            shared_versions_dir,
-            preferred_version_name=source_active_version_name,
-        ) or ''
+    linked = _with_active_version(linked, context)
     if scan['ignored_entries'] and linked.get('status') == 'ok':
         linked['warnings'] = tuple(scan['ignored_entries'])
     return linked
+
+
+def _with_active_version(result: dict[str, object], context: _RouteContext) -> dict[str, object]:
+    if result.get('status') == 'ok':
+        result['active_version_name'] = _ensure_claude_link(
+            context.home,
+            context.shared_versions_dir,
+            preferred_version_name=context.source_active_version_name,
+        ) or ''
+    return result
 
 
 def _copy_versions_to_shared(

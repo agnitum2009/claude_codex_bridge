@@ -6,6 +6,8 @@ from pathlib import Path
 import time
 
 from cli.management_runtime import startup_update as startup_update_runtime
+from cli.management_runtime import startup_update_flow
+from cli.management_runtime import startup_update_refresh
 
 
 class _TtyStringIO(StringIO):
@@ -104,7 +106,7 @@ def test_maybe_handle_startup_release_update_schedules_background_refresh_when_c
 def test_maybe_handle_startup_release_update_supports_macos_release(tmp_path: Path, monkeypatch) -> None:
     install_dir = _release_install(tmp_path)
     calls: list[tuple[Path, Path]] = []
-    monkeypatch.setattr(startup_update_runtime.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(startup_update_flow.platform, "system", lambda: "Darwin")
 
     code = startup_update_runtime.maybe_handle_startup_release_update(
         [],
@@ -267,11 +269,11 @@ def test_schedule_background_update_refresh_creates_lock_and_spawns_internal_com
         captured["kwargs"] = dict(kwargs)
         return _DummyProcess()
 
-    monkeypatch.setattr(startup_update_runtime.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(startup_update_refresh.subprocess, "Popen", _fake_popen)
 
     assert startup_update_runtime.schedule_background_update_refresh(script_root=install_dir, install_dir=install_dir) is True
     assert captured["command"] == [
-        startup_update_runtime.sys.executable,
+        startup_update_refresh.sys.executable,
         str(install_dir / "ccb"),
         startup_update_runtime.BACKGROUND_REFRESH_COMMAND,
     ]
@@ -284,7 +286,7 @@ def test_background_update_refresh_command_updates_cache_and_releases_lock(monke
     lock_path.write_text("locked\n", encoding="utf-8")
     monkeypatch.setenv("CCB_UPDATE_REFRESH_LOCK", str(lock_path))
     monkeypatch.setattr(
-        startup_update_runtime,
+        startup_update_refresh,
         "get_available_versions",
         lambda **_: ["6.0.9", "6.0.10", "6.0.11"],
     )

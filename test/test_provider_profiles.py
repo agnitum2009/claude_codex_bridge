@@ -759,6 +759,7 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
     assert 'base_url = "https://api.rootflowai.com"' in config_text
     assert 'wire_api = "responses"' in config_text
     assert 'requires_openai_auth = false' in config_text
+    assert 'external_migration = false' in config_text
     assert 'https://stale.example.test/v1' not in config_text
     assert 'env_key' not in config_text
     assert codex_provider_authority_fingerprint(profile)

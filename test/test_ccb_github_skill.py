@@ -85,7 +85,7 @@ def test_default_branch_compare_rejects_release_tag_missing_from_main(monkeypatc
         assert cmd[2] == "repos/SeemSeam/claude_codex_bridge/compare/v9.9.9...main"
         return subprocess.CompletedProcess(cmd, 0, stdout="diverged\n", stderr="")
 
-    monkeypatch.setattr(checker, "run", fake_run)
+    monkeypatch.setattr(checker.github, "run", fake_run)
     issues: list[str] = []
     warnings: list[str] = []
 
@@ -107,7 +107,7 @@ def test_default_branch_compare_accepts_ahead_or_identical(monkeypatch, tmp_path
     def fake_run(cmd: list[str], cwd: Path):
         return subprocess.CompletedProcess(cmd, 0, stdout="ahead\n", stderr="")
 
-    monkeypatch.setattr(checker, "run", fake_run)
+    monkeypatch.setattr(checker.github, "run", fake_run)
     issues: list[str] = []
     warnings: list[str] = []
 
@@ -148,6 +148,32 @@ def test_required_dev_workflows_depend_on_branch() -> None:
         "Tests",
         "CCBD Real Platform Smoke",
     }
+
+
+def test_check_dev_branch_workflows_entrypoint_uses_compat_signature(monkeypatch, tmp_path: Path) -> None:
+    checker = _load_checker()
+    observed: dict[str, object] = {}
+
+    def fake_check(**kwargs):
+        observed.update(kwargs)
+
+    monkeypatch.setattr(checker.github, "_check_dev_branch_workflows", fake_check)
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    checker.check_dev_branch_workflows(
+        root=tmp_path,
+        repo="SeemSeam/claude_codex_bridge",
+        wait_seconds=0,
+        poll_interval=1,
+        issues=issues,
+        warnings=warnings,
+    )
+
+    assert observed["root"] == tmp_path
+    assert observed["repo"] == "SeemSeam/claude_codex_bridge"
+    assert observed["gh_auth_is_ready_fn"] is checker.github.gh_auth_is_ready
+    assert observed["repo_default_branch_fn"] is checker.github.repo_default_branch
 
 
 def test_release_artifacts_run_match_is_scoped_to_tag_or_commit() -> None:
@@ -201,7 +227,7 @@ def test_check_sha256sums_requires_entries_for_tarballs(monkeypatch, tmp_path: P
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(checker, "run", fake_run)
+    monkeypatch.setattr(checker.assets, "run", fake_run)
     issues: list[str] = []
     warnings: list[str] = []
 
@@ -236,3 +262,15 @@ def test_active_skill_sync_warns_when_runtime_copy_differs(tmp_path: Path) -> No
     checker.check_active_skill_sync(tmp_path, warnings)
 
     assert any("Active ccb-github skill copy differs" in item for item in warnings)
+
+
+def test_active_skill_sync_tracks_release_checker_helpers() -> None:
+    checker = _load_checker()
+
+    assert "scripts/check_release_state.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_shared.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_markdown.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_local.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_github.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_workflows.py" in checker.TRACKED_SKILL_FILES
+    assert "scripts/release_checker_assets.py" in checker.TRACKED_SKILL_FILES

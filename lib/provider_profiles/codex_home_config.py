@@ -5,11 +5,16 @@ import importlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from pathlib import Path
 import re
 import shutil
 
+from provider_core.memory_projection import (
+    materialize_provider_memory_file,
+    memory_projection_result,
+    record_memory_projection_event,
+)
 from provider_core.projected_assets import (
     copy_projected_tree_to_cache,
     remove_projected_path,
@@ -18,13 +23,6 @@ from provider_core.projected_assets import (
     write_projected_marker,
 )
 from provider_core.source_home import current_provider_source_home
-from project_memory import (
-    ensure_project_memory,
-    load_memory_sources,
-    read_memory_source,
-    render_memory_bundle,
-)
-from project_memory.hashing import sha256_text
 from storage.atomic import atomic_write_text
 from storage.paths import PathLayout
 
@@ -41,6 +39,7 @@ _CODEX_PLUGIN_REQUIRED_RELATIVE_PATHS = (
     Path('.agents') / 'skills',
     Path('plugins'),
 )
+_MANAGED_CODEX_DISABLED_FEATURES = ('external_migration',)
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,12 @@ def materialize_codex_home_config(
         _write_codex_api_authority_config(target_config, authority, source_config=source_config)
     elif _inherits_config(profile) and _inherits_api(profile) and _source_config_valid(source_config):
         if source_config.is_file():
-            _sync_file(source_config, target_config)
+            payload = _read_source_config_payload(source_config)
+            if payload:
+                _write_managed_codex_config(target_config, payload)
+            else:
+                _sync_file(source_config, target_config)
+                _append_managed_codex_feature_overrides(target_config)
         else:
             _write_managed_config_stub(target_config)
     else:
@@ -114,8 +118,9 @@ def materialize_codex_home_config(
         agent_name=agent_name,
         workspace_path=workspace_path,
     )
-    _record_memory_projection_event(
+    record_memory_projection_event(
         memory_result,
+        provider='codex',
         event_path=memory_projection_event_path,
         marker_path=memory_projection_marker_path,
         agent_name=agent_name,
@@ -199,6 +204,25 @@ def _write_managed_config_stub(target: Path) -> None:
     target.write_text('# ccb agent-local codex config\n', encoding='utf-8')
 
 
+def _write_managed_codex_config(target: Path, payload: dict[str, object]) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    sanitized = _disable_interactive_migration_features(payload)
+    target.write_text(_render_toml_document(sanitized), encoding='utf-8')
+
+
+def _append_managed_codex_feature_overrides(target: Path) -> None:
+    if not target.is_file():
+        return
+    try:
+        text = target.read_text(encoding='utf-8')
+    except Exception:
+        return
+    lines = [text.rstrip(), '', '[features]']
+    for feature_name in _MANAGED_CODEX_DISABLED_FEATURES:
+        lines.append(f'{feature_name} = false')
+    target.write_text('\n'.join(lines).lstrip('\n') + '\n', encoding='utf-8')
+
+
 def _managed_codex_config_payload(source_config: Path, *, authority: CodexApiAuthority) -> dict[str, object]:
     payload = {'model_provider': authority.provider_id}
     inherited_payload = _strip_route_authority(_read_source_config_payload(source_config))
@@ -212,7 +236,17 @@ def _managed_codex_config_payload(source_config: Path, *, authority: CodexApiAut
             'base_url': authority.base_url,
         }
     }
-    return payload
+    return _disable_interactive_migration_features(payload)
+
+
+def _disable_interactive_migration_features(payload: dict[str, object]) -> dict[str, object]:
+    sanitized = _clone_mapping(payload)
+    raw_features = sanitized.get('features')
+    features = dict(raw_features) if isinstance(raw_features, dict) else {}
+    for feature_name in _MANAGED_CODEX_DISABLED_FEATURES:
+        features[feature_name] = False
+    sanitized['features'] = features
+    return sanitized
 
 
 def _import_optional_toml_reader():
@@ -486,183 +520,33 @@ def _materialize_codex_memory(
     normalized_target_home = Path(target_home).expanduser()
     target = normalized_target_home / 'AGENTS.md'
     if _same_path(normalized_source_home, normalized_target_home):
-        return _memory_projection_result(
+        return memory_projection_result(
             status='skipped',
             reason='source_home_is_target_home',
             path=target,
         )
     if not _inherits_memory(profile):
         _remove_path(target)
-        return _memory_projection_result(
+        return memory_projection_result(
             status='skipped',
             reason='inherit_memory_disabled',
             path=target,
         )
     if project_root is None or agent_name is None:
-        return _memory_projection_result(
+        return memory_projection_result(
             status='failed',
             reason='missing_project_context',
             path=target,
         )
-    root = Path(project_root).expanduser()
-    try:
-        warnings: list[str] = []
-        ensure_result = ensure_project_memory(root)
-        if ensure_result.warning:
-            warnings.append(ensure_result.warning)
-        extra_sources = tuple(
-            source
-            for source in (
-                read_memory_source(
-                    kind='provider_user_memory',
-                    title='Provider User Memory',
-                    path=source_home / 'AGENTS.md',
-                    include_missing=False,
-                ),
-            )
-            if source is not None
-        )
-        sources = load_memory_sources(
-            root,
-            agent_name=agent_name,
-            provider='codex',
-            extra_sources=extra_sources,
-        )
-        warnings.extend(source.warning for source in sources if source.warning)
-        rendered = render_memory_bundle(
-            project_root=root,
-            agent_name=agent_name,
-            provider='codex',
-            sources=sources,
-            workspace_path=workspace_path,
-        )
-        digest = sha256_text(rendered)
-        if _text_file_sha256(target) == digest:
-            return _memory_projection_result(
-                status='skipped',
-                reason='unchanged',
-                path=target,
-                sha256=digest,
-                source_count=len(sources),
-                warnings=warnings,
-            )
-        atomic_write_text(target, rendered)
-        return _memory_projection_result(
-            status='ok',
-            reason='written',
-            path=target,
-            sha256=digest,
-            source_count=len(sources),
-            warnings=warnings,
-        )
-    except Exception as exc:
-        return _memory_projection_result(
-            status='failed',
-            reason=type(exc).__name__,
-            path=target,
-            error_detail=str(exc),
-        )
-
-
-def _memory_projection_result(
-    *,
-    status: str,
-    reason: str,
-    path: Path,
-    sha256: str = '',
-    source_count: int = 0,
-    warnings: list[str] | tuple[str, ...] = (),
-    error_detail: str = '',
-) -> dict[str, object]:
-    return {
-        'status': status,
-        'reason': reason,
-        'path': str(path),
-        'sha256': sha256,
-        'source_count': source_count,
-        'warnings': tuple(str(item) for item in warnings if str(item)),
-        'error_detail': str(error_detail or ''),
-    }
-
-
-def _record_memory_projection_event(
-    result: dict[str, object],
-    *,
-    event_path: Path | None,
-    marker_path: Path | None,
-    agent_name: str | None,
-) -> None:
-    if event_path is None or marker_path is None or not agent_name:
-        return
-    status = str(result.get('status') or 'unknown')
-    reason = str(result.get('reason') or '')
-    signature = {
-        'status': status,
-        'reason': reason,
-        'path': str(result.get('path') or ''),
-        'sha256': str(result.get('sha256') or ''),
-        'warnings': list(result.get('warnings') or ()),
-    }
-    marker = Path(marker_path)
-    if _same_memory_projection_signature(marker, signature):
-        return
-    event = {
-        'record_type': 'agent_event',
-        'event_type': f'codex_memory_projection_{status}',
-        'provider': 'codex',
-        'agent_name': agent_name,
-        'status': status,
-        'reason': reason,
-        'projection_path': signature['path'],
-        'sha256': signature['sha256'],
-        'source_count': int(result.get('source_count') or 0),
-        'warnings': signature['warnings'],
-        'error_detail': str(result.get('error_detail') or ''),
-        'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-    }
-    try:
-        target = Path(event_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + '\n')
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps(signature, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    except OSError:
-        return
-
-
-def _same_memory_projection_signature(path: Path, payload: dict[str, object]) -> bool:
-    try:
-        existing = json.loads(Path(path).read_text(encoding='utf-8'))
-    except Exception:
-        return False
-    if not isinstance(existing, dict):
-        return False
-    if existing == payload:
-        return True
-    if payload.get('status') == 'skipped' and payload.get('reason') == 'unchanged':
-        return (
-            bool(payload.get('sha256'))
-            and existing.get('path') == payload.get('path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('warnings') == payload.get('warnings')
-        )
-    if payload.get('status') == 'skipped':
-        return (
-            existing.get('reason') == payload.get('reason')
-            and existing.get('path') == payload.get('path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('warnings') == payload.get('warnings')
-        )
-    return False
-
-
-def _text_file_sha256(path: Path) -> str:
-    try:
-        return sha256_text(Path(path).read_text(encoding='utf-8'))
-    except Exception:
-        return ''
-
+    return materialize_provider_memory_file(
+        project_root=project_root,
+        agent_name=agent_name,
+        provider='codex',
+        target=target,
+        provider_memory_path=source_home / 'AGENTS.md',
+        provider_memory_title='Provider User Memory',
+        workspace_path=workspace_path,
+    )
 
 def _same_path(left: Path, right: Path) -> bool:
     try:

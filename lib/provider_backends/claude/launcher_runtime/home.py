@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import getpass
 import json
 import os
@@ -9,6 +8,11 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from provider_core.memory_projection import (
+    memory_projection_result,
+    record_memory_projection_event,
+    text_file_sha256,
+)
 from provider_core.projected_assets import route_projected_tree
 from provider_core.source_home import current_provider_source_home
 from provider_profiles import provider_api_env_keys
@@ -105,8 +109,9 @@ def materialize_claude_home_config(
         agent_name=agent_name,
         workspace_path=workspace_path,
     )
-    _record_memory_projection_event(
+    record_memory_projection_event(
         memory_result,
+        provider='claude',
         event_path=memory_projection_event_path,
         marker_path=memory_projection_marker_path,
         agent_name=agent_name,
@@ -177,7 +182,7 @@ def _prepare_managed_home(
 
     if target_layout.home_root == source_home.expanduser():
         _ensure_trust_file(target_layout.trust_path)
-        return _memory_projection_result(
+        return memory_projection_result(
             status='skipped',
             reason='source_home_is_target_home',
             path=target_layout.claude_dir / 'CLAUDE.md',
@@ -242,13 +247,13 @@ def _materialize_claude_memory(
     target = target_layout.claude_dir / 'CLAUDE.md'
     if not _inherits_memory(profile):
         _remove_file(target)
-        return _memory_projection_result(
+        return memory_projection_result(
             status='skipped',
             reason='inherit_memory_disabled',
             path=target,
         )
     if project_root is None or agent_name is None:
-        return _memory_projection_result(
+        return memory_projection_result(
             status='failed',
             reason='missing_project_context',
             path=target,
@@ -286,8 +291,8 @@ def _materialize_claude_memory(
             workspace_path=workspace_path,
         )
         digest = sha256_text(rendered)
-        if _text_file_sha256(target) == digest:
-            return _memory_projection_result(
+        if text_file_sha256(target) == digest:
+            return memory_projection_result(
                 status='skipped',
                 reason='unchanged',
                 path=target,
@@ -296,7 +301,7 @@ def _materialize_claude_memory(
                 warnings=warnings,
             )
         atomic_write_text(target, rendered)
-        return _memory_projection_result(
+        return memory_projection_result(
             status='ok',
             reason='written',
             path=target,
@@ -305,113 +310,12 @@ def _materialize_claude_memory(
             warnings=warnings,
         )
     except Exception as exc:
-        return _memory_projection_result(
+        return memory_projection_result(
             status='failed',
             reason=type(exc).__name__,
             path=target,
             error_detail=str(exc),
         )
-
-
-def _memory_projection_result(
-    *,
-    status: str,
-    reason: str,
-    path: Path,
-    sha256: str = '',
-    source_count: int = 0,
-    warnings: list[str] | tuple[str, ...] = (),
-    error_detail: str = '',
-) -> dict[str, object]:
-    return {
-        'status': status,
-        'reason': reason,
-        'path': str(path),
-        'sha256': sha256,
-        'source_count': source_count,
-        'warnings': tuple(str(item) for item in warnings if str(item)),
-        'error_detail': str(error_detail or ''),
-    }
-
-
-def _record_memory_projection_event(
-    result: dict[str, object],
-    *,
-    event_path: Path | None,
-    marker_path: Path | None,
-    agent_name: str | None,
-) -> None:
-    if event_path is None or marker_path is None or not agent_name:
-        return
-    status = str(result.get('status') or 'unknown')
-    reason = str(result.get('reason') or '')
-    signature = {
-        'status': status,
-        'reason': reason,
-        'path': str(result.get('path') or ''),
-        'sha256': str(result.get('sha256') or ''),
-        'warnings': list(result.get('warnings') or ()),
-    }
-    marker = Path(marker_path)
-    if _same_memory_projection_signature(marker, signature):
-        return
-    event = {
-        'record_type': 'agent_event',
-        'event_type': f'claude_memory_projection_{status}',
-        'provider': 'claude',
-        'agent_name': agent_name,
-        'status': status,
-        'reason': reason,
-        'projection_path': signature['path'],
-        'sha256': signature['sha256'],
-        'source_count': int(result.get('source_count') or 0),
-        'warnings': signature['warnings'],
-        'error_detail': str(result.get('error_detail') or ''),
-        'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-    }
-    try:
-        target = Path(event_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + '\n')
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps(signature, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    except OSError:
-        return
-
-
-def _same_memory_projection_signature(path: Path, payload: dict[str, object]) -> bool:
-    try:
-        existing = json.loads(Path(path).read_text(encoding='utf-8'))
-    except Exception:
-        return False
-    if not isinstance(existing, dict):
-        return False
-    if existing == payload:
-        return True
-    if payload.get('status') == 'skipped' and payload.get('reason') == 'unchanged':
-        return (
-            bool(payload.get('sha256'))
-            and existing.get('path') == payload.get('path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('warnings') == payload.get('warnings')
-        )
-    if payload.get('status') == 'skipped':
-        return (
-            existing.get('reason') == payload.get('reason')
-            and existing.get('path') == payload.get('path')
-            and existing.get('sha256') == payload.get('sha256')
-            and existing.get('warnings') == payload.get('warnings')
-        )
-    return False
-
-
-def _text_file_sha256(path: Path) -> str:
-    try:
-        return sha256_text(Path(path).read_text(encoding='utf-8'))
-    except Exception:
-        return ''
-
 
 def _materialize_home_hook_assets(source_home: Path, target_layout: ClaudeHomeLayout, *, profile) -> None:
     if not _inherits_config(profile):
