@@ -10,17 +10,7 @@ else
   exit 0
 fi
 
-role="$(tmux display-message -p -t "$pane_id" "#{@ccb_role}" 2>/dev/null | tr -d '\r')"
-target="$(tmux display-message -p -t "$pane_id" "#{session_name}:#{window_name}" 2>/dev/null | tr -d '\r')"
 style=""
-
-if [[ "$role" == "sidebar" && -n "$target" ]]; then
-  while IFS=$'\t' read -r pane_role pane_active_style pane_border_style; do
-    if [[ "$pane_role" != "sidebar" ]]; then
-      style="${pane_active_style:-$pane_border_style}"
-    fi
-  done < <(tmux list-panes -t "$target" -F '#{@ccb_role}	#{@ccb_active_border_style}	#{@ccb_border_style}' 2>/dev/null || true)
-fi
 
 if [[ -z "$style" ]]; then
   style="$(tmux display-message -p -t "$pane_id" "#{@ccb_active_border_style}" 2>/dev/null | tr -d '\r')"

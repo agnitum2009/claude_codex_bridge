@@ -219,6 +219,79 @@
 
 ### ISSUE-005
 
+- 状态：`in-progress`
+- 标题：`native sidebar 多 window 启动后只有首个 window 显示 pane 标签和主题，sidebar active border 被 agent 色污染`
+- 根因分类：`terminal-runtime`
+- 测试场景：`无项目 ccb.config，使用 v7 内置默认 window1/window2 + every_window sidebar，在 /home/bfly/yunwei/test_ccb2 执行 ccb`
+- 最小复现：
+  - 清理旧全局默认 `/home/bfly/.ccb/ccb.config`
+  - 在 `/home/bfly/yunwei/test_ccb2` 启动 `ccb`
+  - 查看两个 tmux window 的 pane border 设置
+- 预期结果：
+  - 每个 CCB window 都应启用 `pane-border-status=top`
+  - 每个 pane 顶部都应显示 CCB label
+  - sidebar pane 使用固定灰色主题，不与 agent 分区色冲突
+- 实际结果：
+  - `window1` 正常显示 CCB pane label 和主题
+  - `window2` 保留 tmux 默认 `pane-border-status=off` 和默认 `pane-border-format`
+  - sidebar pane 已写入灰色 metadata，但 active border 可能被同 window 的 agent 色覆盖
+- 影响范围：
+  - native sidebar 多 window topology
+  - 默认无配置启动路径
+  - 显式 `[windows]` + `ui.sidebar.mode = "every_window"` 路径
+- 初步判断：
+  - 不是 tmux socket 隔离问题；`@ccb_agent`、`@ccb_label_style`、`@ccb_border_style` 已正确写入每个 pane
+  - 失败层级在 tmux window option/theme 应用时机
+- 根因：
+  - `materialize_topology()` 在所有 windows 创建完成前调用 `apply_project_tmux_ui()`
+  - `apply_project_tmux_ui()` 只枚举当时已存在的 windows，因此只给首个 window 写入 CCB pane border format
+  - `config/ccb-border.sh` 在 sidebar active 时优先借用非 sidebar pane 的 active style，使 sidebar active border 不再稳定保持灰色主题
+- 系统性修复方案：
+  - topology 物化完成所有 windows 和 pane identity 后，再幂等调用一次 `apply_project_tmux_ui()`
+  - 保留首次调用用于 session/status/hook 初始化，但末尾调用必须覆盖所有新建 windows
+  - `ccb-border.sh` 对 sidebar active pane 使用 sidebar 自身 `@ccb_active_border_style`，不再借用 agent 色
+- 回归测试：
+  - 覆盖 topology 物化后每个 window 都应用 `pane-border-status=top`
+  - 覆盖 sidebar active pane border 使用灰色 sidebar style
+
+### ISSUE-006
+
+- 状态：`in-progress`
+- 标题：`sidebar agent 执行状态检测误把历史 scrollback 当成当前 provider 状态`
+- 根因分类：`read-path`
+- 测试场景：`/home/bfly/yunwei/test_ccb2 中 Codex agent 已回到空闲提示符，但 sidebar 显示 pending`
+- 最小复现：
+  - 让 Codex agent 曾经出现 provider 提示或历史任务输出
+  - 等 provider 回到空闲提示符
+  - 请求 `project_view`
+- 预期结果：
+  - provider 已回到空闲输入提示符时，agent 应显示 `idle`
+  - 没有 CCB running job 时，不应因历史 scrollback 显示 `pending`
+- 实际结果：
+  - agent1/agent2 的 runtime 均为 `idle/restored/alive`
+  - `project_view` 返回 `activity_state=pending`、`activity_reason=provider_waiting_for_user`
+  - pane 尾部实际已是 Codex 空闲 prompt
+- 影响范围：
+  - Codex/Claude provider pane 文本启发式状态判断
+  - 无 CCB job 的人工交互状态显示
+  - sidebar 顶部 agent 状态灯
+- 初步判断：
+  - 不是 sidebar TUI 渲染问题；错误状态由 ccbd `project_view` 返回
+  - 与 `af69c57/3a591c5 -> 当前` 合并差异关系不大，该模块基本未改，属于原始状态算法精度不足
+- 根因：
+  - `project_view.activity` 对 provider prompt/working 的检测基于捕获文本的宽松关键词
+  - `provider_waiting_for_user` 使用全量 normalized text，旧 scrollback 里的提示词会污染当前状态
+  - 没有先按 provider 当前 prompt 段截断，也没有把“尾部空闲 prompt”作为更高优先级事实
+- 系统性修复方案：
+  - provider 文本判断只使用最近活跃段或最后若干非空行
+  - 对 Codex/Claude 的尾部空闲 prompt 增加优先级：无 running job 时直接归为 `idle`
+  - `running job` 场景仍保留 stuck/pending 判断，但必须要求 job id 或当前 prompt 段证据
+  - 后续更强方案：接入 provider-native session/event 信号；pane 文本只作为 fallback
+- 回归测试：
+  - 历史 provider prompt 后已回到 Codex 空闲输入，activity 必须是 `idle`
+  - 历史 working/interrupt 文本后已回到 prompt，activity 不得误判 `active`
+  - running job + 当前 prompt idle 仍保持 recoverable/stuck 判断
+
 - 状态：`fixed-retested`
 - 标题：`后台恢复缺少持久化 supervision authority，导致“恢复中/最近失败原因/daemon 代际”不可见`
 - 根因分类：`runtime-supervision`

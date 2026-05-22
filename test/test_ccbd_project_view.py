@@ -1345,6 +1345,38 @@ def test_activity_resolver_provider_prompt() -> None:
     assert activity.reason == 'provider_waiting_for_user'
 
 
+def test_activity_resolver_ignores_stale_provider_prompt_after_codex_idle_prompt() -> None:
+    pane_text = '\n'.join(
+        [
+            'Do you trust the contents of this directory?',
+            'Press enter to continue',
+            '',
+            '› CCB_REQ_ID: job_old',
+            '',
+            '• done',
+            '',
+            '› Implement {feature}',
+            '',
+            '  gpt-5.5 xhigh · ~/yunwei/test_ccb2',
+        ]
+    )
+
+    activity = resolve_agent_activity(
+        AgentActivityFacts(
+            namespace_mounted=True,
+            runtime_state='idle',
+            pane_id='%1',
+            pane_state='alive',
+            pane_text=pane_text,
+        ),
+        now=NOW,
+    )
+
+    assert activity.state == 'idle'
+    assert activity.source == 'pane_liveness'
+    assert activity.reason == 'pane_alive'
+
+
 def test_activity_resolver_provider_prompt_idle_after_running_request() -> None:
     activity = resolve_agent_activity(
         AgentActivityFacts(
@@ -1508,6 +1540,37 @@ def test_activity_resolver_ignores_stale_provider_working_history() -> None:
             '',
         ]
     )
+    activity = resolve_agent_activity(
+        AgentActivityFacts(
+            namespace_mounted=True,
+            runtime_state='idle',
+            pane_id='%3',
+            pane_state='alive',
+            pane_text=pane_text,
+        ),
+        now=NOW,
+    )
+
+    assert activity.state == 'idle'
+    assert activity.source == 'pane_liveness'
+    assert activity.reason == 'pane_alive'
+
+
+def test_activity_resolver_ignores_stale_working_history_after_tail_prompt() -> None:
+    pane_text = '\n'.join(
+        [
+            'Working (28s • esc to interrupt)',
+            '',
+            '› Find and fix a bug in @filename',
+            '',
+            '• fixed',
+            '',
+            '› Run /review on my current changes',
+            '',
+            '  gpt-5.5 xhigh · ~/yunwei/test_ccb2',
+        ]
+    )
+
     activity = resolve_agent_activity(
         AgentActivityFacts(
             namespace_mounted=True,

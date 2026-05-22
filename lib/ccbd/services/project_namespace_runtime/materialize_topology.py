@@ -22,6 +22,14 @@ from .backend import (
 from .sidebar_helper import sidebar_respawn_args
 
 
+def refresh_topology_ui(context) -> None:
+    apply_project_tmux_ui(
+        tmux_socket_path=context.desired_socket_path,
+        tmux_session_name=context.desired_session_name,
+        backend=context.backend,
+    )
+
+
 def materialize_topology(
     controller,
     context,
@@ -93,6 +101,7 @@ def materialize_topology(
             )
         )
 
+    refresh_topology_ui(context)
     select_window(
         context.backend,
         target=session_window_target(context.desired_session_name, topology_plan.entry_window),
@@ -422,6 +431,7 @@ def _respawn_sidebar(backend, pane_id: str, launch_args: tuple[str, ...], *, cwd
 __all__ = [
     'existing_topology_agent_panes',
     'materialize_topology',
+    'refresh_topology_ui',
     'topology_active_panes',
     'topology_recreate_reason',
 ]

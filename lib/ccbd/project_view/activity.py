@@ -180,6 +180,9 @@ def resolve_agent_activity(
                 current_job_id=facts.current_job_id,
             )
 
+    if runtime_state == 'idle' and _provider_tail_idle_prompt(facts.pane_text):
+        return AgentActivity(ACTIVITY_IDLE, 'pane_liveness', 'pane_alive')
+
     if _provider_waiting_for_user(facts.pane_text):
         return AgentActivity(ACTIVITY_PENDING, 'provider_prompt', 'provider_waiting_for_user')
     if _provider_working(facts.pane_text):
@@ -206,7 +209,7 @@ def _pane_missing(facts: AgentActivityFacts) -> bool:
 
 
 def _provider_waiting_for_user(pane_text: str | None) -> bool:
-    normalized = ' '.join(str(pane_text or '').lower().split())
+    normalized = _provider_recent_text(pane_text)
     if not normalized:
         return False
     return all(marker in normalized for marker in _PROVIDER_PROMPT_MARKERS)
@@ -228,6 +231,31 @@ def _provider_recent_text(pane_text: str | None) -> str:
     if not lines:
         return ''
     return ' '.join(' '.join(lines[-_PROVIDER_WORKING_TAIL_LINES:]).split())
+
+
+def _provider_tail_idle_prompt(pane_text: str | None) -> bool:
+    lines = [line.strip().replace('\xa0', ' ') for line in str(pane_text or '').splitlines() if line.strip()]
+    if not lines:
+        return False
+    prompt_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if _is_provider_input_prompt_line(line)
+    ]
+    if not prompt_indexes:
+        return False
+    last_prompt = max(prompt_indexes)
+    tail = ' '.join(lines[last_prompt:]).lower()
+    if any(marker in tail for marker in _PROVIDER_ACTIVE_MARKERS):
+        return False
+    if any(word in tail for word in _PROVIDER_ACTIVE_WORDS) and 'interrupt' in tail:
+        return False
+    return True
+
+
+def _is_provider_input_prompt_line(line: str) -> bool:
+    text = str(line or '').strip()
+    return any(text == marker or text.startswith(f'{marker} ') for marker in _PROVIDER_IDLE_PROMPTS)
 
 
 def _codex_ready_after_active_marker(pane_text: str | None) -> bool:

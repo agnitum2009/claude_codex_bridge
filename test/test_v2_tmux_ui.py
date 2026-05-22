@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+import subprocess
 from types import SimpleNamespace
 
 import cli.services.tmux_ui as tmux_ui
@@ -153,6 +155,44 @@ def test_apply_project_tmux_ui_applies_window_theme_for_contrast_profile(monkeyp
     assert ['set-window-option', '-t', 'ccb-demo', 'pane-border-style', 'fg=#565f89,bold'] in calls
     assert ['set-window-option', '-t', 'ccb-demo', 'window-style', 'bg=#181825'] in calls
     assert ['set-window-option', '-t', 'ccb-demo', 'window-active-style', 'bg=#1e1e2e'] in calls
+
+
+def test_border_script_keeps_sidebar_active_border_gray(tmp_path: Path) -> None:
+    fake_bin = tmp_path / 'bin'
+    fake_bin.mkdir()
+    log_path = tmp_path / 'tmux.log'
+    fake_tmux = fake_bin / 'tmux'
+    fake_tmux.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> {log_path}
+if [[ "$1 $2 $3 $4" == "display-message -p -t %0" ]]; then
+  case "$5" in
+    "#{{@ccb_active_border_style}}") printf '%s\\n' 'fg=#6c7086' ;;
+    "#{{@ccb_border_style}}") printf '%s\\n' 'fg=#6c7086' ;;
+    "#{{@ccb_role}}") printf '%s\\n' 'sidebar' ;;
+    "#{{session_name}}:#{{window_name}}") printf '%s\\n' 'ccb-demo:main' ;;
+    *) printf '\\n' ;;
+  esac
+fi
+""",
+        encoding='utf-8',
+    )
+    fake_tmux.chmod(0o755)
+
+    proc = subprocess.run(
+        ['bash', str(Path('config/ccb-border.sh').resolve()), '%0'],
+        env={**os.environ, 'PATH': f'{fake_bin}:{os.environ.get("PATH", "")}'},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    calls = log_path.read_text(encoding='utf-8')
+    assert 'list-panes' not in calls
+    assert 'set-option -p -t %0 pane-active-border-style fg=#6c7086' in calls
 
 
 def test_detect_ccb_version_prefers_current_install_over_path(monkeypatch, tmp_path: Path) -> None:

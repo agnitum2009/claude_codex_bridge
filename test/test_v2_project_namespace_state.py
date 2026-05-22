@@ -156,6 +156,13 @@ class _FakeTmuxBackend:
         self.sessions.pop(session_name, None)
         self.active_windows.pop(session_name, None)
 
+    def list_panes_by_user_options(self, expected: dict[str, str]) -> list[str]:
+        matches = []
+        for pane_id, options in self.pane_options.items():
+            if all(str(options.get(key, '') or '').strip() == value for key, value in expected.items()):
+                matches.append(pane_id)
+        return matches
+
     def _tmux_run(
         self,
         args: list[str],
@@ -383,6 +390,65 @@ bottom_height = 20
         'agent2': '%4',
         'agent3': '%5',
     }
+    assert backend.window_options[
+        f'{layout.ccbd_tmux_session_name}:main'
+    ]['pane-border-status'] == 'top'
+    assert backend.window_options[
+        f'{layout.ccbd_tmux_session_name}:review'
+    ]['pane-border-status'] == 'top'
+    assert 'pane-border-format' in backend.window_options[f'{layout.ccbd_tmux_session_name}:main']
+    assert 'pane-border-format' in backend.window_options[f'{layout.ccbd_tmux_session_name}:review']
+
+
+def test_project_namespace_controller_refreshes_topology_ui_for_existing_session(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-topology-refresh'
+    (project_root / '.ccb').mkdir(parents=True)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        """version = 2
+entry_window = "review"
+
+[windows]
+main = "agent1:codex"
+review = "agent2:codex, agent3:claude"
+
+[ui.sidebar]
+mode = "every_window"
+width = "15%"
+bottom_height = 20
+""",
+        encoding='utf-8',
+    )
+    config = load_project_config(project_root).config
+    layout = PathLayout(project_root)
+    backend = _FakeTmuxBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        'proj-topology-refresh',
+        clock=lambda: '2026-04-03T02:20:00Z',
+        backend_factory=lambda socket_path=None: backend,
+    )
+    topology_plan = build_namespace_topology_plan(
+        config,
+        ccbd_socket_path=str(layout.ccbd_socket_path),
+        project_root=str(project_root),
+    )
+
+    first = controller.ensure(topology_plan=topology_plan)
+    backend.window_options[f'{layout.ccbd_tmux_session_name}:review'] = {
+        'pane-border-status': 'off',
+        'pane-border-format': '#{pane_index}',
+    }
+
+    second = controller.ensure(topology_plan=topology_plan)
+
+    assert second.created_this_call is False
+    assert second.namespace_epoch == first.namespace_epoch
+    assert backend.window_options[
+        f'{layout.ccbd_tmux_session_name}:review'
+    ]['pane-border-status'] == 'top'
+    assert backend.window_options[
+        f'{layout.ccbd_tmux_session_name}:review'
+    ]['pane-border-format'] != '#{pane_index}'
 
 
 def test_project_namespace_controller_applies_server_policy_when_reusing_session(tmp_path: Path) -> None:
