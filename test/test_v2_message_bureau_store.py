@@ -107,6 +107,7 @@ def test_attempt_and_reply_stores_support_message_and_agent_queries(tmp_path: Pa
             agent_name='Agent1',
             terminal_status=ReplyTerminalStatus.COMPLETED,
             reply='done',
+            reply_artifact={'path': '/tmp/reply.txt', 'bytes': 5000, 'sha256': 'abc'},
             diagnostics={'tokens': 12},
             finished_at='2026-03-30T11:03:00Z',
         )
@@ -121,4 +122,5 @@ def test_attempt_and_reply_stores_support_message_and_agent_queries(tmp_path: Pa
     latest_reply = reply_store.get_latest('rep-1')
     assert latest_reply is not None
     assert latest_reply.agent_name == 'agent1'
+    assert latest_reply.reply_artifact == {'path': '/tmp/reply.txt', 'bytes': 5000, 'sha256': 'abc'}
     assert [reply.reply_id for reply in reply_store.list_message('msg-1')] == ['rep-1']

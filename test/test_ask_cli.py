@@ -70,6 +70,7 @@ def test_ask_alias_help_uses_canonical_usage(monkeypatch) -> None:
     assert 'ask --compact agent1 review latest diff' in text
     assert 'ask --silence agent1 run smoke check' in text
     assert 'ask --callback agent2 collect evidence for this task' in text
+    assert 'ask get <job_id>    diagnostics-only: inspect one submitted job' in text
     assert '--task-id' not in text
     assert '[from <sender>]' not in text
     assert '`ask` is a compatibility alias for `ccb ask`.' in text

@@ -110,6 +110,7 @@ def _message_envelope_from_record(record: dict) -> MessageEnvelope:
         delivery_scope=DeliveryScope(record['delivery_scope']),
         silence_on_success=bool(record.get('silence_on_success', False)),
         route_options=dict(record.get('route_options') or {}),
+        body_artifact=record.get('body_artifact') if isinstance(record.get('body_artifact'), dict) else None,
     )
 
 

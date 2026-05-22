@@ -3,6 +3,7 @@ from __future__ import annotations
 from agents.models import AgentState
 from ccbd.api_models import DeliveryScope, JobRecord, MessageEnvelope, TargetKind
 from message_bureau import AttemptState, AttemptStore, MessageStore
+from storage.text_artifacts import TEXT_ARTIFACT_SPILL_BYTES, should_spill_text, validate_text_artifact_ref
 
 from .callbacks import validate_callback_request
 from .submission_models import _JobDraft, _message_for_agent, _SubmissionPlan
@@ -21,6 +22,7 @@ _TERMINAL_ATTEMPT_STATES = frozenset(
 
 def _plan_agent_submission(dispatcher, request: MessageEnvelope) -> _SubmissionPlan:
     dispatcher._validate_sender(request.from_actor)
+    _validate_request_body_artifact(dispatcher, request)
     validate_callback_request(dispatcher, request)
     targets = dispatcher._resolve_targets(request)
     if not targets:
@@ -47,6 +49,7 @@ def _plan_message_resubmission(dispatcher, message_id: str) -> _SubmissionPlan:
 
     request = _resubmission_request(original_message, jobs)
     dispatcher._validate_sender(request.from_actor)
+    _validate_request_body_artifact(dispatcher, request)
     dispatcher._validate_targets_available(original_message.target_agents)
 
     submission_id = dispatcher._new_id('sub') if request.delivery_scope is DeliveryScope.BROADCAST else None
@@ -159,7 +162,21 @@ def _resubmission_request(original_message, jobs: list[JobRecord]) -> MessageEnv
         delivery_scope=delivery_scope,
         silence_on_success=source.silence_on_success,
         route_options=dict(source.route_options or {}),
+        body_artifact=dict(source.body_artifact) if source.body_artifact else None,
     )
+
+
+def _validate_request_body_artifact(dispatcher, request: MessageEnvelope) -> None:
+    if request.body_artifact:
+        if should_spill_text(request.body, threshold_bytes=TEXT_ARTIFACT_SPILL_BYTES):
+            raise dispatcher._dispatch_error('ask body stub exceeds 4 KiB even though a body artifact is present')
+        try:
+            validate_text_artifact_ref(dispatcher._layout, request.body_artifact)
+        except Exception as exc:
+            raise dispatcher._dispatch_error(f'invalid ask body artifact: {exc}') from exc
+        return
+    if should_spill_text(request.body, threshold_bytes=TEXT_ARTIFACT_SPILL_BYTES):
+        raise dispatcher._dispatch_error('ask body exceeds 4 KiB and must be submitted with a CCB body artifact')
 
 
 def _attempt_sort_key(record) -> tuple:

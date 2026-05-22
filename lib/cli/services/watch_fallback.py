@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from completion.snapshot_store import CompletionSnapshotStore
 from jobs.store import JobEventStore, JobStore
+from message_bureau.store import AttemptStore, ReplyStore
 from storage.paths import PathLayout
 
 _TERMINAL_JOB_STATUSES = frozenset({'completed', 'cancelled', 'failed', 'incomplete'})
@@ -32,6 +33,7 @@ def load_persisted_terminal_watch_payload(context, target: str, *, cursor: int =
     status = _resolved_terminal_status(job, latest_decision=latest_decision)
     if status not in _TERMINAL_JOB_STATUSES:
         return None
+    visible_reply, visible_source = _persisted_visible_reply(layout, job, latest_decision=latest_decision)
 
     next_cursor, filtered_events = _read_job_events(
         layout,
@@ -51,7 +53,8 @@ def load_persisted_terminal_watch_payload(context, target: str, *, cursor: int =
         'generation': None,
         'terminal': True,
         'status': status,
-        'reply': str(getattr(latest_decision, 'reply', '') or ''),
+        'reply': visible_reply,
+        'visible_reply_source': visible_source,
         'events': filtered_events,
     }
 
@@ -72,6 +75,28 @@ def _resolved_terminal_status(job, *, latest_decision) -> str:
     if job_status in _TERMINAL_JOB_STATUSES:
         return job_status
     return str(getattr(getattr(latest_decision, 'status', None), 'value', '') or '').strip().lower()
+
+
+def _persisted_visible_reply(layout: PathLayout, job, *, latest_decision) -> tuple[str, str]:
+    terminal = getattr(job, 'terminal_decision', None)
+    if isinstance(terminal, dict) and bool(terminal.get('delegated') or terminal.get('callback_edge_id')):
+        reply = _latest_reply_for_job_message(layout, job)
+        if reply is not None:
+            return reply.reply, 'message_bureau_reply'
+        return '', 'callback_delegated_pending'
+    return str(getattr(latest_decision, 'reply', '') or ''), 'snapshot'
+
+
+def _latest_reply_for_job_message(layout: PathLayout, job):
+    if job is None:
+        return None
+    attempt = AttemptStore(layout).get_latest_by_job_id(job.job_id)
+    if attempt is None:
+        return None
+    replies = ReplyStore(layout).list_message(attempt.message_id)
+    if not replies:
+        return None
+    return sorted(replies, key=lambda item: (item.finished_at, item.reply_id))[-1]
 
 
 def _read_job_events(

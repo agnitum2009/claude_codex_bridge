@@ -70,10 +70,10 @@ def print_start_help(*, file=None) -> None:
               ccb ask <agent> [from <sender>] <message>
               ccb doctor
 
-            Secondary control-plane status:
+            Diagnostics-only control-plane status:
               ccb ping <agent|ccbd>
 
-            Supplementary observer:
+            Diagnostics-only observer:
               ccb pend <agent|job_id> [N]
               ccb pend --watch <agent|job_id>
               ccb pend --inbox [--detail] <agent>
@@ -126,7 +126,7 @@ _COMMAND_HELP = {
     "ping": """
         usage: ccb ping <agent|all|ccbd>
 
-        Light control-plane status:
+        Diagnostics-only control-plane status:
           ccb ping <agent>   Show cached runtime status for one named agent.
           ccb ping all       Show cached mounted-agent status across the project.
           ccb ping ccbd      Show cached project daemon status.
@@ -134,7 +134,8 @@ _COMMAND_HELP = {
     "pend": """
         usage: ccb pend [--watch|--inbox|--queue] [--detail] <agent|job_id|all> [N]
 
-        Weak observer surface:
+        Diagnostics-only weak observer surface:
+          These commands are not part of normal ask workflows.
           Primary weak observer entrypoint:
             ccb pend <agent>                    Show a non-authoritative observer snapshot for one agent.
             ccb pend <job_id>                   Show a non-authoritative observer snapshot for one submitted job.
@@ -149,9 +150,10 @@ _COMMAND_HELP = {
     "watch": """
         usage: ccb watch <agent|job_id>
 
-        Weak observer compatibility entrypoint:
+        Diagnostics-only weak observer compatibility entrypoint:
           ccb watch <agent>   Stream non-authoritative observer events for one agent.
           ccb watch <job_id>  Stream non-authoritative observer events for one job until terminal completion or timeout.
+          This is not part of normal ask workflows.
           Prefer `ccb pend --watch <agent|job_id>` as the converged observer entrypoint.
           Do not treat non-terminal watch output as authoritative completion.
           Use `ccb trace <id>` for lineage when needed.

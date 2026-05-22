@@ -7,6 +7,7 @@ from ccbd.api_models import DeliveryScope
 from mailbox_runtime.targets import NON_AGENT_ACTORS
 
 from .records import get_job, latest_for_agent
+from .visible_reply import visible_reply_for_job
 
 
 def validate_sender(dispatcher, sender: str) -> None:
@@ -68,7 +69,7 @@ def build_watch_payload(dispatcher, target: str, *, start_line: int = 0) -> dict
     cursor, events = dispatcher._event_store.read_since_target(latest.target_kind, target_name, start_line)
     filtered = [event for event in events if event.job_id == job_id]
     snapshot = dispatcher._snapshot_writer.load(job_id)
-    terminal_decision = latest.terminal_decision if isinstance(latest.terminal_decision, dict) else None
+    visible = visible_reply_for_job(dispatcher, latest, snapshot)
     terminal = False
     if latest.status in dispatcher._terminal_event_by_status:
         terminal = True
@@ -83,10 +84,10 @@ def build_watch_payload(dispatcher, target: str, *, start_line: int = 0) -> dict
         'cursor': cursor,
         'terminal': terminal,
         'status': latest.status.value,
-        'reply': (
-            str(terminal_decision.get('reply') or '')
-            if terminal_decision is not None
-            else (snapshot.latest_decision.reply if snapshot is not None else '')
-        ),
+        'reply': visible.reply,
+        'completion_reason': visible.reason,
+        'visible_reply_source': visible.source,
+        'visible_reply_id': visible.reply_id,
+        'message_id': visible.message_id,
         'events': [event.to_record() for event in filtered],
     }

@@ -41,6 +41,7 @@ def _message_for_agent(request: MessageEnvelope, *, agent_name: str) -> MessageE
         delivery_scope=DeliveryScope.SINGLE,
         silence_on_success=request.silence_on_success,
         route_options=dict(request.route_options or {}),
+        body_artifact=dict(request.body_artifact) if request.body_artifact else None,
     )
 
 

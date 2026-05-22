@@ -21,6 +21,7 @@ class MessageEnvelope:
     delivery_scope: DeliveryScope
     silence_on_success: bool = False
     route_options: dict[str, Any] = field(default_factory=dict)
+    body_artifact: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.project_id:
@@ -37,6 +38,11 @@ class MessageEnvelope:
             object.__setattr__(self, "to_agent", normalize_agent_name(self.to_agent))
         object.__setattr__(self, "from_actor", normalize_actor_name(self.from_actor))
         object.__setattr__(self, "route_options", dict(self.route_options or {}))
+        object.__setattr__(
+            self,
+            "body_artifact",
+            dict(self.body_artifact) if isinstance(self.body_artifact, dict) else None,
+        )
         if self.to_agent == "all" and self.delivery_scope is not DeliveryScope.BROADCAST:
             raise ValueError("to_agent=all requires delivery_scope=broadcast")
         if self.to_agent != "all" and self.delivery_scope is not DeliveryScope.SINGLE:
@@ -54,6 +60,7 @@ class MessageEnvelope:
             "delivery_scope": self.delivery_scope.value,
             "silence_on_success": bool(self.silence_on_success),
             "route_options": dict(self.route_options),
+            "body_artifact": dict(self.body_artifact) if self.body_artifact else None,
         }
 
 __all__ = ["MessageEnvelope"]

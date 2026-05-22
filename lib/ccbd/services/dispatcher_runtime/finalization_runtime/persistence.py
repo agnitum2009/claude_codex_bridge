@@ -9,6 +9,7 @@ from completion.models import CompletionDecision
 from ..completion import build_terminal_state, merge_terminal_decision
 from ..records import append_event, append_job
 from ..runtime_state import sync_runtime
+from .artifacts import spill_terminal_reply_if_needed
 
 
 def persist_terminal_completion(
@@ -24,6 +25,12 @@ def persist_terminal_completion(
         decision,
         completion_tracker=dispatcher._completion_tracker,
         prior_snapshot=prior_snapshot,
+    )
+    terminal_decision = spill_terminal_reply_if_needed(
+        dispatcher,
+        current,
+        terminal_decision,
+        finished_at=finished_at,
     )
     if dispatcher._completion_tracker is not None:
         dispatcher._completion_tracker.finish(current.job_id)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from completion.models import CompletionConfidence, CompletionDecision, CompletionStatus
+from ccbd.services.dispatcher_runtime.visible_reply import visible_reply_for_job
 
 
 def _resolve_requested_job(dispatcher, payload: dict):
@@ -36,8 +37,9 @@ def _terminal_decision_from_job(job) -> CompletionDecision | None:
         return None
 
 
-def _build_result_payload(job, snapshot) -> dict:
+def _build_result_payload(dispatcher, job, snapshot) -> dict:
     latest_decision = _terminal_decision_from_job(job) or (snapshot.latest_decision if snapshot is not None else None)
+    visible = visible_reply_for_job(dispatcher, job, snapshot)
     return {
         'job_id': job.job_id,
         'agent_name': job.agent_name,
@@ -48,10 +50,17 @@ def _build_result_payload(job, snapshot) -> dict:
         'status': job.status.value,
         'job': job.to_record(),
         'snapshot': snapshot.to_record() if snapshot else None,
-        'reply': latest_decision.reply if latest_decision else '',
-        'completion_reason': latest_decision.reason if latest_decision else None,
-        'completion_confidence': latest_decision.confidence.value if latest_decision and latest_decision.confidence else None,
-        'updated_at': snapshot.updated_at if snapshot else job.updated_at,
+        'reply': visible.reply,
+        'completion_reason': visible.reason,
+        'completion_confidence': (
+            visible.confidence
+            if visible.confidence is not None
+            else (latest_decision.confidence.value if latest_decision and latest_decision.confidence else None)
+        ),
+        'updated_at': visible.updated_at or (snapshot.updated_at if snapshot else job.updated_at),
+        'visible_reply_source': visible.source,
+        'visible_reply_id': visible.reply_id,
+        'message_id': visible.message_id,
     }
 
 
@@ -70,7 +79,7 @@ def build_get_handler(dispatcher, *, health_monitor=None):
         if job is None:
             raise ValueError('job not found')
         snapshot = dispatcher.get_snapshot(job.job_id)
-        result = _build_result_payload(job, snapshot)
+        result = _build_result_payload(dispatcher, job, snapshot)
         return _append_generation(result, health_monitor)
 
     return handle

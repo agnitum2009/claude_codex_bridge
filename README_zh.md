@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.8-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.2.9-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,9 +74,9 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **配置来源显式化**：CCB 会报告当前配置来自内置默认、用户 `~/.ccb/ccb.config`，还是项目 `.ccb/ccb.config`。
-- **`ccb kill` 清理顺序修复**：project tmux namespace destroy 延后到 `stop_all` 回包后的 finalize 阶段，避免从 CCB tmux pane 执行 kill 时清理只跑一半。
-- **Managed tmux 继续隔离但保留可用性**：CCB 在 project namespace 和 detached tmux 路径中显式启用自有 `mouse on` 与 `set-clipboard on` policy。
+- **Callback root 能看到最终回复**：委派式 callback root job 等待子链路时显示 `callback_pending`，continuation 完成后 `ask get` 和 `watch` 会显示最终 message-bureau reply。
+- **Observer 命令仅用于诊断**：ask skill 和帮助界面会明确 `ask get`、`pend`、`watch`、`ping` 是调试工具，不是普通 ask 工作流步骤。
+- **长文本改为 artifact 支撑**：超长 ask body、终态回复、notice 和 callback continuation 文本会保存为有预览的 UTF-8 artifact，并进入诊断 bundle。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -329,6 +329,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.2.9</b> - Callback Visibility And Diagnostics Release</summary>
+
+- 委派式 callback root job 在子链路运行期间显示 `callback_pending`，continuation 完成后 `ask get` 和 `watch` 会解析到最终 message-bureau reply。
+- 在继承 ask skills、CLI help、memory-facing wording 和测试中，将 `ask get`、`pend`、`watch`、`ping` 标记为 diagnostics-only。
+- 将超长 ask body、终态回复、notice 和 callback continuation 文本保存到 `.ccb/ccbd/artifacts/text/`，保留短预览并纳入诊断 bundle。
+- 强化 shutdown cleanup：remote kill 同时跟踪预先快照和当前发布的 control-plane pid，foreground tmux namespace 退出后会 best-effort stop backend。
+
+</details>
+
+<details>
 <summary><b>v6.2.8</b> - Config Source, Stop Cleanup, And Tmux Policy Release</summary>
 
 - 包含显式配置来源：内置默认、用户 `~/.ccb/ccb.config`、项目 `.ccb/ccb.config`，并保持项目配置优先级最高。

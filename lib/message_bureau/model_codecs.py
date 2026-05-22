@@ -120,6 +120,11 @@ def normalize_reply_record(model) -> None:
     _require_value('agent_name', model.agent_name)
     object.__setattr__(model, 'agent_name', normalize_agent_name(model.agent_name))
     object.__setattr__(model, 'terminal_status', ReplyTerminalStatus(model.terminal_status))
+    object.__setattr__(
+        model,
+        'reply_artifact',
+        dict(model.reply_artifact) if isinstance(model.reply_artifact, dict) else None,
+    )
     object.__setattr__(model, 'diagnostics', dict(model.diagnostics or {}))
 
 
@@ -133,6 +138,7 @@ def reply_to_record(model) -> dict[str, Any]:
         'agent_name': model.agent_name,
         'terminal_status': model.terminal_status.value,
         'reply': model.reply,
+        'reply_artifact': dict(model.reply_artifact) if model.reply_artifact else None,
         'diagnostics': dict(model.diagnostics),
         'finished_at': model.finished_at,
     }
@@ -149,6 +155,7 @@ def reply_from_record(record: dict[str, Any]) -> dict[str, Any]:
             str(record.get('terminal_status', ReplyTerminalStatus.COMPLETED.value))
         ),
         'reply': str(record.get('reply') or ''),
+        'reply_artifact': record.get('reply_artifact') if isinstance(record.get('reply_artifact'), dict) else None,
         'diagnostics': dict(record.get('diagnostics') or {}),
         'finished_at': str(record.get('finished_at') or ''),
     }

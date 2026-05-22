@@ -143,6 +143,8 @@ def inbox_item_summary(service, event, *, position: int) -> dict[str, object]:
         )
         if position == 1:
             item['reply'] = reply.reply
+            if reply.reply_artifact:
+                item['reply_artifact'] = dict(reply.reply_artifact)
     return item
 
 

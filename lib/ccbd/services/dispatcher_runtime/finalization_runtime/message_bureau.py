@@ -14,6 +14,7 @@ from ..callbacks import (
     submit_callback_continuation,
 )
 from ..reply_delivery import is_reply_delivery_job
+from .artifacts import spill_terminal_reply_if_needed
 from .message_bureau_persistence import persist_reply_decision
 from .message_bureau_retry import reply_decision_without_automatic_retry, schedule_automatic_retry
 
@@ -61,6 +62,12 @@ def record_message_bureau_completion(
             finished_at=finished_at,
         )
     if reply_decision is not decision:
+        reply_decision = spill_terminal_reply_if_needed(
+            dispatcher,
+            current,
+            reply_decision,
+            finished_at=finished_at,
+        )
         terminal = persist_reply_decision(
             dispatcher,
             current,

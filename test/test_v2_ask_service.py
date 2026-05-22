@@ -7,14 +7,27 @@ from types import SimpleNamespace
 
 import pytest
 
-from ccbd.api_models import DeliveryScope
+from ccbd.api_models import DeliveryScope, JobRecord, JobStatus, MessageEnvelope
 from ccbd.socket_client import CcbdClientError
 from cli.context import CliContextBuilder
 from cli.models import ParsedAskCommand
 from cli.services import ask as ask_service
+from cli.services.watch_fallback import load_persisted_terminal_watch_payload
 from cli.services.ask_runtime.submission import message_with_reply_guidance
 from cli.services.daemon import CcbdServiceError
+from completion.models import (
+    CompletionConfidence,
+    CompletionDecision,
+    CompletionFamily,
+    CompletionSnapshot,
+    CompletionState,
+    CompletionStatus,
+)
+from completion.snapshot_store import CompletionSnapshotStore
+from jobs.store import JobStore
+from message_bureau import AttemptRecord, AttemptState, AttemptStore, ReplyRecord, ReplyStore, ReplyTerminalStatus
 from project.ids import compute_project_id
+from storage.paths import PathLayout
 
 
 def _build_context(project_root: Path) -> object:
@@ -50,6 +63,7 @@ def test_submit_ask_maps_broadcast_payload_and_submission(monkeypatch: pytest.Mo
             captured['to_agent'] = envelope.to_agent
             captured['from_actor'] = envelope.from_actor
             captured['body'] = envelope.body
+            captured['body_artifact'] = envelope.body_artifact
             captured['reply_to'] = envelope.reply_to
             captured['message_type'] = envelope.message_type
             captured['delivery_scope'] = envelope.delivery_scope
@@ -96,6 +110,7 @@ def test_submit_ask_maps_broadcast_payload_and_submission(monkeypatch: pytest.Mo
         'to_agent': 'all',
         'from_actor': 'agent1',
         'body': 'ship it',
+        'body_artifact': None,
         'reply_to': 'msg_1',
         'message_type': 'notify',
         'delivery_scope': DeliveryScope.BROADCAST,
@@ -139,6 +154,55 @@ def test_submit_ask_maps_callback_route_options(monkeypatch: pytest.MonkeyPatch,
 
     assert summary.jobs[0]['job_id'] == 'job_1'
     assert captured['route_options'] == {'mode': 'callback'}
+
+
+def test_submit_ask_spills_large_body_before_daemon_submit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-ask-large-body'
+    project_root.mkdir()
+    context = _build_context(project_root)
+    captured: dict[str, object] = {}
+    large_message = 'alpha-' + ('x' * 5000) + '-omega'
+
+    class _FakeClient:
+        def submit(self, envelope) -> dict:
+            captured['body'] = envelope.body
+            captured['body_artifact'] = envelope.body_artifact
+            return {
+                'job_id': 'job_1',
+                'agent_name': 'agent2',
+                'target_name': 'agent2',
+                'status': 'accepted',
+            }
+
+    monkeypatch.setattr(
+        ask_service,
+        'load_project_config',
+        lambda project_root: SimpleNamespace(config=SimpleNamespace(agents={'agent1': {}, 'agent2': {}})),
+    )
+    monkeypatch.setattr(ask_service, 'resolve_ask_sender', lambda context, sender: 'agent1')
+    monkeypatch.setattr(
+        ask_service,
+        'invoke_mounted_daemon',
+        lambda context, allow_restart_stale, request_fn: request_fn(_FakeClient()),
+    )
+
+    summary = ask_service.submit_ask(
+        context,
+        ParsedAskCommand(project=None, target='agent2', sender=None, message=large_message),
+    )
+
+    assert summary.jobs[0]['job_id'] == 'job_1'
+    body = str(captured['body'])
+    artifact = captured['body_artifact']
+    assert len(body.encode('utf-8')) <= 4096
+    assert 'larger than 4 KiB' in body
+    assert isinstance(artifact, dict)
+    artifact_path = Path(str(artifact['path']))
+    assert artifact_path.exists()
+    artifact_text = artifact_path.read_text(encoding='utf-8')
+    assert artifact_text.startswith('alpha-')
+    assert 'omega' in artifact_text
+    assert 'CCB reply guidance:' in artifact_text
 
 
 def test_message_with_reply_guidance_appends_compact_default() -> None:
@@ -488,6 +552,117 @@ def test_watch_ask_job_retries_when_reconnect_attempt_temporarily_fails(
     assert flaky.calls == [0]
     assert stable.calls == [0]
     assert seen == [False, False, False]
+
+
+def test_persisted_watch_fallback_resolves_callback_root_final_reply(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-ask-watch-callback-fallback'
+    project_root.mkdir()
+    context = _build_context(project_root)
+    layout = PathLayout(project_root)
+    finished_at = '2026-03-18T00:00:10Z'
+    request = MessageEnvelope(
+        project_id=context.project.project_id,
+        to_agent='agent1',
+        from_actor='user',
+        body='delegate and finish',
+        task_id='task-callback',
+        reply_to=None,
+        message_type='ask',
+        delivery_scope=DeliveryScope.SINGLE,
+    )
+    JobStore(layout).append(
+        JobRecord(
+            job_id='job_callback_root',
+            submission_id=None,
+            agent_name='agent1',
+            target_kind='agent',
+            target_name='agent1',
+            provider='codex',
+            provider_instance=None,
+            provider_options={},
+            request=request,
+            status=JobStatus.COMPLETED,
+            terminal_decision={
+                'schema_version': 2,
+                'record_type': 'completion_decision',
+                'terminal': True,
+                'status': 'completed',
+                'reason': 'task_complete',
+                'confidence': 'exact',
+                'reply': 'delegated to child',
+                'anchor_seen': True,
+                'reply_started': True,
+                'reply_stable': True,
+                'provider_turn_ref': 'turn-1',
+                'source_cursor': None,
+                'finished_at': finished_at,
+                'diagnostics': {},
+                'delegated': True,
+                'suppress_reply': True,
+                'callback_edge_id': 'cb_1',
+                'callback_child_job_id': 'job_child',
+            },
+            cancel_requested_at=None,
+            created_at='2026-03-18T00:00:00Z',
+            updated_at=finished_at,
+        )
+    )
+    AttemptStore(layout).append(
+        AttemptRecord(
+            attempt_id='att_root',
+            message_id='msg_root',
+            agent_name='agent1',
+            provider='codex',
+            job_id='job_callback_root',
+            retry_index=0,
+            health_snapshot_ref=None,
+            started_at='2026-03-18T00:00:00Z',
+            updated_at=finished_at,
+            attempt_state=AttemptState.COMPLETED,
+        )
+    )
+    ReplyStore(layout).append(
+        ReplyRecord(
+            reply_id='rep_final',
+            message_id='msg_root',
+            attempt_id='att_continuation',
+            agent_name='agent1',
+            terminal_status=ReplyTerminalStatus.COMPLETED,
+            reply='FINAL CALLBACK RESULT',
+            diagnostics={'reason': 'task_complete'},
+            finished_at='2026-03-18T00:00:20Z',
+        )
+    )
+    CompletionSnapshotStore(layout).save(
+        CompletionSnapshot(
+            job_id='job_callback_root',
+            agent_name='agent1',
+            profile_family=CompletionFamily.PROTOCOL_TURN,
+            state=CompletionState(terminal=True),
+            latest_decision=CompletionDecision(
+                terminal=True,
+                status=CompletionStatus.COMPLETED,
+                reason='task_complete',
+                confidence=CompletionConfidence.EXACT,
+                reply='delegated to child',
+                anchor_seen=True,
+                reply_started=True,
+                reply_stable=True,
+                provider_turn_ref='turn-1',
+                source_cursor=None,
+                finished_at=finished_at,
+                diagnostics={},
+            ),
+            latest_reply_preview='delegated to child',
+            updated_at=finished_at,
+        )
+    )
+
+    payload = load_persisted_terminal_watch_payload(context, 'job_callback_root')
+
+    assert payload is not None
+    assert payload['reply'] == 'FINAL CALLBACK RESULT'
+    assert payload['visible_reply_source'] == 'message_bureau_reply'
 
 
 def test_write_ask_output_appends_newline(tmp_path: Path) -> None:

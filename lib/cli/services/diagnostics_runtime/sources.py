@@ -72,6 +72,7 @@ def project_root_sources(
     items.extend(iter_dir_files('ccbd-snapshot', context.paths.ccbd_snapshots_dir, suffixes={'.json'}))
     items.extend(iter_dir_files('ccbd-cursor', context.paths.ccbd_cursors_dir, suffixes={'.json'}))
     items.extend(iter_dir_files('ccbd-heartbeat', context.paths.ccbd_heartbeats_dir, suffixes={'.json'}))
+    items.extend(iter_dir_files('ccbd-text-artifact', context.paths.ccbd_text_artifacts_dir, suffixes={'.txt'}))
     items.extend(iter_dir_files('ccbd-health', context.paths.ccbd_provider_health_dir, suffixes={'.jsonl'}))
     items.extend(iter_dir_files('ccbd-mailbox', context.paths.ccbd_mailboxes_dir, suffixes={'.json', '.jsonl'}))
     items.extend(iter_dir_files('ccbd-lease', context.paths.ccbd_leases_dir, suffixes={'.json'}))

@@ -29,6 +29,7 @@ class DispatcherRuntimeState:
     timing_sink: object | None = None
     last_restore_entries: tuple = ()
     last_restore_generated_at: str | None = None
+    last_text_artifact_sweep_at: float | None = None
 
 
 class DispatcherRuntimeStateMixin:
@@ -143,6 +144,14 @@ class DispatcherRuntimeStateMixin:
     @_last_restore_generated_at.setter
     def _last_restore_generated_at(self, value) -> None:
         self._runtime_state.last_restore_generated_at = value
+
+    @property
+    def _last_text_artifact_sweep_at(self):
+        return self._runtime_state.last_text_artifact_sweep_at
+
+    @_last_text_artifact_sweep_at.setter
+    def _last_text_artifact_sweep_at(self, value) -> None:
+        self._runtime_state.last_text_artifact_sweep_at = value
 
 
 __all__ = [

@@ -12,6 +12,7 @@ It is the authoritative design anchor for:
 - `.ccb/ccbd/start-policy.json`
 - `.ccb/ccbd/lifecycle.jsonl`
 - `.ccb/ccbd/heartbeats/<subject-kind>/*.json`
+- `.ccb/ccbd/artifacts/text/`
 - project-scoped backend log retention under `.ccb/ccbd/`
 - `ccb doctor`
 - `ccb doctor ps`
@@ -131,6 +132,7 @@ Rules:
 - `start-policy.json` records the persisted project recovery startup policy, including inherited `auto_permission` and forced recovery-restore semantics
 - `lifecycle.jsonl` records namespace creation/destruction and later runtime lifecycle events
 - `heartbeats/<subject-kind>/*.json` records non-lease heartbeat state for long-lived supervised subjects such as running jobs; these files are diagnostics/evidence, not backend ownership authority
+- `artifacts/text/` stores oversized CCB agent-to-agent message and reply text. Request bodies, terminal replies, notices, and callback continuations larger than 4 KiB are written there as UTF-8 text artifacts; ledgers store only the short preview plus artifact path, byte count, and sha256 metadata. These artifacts are diagnostics/evidence and transport support, not scheduling authority.
 - running-job heartbeat observations stay in diagnostics/events and must not be emitted as caller-visible mailbox replies; after three consecutive no-progress observations, the terminal `heartbeat_timeout` reply is the caller-visible outcome
 - daemon lease heartbeat and subject heartbeat must remain separate concepts and separate files
 - `doctor` and bundle export must include these records when present
@@ -201,6 +203,7 @@ The support bundle must include:
 - backend authority files such as lease, keeper, shutdown intent, and namespace state when present
 - backend recovery policy authority such as `start-policy.json` when present
 - persisted non-lease heartbeat state under `.ccb/ccbd/heartbeats/` when present
+- oversized CCB text artifacts under `.ccb/ccbd/artifacts/text/` when referenced by recent message/reply records
 - recent backend event streams such as supervision, namespace lifecycle, and cleanup history
 - backend stdout/stderr logs
 - per-agent runtime authority and recent agent/provider logs

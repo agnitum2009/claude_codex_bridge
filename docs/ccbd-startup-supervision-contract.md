@@ -387,6 +387,10 @@ Foreground command split:
     - the foreground attach RPC budget is allowed to match the stable operational client budget, while daemon config/probe checks must remain fast-fail
     - the foreground attach target-ready budget must remain bounded by the startup transaction budget so namespace/UI lag does not redefine backend startup authority
   - once the tmux client is observed attached, `ccb` should issue a best-effort tmux client refresh so the first attached frame does not depend on a manual user redraw
+  - if the foreground tmux client later exits and the authoritative project
+    session no longer exists on the project-owned socket, `ccb` must best-effort
+    request project stop-all before returning so `[server exited]` cannot leave
+    an apparently active backend behind
   - in a non-interactive terminal, reports the start transaction without attaching to tmux
   - startup success and foreground attach success are distinct outcomes; foreground attach failure must not rewrite a successful startup report as failed
   - foreground attach errors must state whether `ccbd` failed to answer the attach ping or whether `ccbd` was responsive but the project namespace was not attachable
@@ -590,8 +594,8 @@ That means:
 - once shutdown intent is acquired, new mutating RPC requests such as `submit`, `start`, `restore`, `retry`, or `attach` must be rejected with a stable lifecycle-level stopping error; clients must not surface raw socket reset errors as the user-visible contract
 - shutdown-style RPC handlers that return an after-response finalizer must enqueue that finalizer even when writing the response fails; `stop_all` may destroy the tmux pane that issued `ccb kill`, and a disconnected client must not prevent backend unmount/finalization
 - local daemon shutdown helpers must not stop at `mark_unmounted()` plus socket close; they must run the same stop-all cleanup transaction first so provider-runtime pid files, namespace state, and configured-agent authority do not survive a backend-local shutdown
-- CLI remote-stop shutdown helpers must snapshot structured control-plane pids and record shutdown intent before sending `stop_all`; post-stop inspections may observe a newer generation and must not become the authority for which pids to terminate
-- CLI remote-stop shutdown helpers must not treat lifecycle `phase=unmounted` alone as terminal; after a successful `stop_all` response they must also wait for the recorded `ccbd` and project `keeper` pids to exit, terminate lingering control-plane pids with the same bounded pid-tree cleanup used by the local shutdown path, and persist lifecycle `phase=unmounted` / `desired_state=stopped`
+- CLI remote-stop shutdown helpers must snapshot structured control-plane pids and record shutdown intent before sending `stop_all`; they must also keep tracking any current `ccbd` and project `keeper` pids still published by the project lease during the bounded shutdown wait so a missed pre-stop snapshot cannot leave a live backend behind
+- CLI remote-stop shutdown helpers must not treat lifecycle `phase=unmounted` alone as terminal; after a successful `stop_all` response they must also wait for the recorded and currently published `ccbd` / project `keeper` pids to exit, terminate lingering control-plane pids with the same bounded pid-tree cleanup used by the local shutdown path, and persist lifecycle `phase=unmounted` / `desired_state=stopped`
 - orphan process collection must include structured control-plane pid authority from `.ccb/ccbd/lease.json`, `.ccb/ccbd/keeper.json`, and `.ccb/ccbd/lifecycle.json`; `/proc` command-line matching is only a fallback evidence source and must not be the only way to find ccbd/keeper residue
 - control-plane `/proc` fallback matching must be scoped to CCB control-plane commands for the same `--project <project_root>`; it must not broadly kill every process whose command line mentions the project root
 - tmux shutdown cleanup must preserve full project socket paths from `TMUX`, `CCB_TMUX_SOCKET_PATH`, and runtime authority records; collapsing `/path/to/tmux.sock` to `tmux.sock` targets a different tmux server and violates project-scoped kill semantics

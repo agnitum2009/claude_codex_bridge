@@ -44,6 +44,9 @@ def test_export_diagnostic_bundle_collects_reports_and_log_tails(tmp_path: Path)
         '{"record_type":"heartbeat_state"}\n',
         encoding='utf-8',
     )
+    text_artifact_path = context.paths.ccbd_text_artifacts_dir / 'ask-request' / 'large.txt'
+    text_artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    text_artifact_path.write_text('large ask body\n', encoding='utf-8')
     context.paths.ccbd_startup_report_path.write_text('{"broken":false}\n', encoding='utf-8')
     context.paths.ccbd_dir.joinpath('ccbd.stdout.log').write_text('\n'.join(f'line {i}' for i in range(400)), encoding='utf-8')
     context.paths.agent_runtime_path('demo').parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +84,7 @@ def test_export_diagnostic_bundle_collects_reports_and_log_tails(tmp_path: Path)
     assert any(entry['archive_path'] == 'project/.ccb/ccbd/start-policy.json' for entry in manifest['entries'])
     assert any(entry['archive_path'] == 'project/.ccb/ccbd/lifecycle.jsonl' for entry in manifest['entries'])
     assert any(entry['archive_path'] == 'project/.ccb/ccbd/heartbeats/job_progress/job_1.json' for entry in manifest['entries'])
+    assert any(entry['archive_path'] == 'project/.ccb/ccbd/artifacts/text/ask-request/large.txt' for entry in manifest['entries'])
     assert any(entry['archive_path'] == 'project/.ccb/ccbd/startup-report.json' for entry in manifest['entries'])
     assert any(entry['archive_path'] == 'project/.ccb/ccbd/ccbd.stdout.log' for entry in manifest['entries'])
     assert any(entry['archive_path'] == 'project/.ccb/agents/demo/runtime.json' for entry in manifest['entries'])

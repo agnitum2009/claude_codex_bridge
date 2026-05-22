@@ -35,6 +35,7 @@ from message_bureau import MessageBureauControlService, MessageBureauFacade
 from provider_core.catalog import ProviderCatalog, build_default_provider_catalog
 from storage.paths import PathLayout
 
+from .dispatcher_runtime.artifact_maintenance import sweep_text_artifacts_if_due
 from .registry import AgentRegistry
 from .snapshot_writer import SnapshotWriter
 
@@ -111,6 +112,7 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
         return submit_jobs(self, request)
 
     def tick(self) -> tuple[JobRecord, ...]:
+        sweep_text_artifacts_if_due(self)
         repair_callback_edges(self)
         prepare_reply_deliveries(self)
         return tick_jobs(self)

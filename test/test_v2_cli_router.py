@@ -94,8 +94,8 @@ def test_run_cli_entrypoint_prints_start_help_without_phase2() -> None:
     assert "Core commands:" in stdout.getvalue()
     assert "ccb ask <agent> [from <sender>] <message>" in stdout.getvalue()
     assert "ccb doctor" in stdout.getvalue()
-    assert "Secondary control-plane status:" in stdout.getvalue()
-    assert "Supplementary observer:" in stdout.getvalue()
+    assert "Diagnostics-only control-plane status:" in stdout.getvalue()
+    assert "Diagnostics-only observer:" in stdout.getvalue()
     assert "ccb pend <agent|job_id> [N]" in stdout.getvalue()
     assert "ccb pend --queue [--detail] <agent|all>" in stdout.getvalue()
     assert "Advanced views:" in stdout.getvalue()
@@ -163,7 +163,7 @@ def test_run_cli_entrypoint_prints_ping_help() -> None:
 
     assert result == 0
     assert "usage: ccb ping <agent|all|ccbd>" in stdout.getvalue()
-    assert "Light control-plane status:" in stdout.getvalue()
+    assert "Diagnostics-only control-plane status:" in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 
@@ -182,7 +182,8 @@ def test_run_cli_entrypoint_prints_pend_help_as_supplementary_status() -> None:
 
     assert result == 0
     assert "usage: ccb pend [--watch|--inbox|--queue] [--detail] <agent|job_id|all> [N]" in stdout.getvalue()
-    assert "Weak observer surface:" in stdout.getvalue()
+    assert "Diagnostics-only weak observer surface:" in stdout.getvalue()
+    assert "These commands are not part of normal ask workflows." in stdout.getvalue()
     assert "ccb pend --watch <agent|job_id>" in stdout.getvalue()
     assert "ccb pend --queue <agent|all>" in stdout.getvalue()
     assert "ccb pend --queue --detail <agent>" in stdout.getvalue()
@@ -205,7 +206,8 @@ def test_run_cli_entrypoint_prints_watch_help_with_project_prefix() -> None:
 
     assert result == 0
     assert "usage: ccb watch <agent|job_id>" in stdout.getvalue()
-    assert "Weak observer compatibility entrypoint:" in stdout.getvalue()
+    assert "Diagnostics-only weak observer compatibility entrypoint:" in stdout.getvalue()
+    assert "This is not part of normal ask workflows." in stdout.getvalue()
     assert "Prefer `ccb pend --watch <agent|job_id>` as the converged observer entrypoint." in stdout.getvalue()
     assert "Do not treat non-terminal watch output as authoritative completion." in stdout.getvalue()
     assert stderr.getvalue() == ""
@@ -226,7 +228,8 @@ def test_run_cli_entrypoint_prints_watch_help_when_help_follows_operand() -> Non
 
     assert result == 0
     assert "usage: ccb watch <agent|job_id>" in stdout.getvalue()
-    assert "Weak observer compatibility entrypoint:" in stdout.getvalue()
+    assert "Diagnostics-only weak observer compatibility entrypoint:" in stdout.getvalue()
+    assert "This is not part of normal ask workflows." in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 
@@ -944,6 +947,7 @@ def test_run_cli_entrypoint_prints_ask_help() -> None:
     assert "ccb ask --compact agent1 review latest diff" in stdout.getvalue()
     assert "ccb ask --silence agent1 run smoke check" in stdout.getvalue()
     assert "ccb ask --callback agent2 collect evidence for this task" in stdout.getvalue()
+    assert "ccb ask get <job_id>    diagnostics-only: inspect one submitted job" in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 

@@ -35,6 +35,25 @@ def test_message_envelope_normalizes_agent_names_and_system_sender() -> None:
     assert envelope.from_actor == 'system'
 
 
+def test_message_envelope_round_trips_body_artifact() -> None:
+    envelope = MessageEnvelope(
+        project_id='proj',
+        to_agent='Agent1',
+        from_actor='System',
+        body='see artifact',
+        task_id=None,
+        reply_to=None,
+        message_type='ask',
+        delivery_scope=DeliveryScope.SINGLE,
+        body_artifact={'path': '/tmp/body.txt', 'bytes': 5000, 'sha256': 'abc'},
+    )
+
+    record = envelope.to_record()
+
+    assert record['body_artifact'] == {'path': '/tmp/body.txt', 'bytes': 5000, 'sha256': 'abc'}
+    assert envelope.body_artifact == {'path': '/tmp/body.txt', 'bytes': 5000, 'sha256': 'abc'}
+
+
 def test_message_envelope_preserves_non_agent_actors() -> None:
     email_envelope = MessageEnvelope(
         project_id='proj',

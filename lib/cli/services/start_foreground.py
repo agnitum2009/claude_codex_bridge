@@ -9,6 +9,7 @@ import time
 from cli.context import CliContext
 from ccbd.socket_client import CcbdClient, CcbdClientError
 from terminal_runtime.tmux import tmux_base
+from .daemon_runtime.keeper import record_shutdown_intent
 from .daemon_runtime.policy import (
     FOREGROUND_ATTACH_RPC_TIMEOUT_S,
     FOREGROUND_ATTACH_TARGET_READY_TIMEOUT_S,
@@ -64,6 +65,8 @@ def attach_started_project_namespace(context: CliContext) -> ForegroundAttachSum
         )
     returncode = attach.wait()
     if attached:
+        if not _tmux_has_session(tmux_socket_path, tmux_session_name, env=env):
+            _best_effort_stop_backend_after_namespace_exit(context)
         return summary
     if returncode != 0 and not _tmux_has_session(tmux_socket_path, tmux_session_name, env=env):
         raise ForegroundAttachError('project namespace session exited before foreground attach completed')
@@ -290,6 +293,17 @@ def _best_effort_refresh_attached_client(
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+    except Exception:
+        return
+
+
+def _best_effort_stop_backend_after_namespace_exit(context: CliContext) -> None:
+    try:
+        record_shutdown_intent(context, reason='foreground_session_exit')
+    except Exception:
+        pass
+    try:
+        CcbdClient(context.paths.ccbd_socket_path, timeout_s=FOREGROUND_ATTACH_RPC_TIMEOUT_S).stop_all(force=False)
     except Exception:
         return
 

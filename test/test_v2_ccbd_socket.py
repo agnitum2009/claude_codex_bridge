@@ -254,6 +254,93 @@ def test_ccbd_socket_roundtrip_and_shutdown(tmp_path: Path) -> None:
     assert app.mount_manager.load_state().mount_state.value == 'unmounted'
 
 
+def test_ccbd_socket_get_and_watch_resolve_callback_root_final_reply(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-get-watch'
+    ctx = _prepare_project(project_root, _agent_config_text(('main', 'codex'), ('worker', 'codex')))
+    app = CcbdApp(project_root)
+    app.registry.upsert(
+        _runtime(
+            'main',
+            project_id=ctx.project_id,
+            workspace_path=str(app.paths.workspace_path('main')),
+            pid=777,
+        )
+    )
+    app.registry.upsert(
+        _runtime(
+            'worker',
+            project_id=ctx.project_id,
+            workspace_path=str(app.paths.workspace_path('worker')),
+            pid=778,
+        )
+    )
+
+    thread = threading.Thread(target=app.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True)
+    thread.start()
+    _wait_for(app.paths.ccbd_socket_path)
+    client = CcbdClient(app.paths.ccbd_socket_path)
+
+    parent_job_id = client.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='main',
+            from_actor='user',
+            body='delegate and return final',
+            task_id='task-callback',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )['job_id']
+    app.dispatcher.tick()
+    _wait_for_job_status(client, parent_job_id, 'running')
+
+    child_job_id = client.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='worker',
+            from_actor='main',
+            body='collect evidence',
+            task_id='task-callback',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    )['job_id']
+    app.dispatcher.complete(parent_job_id, _decision(reply='delegated to worker'))
+
+    delegated = client.get(parent_job_id)
+    assert delegated['status'] == 'completed'
+    assert delegated['reply'] == ''
+    assert delegated['completion_reason'] == 'callback_pending'
+    assert delegated['visible_reply_source'] == 'callback_delegated_pending'
+
+    app.dispatcher.tick()
+    app.dispatcher.complete(child_job_id, _decision(reply='worker result'))
+    app.dispatcher.tick()
+    edge = app.dispatcher._message_bureau.callback_edge_for_child_job(child_job_id)
+    assert edge is not None
+    assert edge.continuation_job_id
+    app.dispatcher.complete(edge.continuation_job_id, _decision(reply='FINAL CALLBACK RESULT'))
+
+    completed = client.get(parent_job_id)
+    assert completed['reply'] == 'FINAL CALLBACK RESULT'
+    assert completed['completion_reason'] == 'task_complete'
+    assert completed['visible_reply_source'] == 'message_bureau_reply'
+    assert completed['visible_reply_id']
+
+    watched = client.watch(parent_job_id)
+    assert watched['terminal'] is True
+    assert watched['reply'] == 'FINAL CALLBACK RESULT'
+    assert watched['visible_reply_source'] == 'message_bureau_reply'
+
+    shutdown = client.shutdown()
+    assert shutdown['state'] == 'unmounted'
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
 def test_ccbd_control_plane_metrics_record_queue_wait_and_handler_durations(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-metrics'
     ctx = _prepare_project(project_root, _single_agent_config_text('codex', 'codex'))

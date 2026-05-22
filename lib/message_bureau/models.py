@@ -77,6 +77,7 @@ class ReplyRecord:
     agent_name: str
     terminal_status: ReplyTerminalStatus
     reply: str
+    reply_artifact: dict[str, Any] | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
     finished_at: str = ''
 

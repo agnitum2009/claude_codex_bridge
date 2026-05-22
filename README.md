@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.8-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.2.9-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,9 +74,9 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **Config sources are explicit**: CCB reports whether the effective config came from the built-in default, user `~/.ccb/ccb.config`, or project `.ccb/ccb.config`.
-- **`ccb kill` cleanup is ordered after the response**: project tmux namespace destruction is deferred until after `stop_all` finalization, so cleanup completes even when kill is launched from a CCB tmux pane.
-- **Managed tmux stays isolated but usable**: CCB now explicitly enables owned `mouse on` and `set-clipboard on` policy in project namespaces and detached tmux paths.
+- **Callback roots show the real final reply**: delegated callback root jobs report `callback_pending` while the child chain is running, then `ask get` and `watch` show the final message-bureau reply after continuation.
+- **Observer commands are diagnostics-only**: ask skills and help surfaces now state that `ask get`, `pend`, `watch`, and `ping` are explicit debugging tools, not normal ask workflow steps.
+- **Long CCB text is artifact-backed**: oversized ask bodies, terminal replies, notices, and callback continuation text are stored as bounded UTF-8 artifacts with previews and diagnostics bundle coverage.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -338,6 +338,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.2.9</b> - Callback Visibility And Diagnostics Release</summary>
+
+- Shows `callback_pending` for delegated callback root jobs while the child chain is still running, then resolves `ask get` and `watch` to the final message-bureau reply after continuation.
+- Marks `ask get`, `pend`, `watch`, and `ping` as diagnostics-only across inherited ask skills, CLI help, memory-facing wording, and tests.
+- Stores oversized ask bodies, terminal replies, notices, and callback continuation text under `.ccb/ccbd/artifacts/text/` with short previews and diagnostic bundle inclusion.
+- Hardens shutdown cleanup by tracking prepared and current control-plane pids during remote kill and best-effort stopping the backend after foreground tmux namespace exit.
+
+</details>
+
+<details>
 <summary><b>v6.2.8</b> - Config Source, Stop Cleanup, And Tmux Policy Release</summary>
 
 - Includes explicit config source kinds for built-in defaults, user `~/.ccb/ccb.config`, and project `.ccb/ccb.config`, with project config taking highest priority.

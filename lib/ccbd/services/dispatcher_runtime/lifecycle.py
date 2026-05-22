@@ -140,6 +140,7 @@ def _retry_request_for_job(job) -> MessageEnvelope:
         delivery_scope=job.request.delivery_scope,
         silence_on_success=job.request.silence_on_success,
         route_options=dict(job.request.route_options or {}),
+        body_artifact=dict(job.request.body_artifact) if job.request.body_artifact else None,
     )
 
 

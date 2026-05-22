@@ -28,7 +28,7 @@ def write_ask_usage(
     print(f"        {command_name} --compact agent1 review latest diff", file=out)
     print(f"        {command_name} --silence agent1 run smoke check", file=out)
     print(f"        {command_name} --callback agent2 collect evidence for this task", file=out)
-    print(f"  {command_name} get <job_id>", file=out)
+    print(f"  {command_name} get <job_id>    diagnostics-only: inspect one submitted job", file=out)
     print(f"  {command_name} cancel <job_id>", file=out)
     if alias_note:
         print("", file=out)

@@ -21,6 +21,8 @@ def test_shell_ask_skill_templates_use_short_ask_command() -> None:
         assert 'canonical `ccb ask`' not in text
         assert 'compatibility alias' not in text
         assert 'forwarded verbatim' not in text
+        assert 'diagnostics-only commands for explicit debugging requests' in text
+        assert 'do not run `ask get` / `pend` / `ping` / `watch`' in text
         assert re.search(r'[\u4e00-\u9fff]', text) is None
 
 
@@ -31,4 +33,6 @@ def test_powershell_ask_skill_template_uses_short_ask_command() -> None:
     assert 'ccb ask' not in text
     assert 'compatibility alias' not in text
     assert 'forwarded verbatim' not in text
+    assert 'diagnostics-only commands for explicit debugging requests' in text
+    assert 'do not run `ask get` / `pend` / `ping` / `watch`' in text
     assert re.search(r'[\u4e00-\u9fff]', text) is None

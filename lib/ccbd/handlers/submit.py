@@ -19,6 +19,7 @@ def build_submit_handler(dispatcher):
             delivery_scope=DeliveryScope(payload.get('delivery_scope', DeliveryScope.SINGLE.value)),
             silence_on_success=bool(payload.get('silence_on_success', False)),
             route_options=dict(payload.get('route_options') or {}),
+            body_artifact=payload.get('body_artifact') if isinstance(payload.get('body_artifact'), dict) else None,
         )
         try:
             return dispatcher.submit(envelope).to_record()

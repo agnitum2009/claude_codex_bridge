@@ -29,6 +29,7 @@ def record_reply(
         return None
 
     reply_text = delivered_reply_text(job, decision)
+    reply_artifact = _reply_artifact_from_decision(decision)
     reply_id = new_id('rep')
     service._reply_store.append(
         ReplyRecord(
@@ -38,6 +39,7 @@ def record_reply(
             agent_name=job.agent_name,
             terminal_status=reply_status_for_job(job.status),
             reply=reply_text,
+            reply_artifact=reply_artifact,
             diagnostics={
                 'reason': decision.reason,
                 'status': job.status.value,
@@ -82,6 +84,13 @@ def record_notice(
     payload = dict(diagnostics or {})
     payload.setdefault('status', job.status.value)
     payload.setdefault('notice', True)
+    reply_text, reply_artifact = _spill_notice_reply_if_needed(
+        service,
+        job=job,
+        reply=reply or '',
+        reply_id=reply_id,
+        finished_at=finished_at,
+    )
     service._reply_store.append(
         ReplyRecord(
             reply_id=reply_id,
@@ -89,7 +98,8 @@ def record_notice(
             attempt_id=attempt.attempt_id,
             agent_name=job.agent_name,
             terminal_status=terminal_status,
-            reply=reply or '',
+            reply=reply_text,
+            reply_artifact=reply_artifact,
             diagnostics=payload,
             finished_at=finished_at,
         )
@@ -153,6 +163,24 @@ def queue_reply_delivery(
         queue_delta=1,
         pending_reply_delta=1,
         updated_at=finished_at,
+    )
+
+
+def _reply_artifact_from_decision(decision: CompletionDecision) -> dict[str, object] | None:
+    artifact = dict(decision.diagnostics or {}).get('reply_artifact')
+    return dict(artifact) if isinstance(artifact, dict) else None
+
+
+def _spill_notice_reply_if_needed(service, *, job: JobRecord, reply: str, reply_id: str, finished_at: str):
+    from storage.text_artifacts import maybe_spill_text
+
+    return maybe_spill_text(
+        service._layout,
+        text=reply,
+        kind='notice-reply',
+        owner_id=f'{job.job_id}-{reply_id}',
+        prefix=f'CCB notice reply for job {job.job_id} is larger than 4 KiB and was stored as an artifact.',
+        now=finished_at,
     )
 
 

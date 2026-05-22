@@ -7,6 +7,7 @@ from ccbd.api_models import CancelReceipt, JobStatus, TargetKind
 from completion.models import CompletionConfidence, CompletionDecision, CompletionStatus
 
 from .completion import build_terminal_state
+from .finalization_runtime.artifacts import spill_terminal_reply_if_needed
 from .reply_delivery import resolve_reply_delivery_terminal
 
 
@@ -55,6 +56,12 @@ def cancel_with_decision(dispatcher, current, cancelled_at: str, reply: str, sna
         source_cursor=snapshot.state.latest_cursor if snapshot else None,
         finished_at=cancelled_at,
         diagnostics={'cancel_requested': True},
+    )
+    decision = spill_terminal_reply_if_needed(
+        dispatcher,
+        current,
+        decision,
+        finished_at=cancelled_at,
     )
     if dispatcher._completion_tracker is not None:
         dispatcher._completion_tracker.finish(current.job_id)

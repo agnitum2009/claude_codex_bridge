@@ -170,6 +170,14 @@ class CcbdOpsPathMixin:
 
 class CcbdArtifactsPathMixin:
     @property
+    def ccbd_artifacts_dir(self):
+        return self.ccbd_dir / 'artifacts'
+
+    @property
+    def ccbd_text_artifacts_dir(self):
+        return self.ccbd_artifacts_dir / 'text'
+
+    @property
     def ccbd_support_dir(self):
         return self.ccbd_dir / 'support'
 

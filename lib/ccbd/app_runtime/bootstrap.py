@@ -36,6 +36,7 @@ from provider_execution.registry import build_default_execution_registry
 from provider_execution.service import ExecutionService
 from provider_execution.state_store import ExecutionStateStore
 from storage.paths import PathLayout
+from storage.text_artifacts import sweep_expired_text_artifacts
 
 from .handlers import register_handlers
 from .request_guard import lifecycle_is_stopping, rejection_for_request
@@ -50,6 +51,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.project_id = compute_project_id(app.project_root)
     app.paths = PathLayout(app.project_root)
     app.paths.ensure_runtime_state_root()
+    sweep_expired_text_artifacts(app.paths)
     app.clock = clock
     app.pid = pid or os.getpid()
     app.config = load_project_config(app.project_root).config

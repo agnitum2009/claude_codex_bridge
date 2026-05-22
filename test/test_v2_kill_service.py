@@ -110,8 +110,8 @@ def test_await_remote_shutdown_waits_for_ccbd_and_keeper_exit(tmp_path: Path) ->
     assert terminated == [321, 654]
 
 
-def test_await_remote_shutdown_uses_prepared_pids_instead_of_new_lease(tmp_path: Path) -> None:
-    project_root = tmp_path / 'repo-remote-prepared-pids'
+def test_await_remote_shutdown_tracks_prepared_and_current_lease_pids(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-remote-prepared-and-current-pids'
     project_root.mkdir(parents=True, exist_ok=True)
     bootstrap_project(project_root)
     context = CliContextBuilder().build(
@@ -159,9 +159,8 @@ def test_await_remote_shutdown_uses_prepared_pids_instead_of_new_lease(tmp_path:
         shutdown_timeout_s=0.01,
     )
 
-    assert terminated == [111, 222]
-    assert 9001 in alive
-    assert 9002 in alive
+    assert terminated == [111, 222, 9001, 9002]
+    assert alive == set()
 
 
 def test_await_remote_shutdown_finalizes_lifecycle_after_remote_stop(tmp_path: Path) -> None:

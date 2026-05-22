@@ -87,29 +87,26 @@ def await_remote_shutdown(
         _, _, inspection = inspect_daemon_fn(context)
         last_inspection = inspection
         lease = getattr(inspection, 'lease', None)
-        if expected_pid_set:
-            tracked_exited = _tracked_pid_set_exited(expected_pid_set, is_pid_alive_fn=is_pid_alive_fn)
-        else:
-            daemon_pid = _remember_daemon_pid(daemon_pid, lease, lease_pid_fn=lease_pid_fn)
-            keeper_pid = _remember_keeper_pid(context, keeper_pid, lease, keeper_pid_fn=keeper_pid_fn)
-            tracked_exited = _tracked_pids_exited(
-                daemon_pid,
-                keeper_pid,
-                is_pid_alive_fn=is_pid_alive_fn,
-            )
+        daemon_pid = _remember_daemon_pid(daemon_pid, lease, lease_pid_fn=lease_pid_fn)
+        keeper_pid = _remember_keeper_pid(context, keeper_pid, lease, keeper_pid_fn=keeper_pid_fn)
+        tracked_exited = _tracked_pid_set_exited(
+            _tracked_shutdown_pid_set(expected_pid_set, daemon_pid, keeper_pid),
+            is_pid_alive_fn=is_pid_alive_fn,
+        )
         if _remote_shutdown_observed(inspection, lease_health_cls=lease_health_cls) and tracked_exited:
             break
         time.sleep(0.05)
-    if expected_pid_set:
-        for pid in sorted(expected_pid_set):
-            _terminate_lingering_pid(
-                pid,
-                wait_for_pid_exit_fn=wait_for_pid_exit_fn,
-                is_pid_alive_fn=is_pid_alive_fn,
-                terminate_pid_tree_fn=terminate_pid_tree_fn,
-                timeout_s=shutdown_timeout_s,
-            )
-    else:
+    terminated_pids: set[int] = set()
+    for pid in sorted(expected_pid_set):
+        _terminate_lingering_pid(
+            pid,
+            wait_for_pid_exit_fn=wait_for_pid_exit_fn,
+            is_pid_alive_fn=is_pid_alive_fn,
+            terminate_pid_tree_fn=terminate_pid_tree_fn,
+            timeout_s=shutdown_timeout_s,
+        )
+        terminated_pids.add(pid)
+    if daemon_pid not in terminated_pids:
         _terminate_lingering_pid(
             daemon_pid,
             wait_for_pid_exit_fn=wait_for_pid_exit_fn,
@@ -117,15 +114,17 @@ def await_remote_shutdown(
             terminate_pid_tree_fn=terminate_pid_tree_fn,
             timeout_s=shutdown_timeout_s,
         )
-        if keeper_pid != daemon_pid:
-            _terminate_lingering_keeper(
-                context,
-                keeper_pid,
-                wait_for_keeper_exit_fn=wait_for_keeper_exit_fn,
-                is_pid_alive_fn=is_pid_alive_fn,
-                terminate_pid_tree_fn=terminate_pid_tree_fn,
-                timeout_s=shutdown_timeout_s,
-            )
+        if daemon_pid > 0:
+            terminated_pids.add(daemon_pid)
+    if keeper_pid not in terminated_pids:
+        _terminate_lingering_keeper(
+            context,
+            keeper_pid,
+            wait_for_keeper_exit_fn=wait_for_keeper_exit_fn,
+            is_pid_alive_fn=is_pid_alive_fn,
+            terminate_pid_tree_fn=terminate_pid_tree_fn,
+            timeout_s=shutdown_timeout_s,
+        )
     if finalize_shutdown_lifecycle_fn is not None:
         finalize_shutdown_lifecycle_fn(context)
     try:
@@ -183,8 +182,12 @@ def _remember_keeper_pid(context, current: int, lease, *, keeper_pid_fn) -> int:
     return pid if pid > 0 else current
 
 
-def _tracked_pids_exited(daemon_pid: int, keeper_pid: int, *, is_pid_alive_fn) -> bool:
-    return _tracked_pid_set_exited({int(daemon_pid or 0), int(keeper_pid or 0)}, is_pid_alive_fn=is_pid_alive_fn)
+def _tracked_shutdown_pid_set(expected_pid_set: set[int], daemon_pid: int, keeper_pid: int) -> set[int]:
+    return {
+        *expected_pid_set,
+        int(daemon_pid or 0),
+        int(keeper_pid or 0),
+    }
 
 
 def _tracked_pid_set_exited(pids: set[int], *, is_pid_alive_fn) -> bool:

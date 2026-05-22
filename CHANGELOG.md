@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v6.2.9 (2026-05-22)
+
+### Callback Visibility And Diagnostics Release
+
+- **Callback Root Replies Are Visible**: delegated callback root jobs now show `callback_pending` while the child chain is still running, then `ask get` and `watch` surface the final message-bureau reply after the continuation completes.
+- **Ask Observer Commands Marked Diagnostics-Only**: inherited ask skills, CLI help, project/runtime memory surfaces, and tests now describe `ask get`, `pend`, `watch`, and `ping` as explicit debugging tools, not normal ask workflow steps.
+- **Long CCB Text Artifacts Added**: oversized ask bodies, terminal replies, notices, and callback continuation text spill to bounded UTF-8 artifacts under `.ccb/ccbd/artifacts/text/`, with previews and diagnostics bundle coverage.
+- **Shutdown Cleanup Hardened**: remote kill now tracks both prepared and current control-plane pids, and foreground tmux exit can best-effort request project stop-all so an exited namespace does not leave the backend looking active.
+
 ## v6.2.8 (2026-05-21)
 
 ### Config Source, Stop Cleanup, And Tmux Policy Release

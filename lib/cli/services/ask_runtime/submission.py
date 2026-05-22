@@ -5,6 +5,7 @@ from collections.abc import Callable, Collection
 from agents.models import AgentValidationError
 from ccbd.api_models import DeliveryScope, MessageEnvelope
 from mailbox_runtime.targets import NON_AGENT_ACTORS, normalize_actor_name
+from storage.text_artifacts import maybe_spill_text
 
 from .models import AskSummary
 
@@ -71,6 +72,19 @@ def submit_ask(
     sender = resolve_ask_sender_fn(context, command.sender)
     normalized_sender = _normalize_sender(sender)
     _validate_sender(normalized_sender, config.agents)
+    message_body = message_with_reply_guidance(
+        command.message,
+        message_type=command.mode or 'ask',
+        compact=bool(getattr(command, 'compact', False)),
+        silence_on_success=command.silence,
+    )
+    message_body, body_artifact = maybe_spill_text(
+        context.paths,
+        text=message_body,
+        kind='ask-request',
+        owner_id=f'{normalized_sender}-to-{normalized_target}',
+        prefix='CCB ask request is larger than 4 KiB and was stored as an artifact.',
+    )
     payload = invoke_mounted_daemon_fn(
         context,
         allow_restart_stale=True,
@@ -79,18 +93,14 @@ def submit_ask(
                 project_id=context.project.project_id,
                 to_agent=normalized_target,
                 from_actor=normalized_sender,
-                body=message_with_reply_guidance(
-                    command.message,
-                    message_type=command.mode or 'ask',
-                    compact=bool(getattr(command, 'compact', False)),
-                    silence_on_success=command.silence,
-                ),
+                body=message_body,
                 task_id=command.task_id,
                 reply_to=command.reply_to,
                 message_type=command.mode or 'ask',
                 delivery_scope=_delivery_scope(command.target),
                 silence_on_success=command.silence,
                 route_options=_route_options(command),
+                body_artifact=body_artifact,
             )
         )
     )

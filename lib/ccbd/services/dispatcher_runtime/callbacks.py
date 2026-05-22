@@ -8,6 +8,7 @@ from ccbd.system import parse_utc_timestamp
 from completion.models import CompletionDecision
 from mailbox_runtime.targets import NON_AGENT_ACTORS
 from message_bureau import CallbackEdgeRecord, CallbackEdgeState, MessageState, ReplyTerminalStatus
+from storage.text_artifacts import maybe_spill_text, preview_text
 
 from .records import append_event, append_job, get_job
 from .runtime_state import sync_runtime
@@ -71,8 +72,10 @@ def register_callback_edge(dispatcher, *, request: MessageEnvelope, jobs: tuple,
         diagnostics={
             'route_mode': CALLBACK_ROUTE_MODE,
             'child_agent': child.agent_name,
-            'parent_body': _strip_ccb_guidance(parent.request.body),
-            'child_body': _strip_ccb_guidance(child.request.body),
+            'parent_body': _callback_body_summary(parent.request),
+            'child_body': _callback_body_summary(child.request),
+            'parent_body_artifact': dict(parent.request.body_artifact) if parent.request.body_artifact else None,
+            'child_body_artifact': dict(child.request.body_artifact) if child.request.body_artifact else None,
         },
     )
     dispatcher._message_bureau.record_callback_edge(edge)
@@ -172,7 +175,7 @@ def submit_callback_continuation(
     try:
         continuation_job_id, continuation_message_id = _submit_continuation_job(
             dispatcher,
-            request=_continuation_request(edge=updated, child_job=child_job, decision=decision),
+            request=_continuation_request(dispatcher, edge=updated, child_job=child_job, decision=decision),
             parent_message_id=updated.parent_message_id,
             accepted_at=finished_at,
         )
@@ -575,12 +578,20 @@ def _callback_child_agent(edge: CallbackEdgeRecord) -> str:
     return str(edge.diagnostics.get('child_agent') or '').strip().lower()
 
 
-def _continuation_request(*, edge: CallbackEdgeRecord, child_job, decision: CompletionDecision) -> MessageEnvelope:
+def _continuation_request(dispatcher, *, edge: CallbackEdgeRecord, child_job, decision: CompletionDecision) -> MessageEnvelope:
+    body = _continuation_body(edge=edge, child_job=child_job, decision=decision)
+    body, body_artifact = maybe_spill_text(
+        dispatcher._layout,
+        text=body,
+        kind='callback-continuation',
+        owner_id=edge.edge_id,
+        prefix=f'CCB callback continuation {edge.edge_id} is larger than 4 KiB and was stored as an artifact.',
+    )
     return MessageEnvelope(
         project_id=child_job.request.project_id,
         to_agent=edge.callback_target_agent,
         from_actor=edge.original_caller,
-        body=_continuation_body(edge=edge, child_job=child_job, decision=decision),
+        body=body,
         task_id=edge.original_task_id,
         reply_to=edge.parent_message_id,
         message_type=CALLBACK_CONTINUATION_MESSAGE_TYPE,
@@ -593,13 +604,14 @@ def _continuation_request(*, edge: CallbackEdgeRecord, child_job, decision: Comp
             'callback_child_job_id': edge.child_job_id,
             'callback_child_message_id': edge.child_message_id,
         },
+        body_artifact=body_artifact,
     )
 
 
 def _continuation_body(*, edge: CallbackEdgeRecord, child_job, decision: CompletionDecision) -> str:
     original = str(edge.diagnostics.get('parent_body') or '').rstrip()
     child_task = str(edge.diagnostics.get('child_body') or '').rstrip()
-    child_reply = decision.reply or ''
+    child_reply = _reply_summary(decision)
     parts = [
         'CCB callback continuation.',
         '',
@@ -633,6 +645,9 @@ def _decision_from_reply(reply, *, child_job, fallback_finished_at: str | None):
     terminal = dict(child_job.terminal_decision or {})
     status = CompletionStatus(terminal.get('status') or child_job.status.value)
     confidence = CompletionConfidence(terminal.get('confidence') or 'degraded')
+    diagnostics = dict(terminal.get('diagnostics') or {})
+    if getattr(reply, 'reply_artifact', None) and 'reply_artifact' not in diagnostics:
+        diagnostics['reply_artifact'] = dict(reply.reply_artifact)
     return CompletionDecision(
         terminal=True,
         status=status,
@@ -645,8 +660,49 @@ def _decision_from_reply(reply, *, child_job, fallback_finished_at: str | None):
         provider_turn_ref=terminal.get('provider_turn_ref'),
         source_cursor=None,
         finished_at=terminal.get('finished_at') or reply.finished_at or fallback_finished_at,
-        diagnostics=dict(terminal.get('diagnostics') or {}),
+        diagnostics=diagnostics,
     )
+
+
+def _callback_body_summary(request: MessageEnvelope) -> str:
+    body = _strip_ccb_guidance(request.body)
+    if not request.body_artifact:
+        return body
+    artifact = dict(request.body_artifact)
+    path = str(artifact.get('path') or '').strip()
+    size = str(artifact.get('bytes') or '').strip()
+    digest = str(artifact.get('sha256') or '').strip()
+    lines = [
+        preview_text(body, max_chars=800),
+        '',
+        'Full original request artifact:',
+        f'path: {path}',
+    ]
+    if size:
+        lines.append(f'bytes: {size}')
+    if digest:
+        lines.append(f'sha256: {digest}')
+    return '\n'.join(line for line in lines if line is not None).rstrip()
+
+
+def _reply_summary(decision: CompletionDecision) -> str:
+    artifact = dict(decision.diagnostics or {}).get('reply_artifact')
+    if not isinstance(artifact, dict):
+        return decision.reply or ''
+    path = str(artifact.get('path') or '').strip()
+    size = str(artifact.get('bytes') or '').strip()
+    digest = str(artifact.get('sha256') or '').strip()
+    lines = [
+        decision.reply or '(reply body stored as artifact)',
+        '',
+        'Full child reply artifact:',
+        f'path: {path}',
+    ]
+    if size:
+        lines.append(f'bytes: {size}')
+    if digest:
+        lines.append(f'sha256: {digest}')
+    return '\n'.join(lines).rstrip()
 
 
 def _strip_ccb_guidance(body: str) -> str:
