@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-7.0.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **macOS sidebar is native now**: the macOS release artifact ships a real universal `ccb-agent-sidebar` binary for both Intel and Apple Silicon Macs.
-- **Release CI verifies the macOS helper**: GitHub release builds require the helper to be a `universal binary` and smoke-test `ccb-agent-sidebar --help` before upload.
-- **Linux sidebar compatibility remains**: Linux release and standalone sidebar assets continue to build on Ubuntu 22.04 for older glibc hosts.
-- **Same sidebar experience across Linux and macOS**: managed sidebar panes use the packaged helper on both platforms, with local rebuild fallback still available during install.
+- **Sidebar refresh is lighter**: project view responses now cache briefly, avoid repeated pane captures, and use bounded tail reads for recent jobs.
+- **Runtime lookups are more targeted**: job, message-bureau, and JSONL stores now expose latest/tail helpers so sidebar comms do not scan growing runtime files.
+- **Keeper checks are stricter**: daemon lifecycle checks verify keeper command lines against the project root and harden stopping/ownership paths.
+- **Config skill install cleanup improved**: inherited installs now use canonical `ccb-config`, remove legacy `ccb_config`, and refresh useful tool packaging.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -353,6 +353,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v7.0.4</b> - Project View Refresh And Runtime Hardening Release</summary>
+
+- Optimizes sidebar/project view refresh with short-lived response caching, bounded recent-job tail reads, and per-build tmux pane capture reuse.
+- Adds targeted runtime lookup helpers for job tails, message attempts/replies, and JSONL tail reads to keep comms state responsive as runtime files grow.
+- Hardens keeper/process validation and daemon/socket lifecycle paths around project-root ownership and stopping state.
+- Renames inherited config skills to canonical `ccb-config`, removes legacy `ccb_config` during install, and refreshes useful tool packages.
+
+</details>
+
+<details>
 <summary><b>v7.0.3</b> - macOS Sidebar Universal Binary Hotfix</summary>
 
 - Ships `ccb-macos-universal.tar.gz` with a true universal `bin/ccb-agent-sidebar` built for both `x86_64-apple-darwin` and `aarch64-apple-darwin`.

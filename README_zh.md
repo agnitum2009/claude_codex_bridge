@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-7.0.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.4-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **macOS sidebar 正式原生可用**：macOS release artifact 现在内置真正的 universal `ccb-agent-sidebar`，同时支持 Intel 和 Apple Silicon。
-- **Release CI 验证 macOS helper**：发布构建会检查 helper 是 `universal binary`，并在上传前执行 `ccb-agent-sidebar --help` smoke test。
-- **Linux sidebar 兼容性保持**：Linux release 和独立 sidebar helper 继续使用 Ubuntu 22.04 构建，兼容旧 glibc 主机。
-- **Linux/macOS 使用同一套 sidebar 体验**：managed sidebar pane 在两个平台都使用包内 helper，安装时仍保留本机 rebuild fallback。
+- **Sidebar 刷新更轻量**：project view response 会短暂缓存，避免重复 pane capture，并用 bounded tail 读取 recent jobs。
+- **Runtime 查询更精准**：job、message-bureau 和 JSONL store 新增 latest/tail helper，sidebar comms 不再依赖扫描持续增长的 runtime 文件。
+- **Keeper 检查更严格**：daemon lifecycle 会按 project root 校验 keeper command line，并加固 stopping/ownership 路径。
+- **Config skill 安装清理改进**：继承安装统一使用 `ccb-config`，自动清理旧 `ccb_config`，并刷新 useful tools 包。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -106,19 +106,19 @@ tmux 复制粘贴：鼠标左键拖拽即可复制，`Ctrl+Shift+V` 粘贴。
 <details>
 <summary><b>配置设计 Skill</b></summary>
 
-当你希望 agent 帮你设计或更新 CCB 团队，而不是手写配置时，可以使用 `ccb_config`。它会被 Claude 和 Codex 安装继承，重点维护三个用户可编辑文件：
+当你希望 agent 帮你设计、迁移或更新 CCB 团队，而不是手写配置时，可以使用 `ccb-config`。它会被 Claude 和 Codex 安装继承，默认只修改当前生效的配置来源：
 
 - `.ccb/ccb.config`：团队、provider、pane layout 和 worktree 策略
-- `.ccb/ccb_memory.md`：项目级共享工作流记忆
-- `.ccb/agents/<agent>/memory.md`：每个 agent 的角色记忆
+
+它也可以更新 `.ccb/ccb_memory.md` 和 `.ccb/agents/<agent>/memory.md`，但只在你明确要求设计共享工作流或 per-agent 角色记忆时才会这样做。
 
 在支持 skill 的 provider 里可以这样调用：
 
 ```text
-$ccb_config 为一个 Python library 设计团队：一个 coordinator、两个 worktree 实现 agent、一个 reviewer。
+$ccb-config 为一个 Python library 设计团队：一个 coordinator、两个 worktree 实现 agent、一个 reviewer。
 ```
 
-这个 skill 会帮助选择 agent 名称、provider、`inplace` / `git-worktree`、compact layout 语法，以及哪些说明应写入共享记忆或 per-agent memory。它会验证当前生效的配置层，并在文件修改完成后提醒你重启 CCB。
+这个 skill 会帮助选择 agent 名称、provider、`inplace` / `git-worktree`、compact layout 语法、是否需要迁移到多 window，以及 config-only 修改是否足够。对于旧 compact/hybrid 配置，它可以询问你希望拆成几个 window，提出分组方案，并迁移到当前 `version = 2` windows topology。它会验证当前生效的配置层，并在文件修改完成后提醒你重启 CCB。
 
 </details>
 
@@ -330,6 +330,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v7.0.4</b> - Project View Refresh And Runtime Hardening Release</summary>
+
+- 优化 sidebar/project view 刷新：短 TTL response cache、bounded recent-job tail reads、单次构建内复用 tmux pane capture。
+- 为 job tail、message attempts/replies 和 JSONL tail reads 增加定向 runtime lookup helper，避免 comms 状态随 runtime 文件增长而变慢。
+- 加固 keeper/process 校验和 daemon/socket lifecycle，对 project-root ownership 和 stopping state 处理更严格。
+- 继承 config skill 统一改为 `ccb-config`，安装时清理旧 `ccb_config`，并刷新 useful tools 包。
+
+</details>
+
+<details>
 <summary><b>v7.0.3</b> - macOS Sidebar Universal Binary Hotfix</summary>
 
 - `ccb-macos-universal.tar.gz` 现在包含真正 universal 的 `bin/ccb-agent-sidebar`，同时构建 `x86_64-apple-darwin` 和 `aarch64-apple-darwin` 后用 `lipo` 合并。
@@ -362,7 +372,7 @@ ccb reinstall
 - 新增 Rust `ccb-agent-sidebar` 原生侧边栏 helper，支持每个 window 的 project view、固定灰色侧边栏身份、彩色 provider/runtime 活动状态，以及鼠标/键盘 focus 切换。
 - 拆分顶部 agent activity 和底部 Comms：顶部反映 provider pane/runtime 活动，Comms 继续对应 CCB ask/job 跟踪与恢复。
 - 新增 `version = 2` `[windows]` topology，可挂载多个命名 tmux window 和 sidebar；旧 compact/hybrid 配置仍是单业务窗口并保留 `cmd` 语义。
-- 更新 `ccb_config` docs/skills 的 windows topology 迁移说明，并保持显式多窗口挂载行为。
+- 更新 `ccb-config` docs/skills 的 windows topology 迁移说明，并保持显式多窗口挂载行为。
 - 加固 Ghostty/tmux `TERM` 兼容、tmux 环境/mouse 行为、source wrapper 处理、release sidebar 二进制打包，以及 Codex legacy root-only session 迁移。
 
 </details>
@@ -390,7 +400,7 @@ ccb reinstall
 <summary><b>v6.2.7</b> - Config Source And Stop Cleanup Release</summary>
 
 - 显式报告配置来源：内置默认、用户 `~/.ccb/ccb.config`、项目 `.ccb/ccb.config`，并保持项目配置优先级最高。
-- 更新 `ccb config validate`、README/docs 和继承的 `ccb_config` skill 说明，统一描述当前生效的配置层。
+- 更新 `ccb config validate`、README/docs 和继承的 `ccb-config` skill 说明，统一描述当前生效的配置层。
 - 将 project tmux namespace destroy 延后到 stop-all response finalizer 之后，让从 CCB pane 执行的 `ccb kill` / `ccb kill -f` 能完成后台清理。
 
 </details>
@@ -446,10 +456,10 @@ ccb reinstall
 <details>
 <summary><b>v6.2.1</b> - Inherited CCB Config Skill Release</summary>
 
-- 新增继承式 Claude / Codex `ccb_config` skill，用于设计 `.ccb/ccb.config`、选择 agent 角色/provider/worktree layout，并更新共享和 per-agent memory。
+- 新增继承式 Claude / Codex `ccb-config` skill，用于设计 `.ccb/ccb.config`、选择 agent 角色/provider/worktree layout，并更新共享和 per-agent memory。
 - 将 CCB 自带继承式 skill 统一放到 `inherit_skills/`，同时保持 `useful_tools/` 为用户按需安装的可选工具，不默认继承。
 - 缩短 ask reply guidance，不再在每个 ask body 注入 nested-routing 说明，注入源文本保持英文，并扩展显式完整输出识别。
-- 简化 project/runtime memory wording，并更新 `ccb_config` memory-routing 示例，强调直接 callback 交接和独立 root work package。
+- 简化 project/runtime memory wording，并更新 `ccb-config` memory-routing 示例，强调直接 callback 交接和独立 root work package。
 
 </details>
 

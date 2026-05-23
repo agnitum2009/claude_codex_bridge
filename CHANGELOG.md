@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v7.0.4 (2026-05-23)
+
+### Project View Refresh And Runtime Hardening Release
+
+- **Project View Refresh Optimized**: sidebar/project view responses now reuse short-lived cached responses, use bounded tail reads for recent jobs, and avoid repeated tmux pane captures during a single view build.
+- **Runtime State Reads Hardened**: job, message-bureau, and JSONL stores gained targeted latest/tail lookup helpers so comms and sidebar state do not need broad scans of growing runtime files.
+- **Keeper And Startup Robustness Improved**: keeper lifecycle checks now verify process command lines against the project root, and daemon/socket lifecycle paths include additional ownership and stopping-state safeguards.
+- **Inherited Skill Install Cleanup Improved**: `ccb-config` is now the canonical inherited skill name, legacy `ccb_config` and obsolete helper skills are removed silently during install, and useful tool packages were refreshed.
+
 ## v7.0.3 (2026-05-23)
 
 ### macOS Sidebar Universal Binary Hotfix
