@@ -832,7 +832,36 @@ Minimum content:
 - `requested_by_pid`
 - `reason`
 
-### 7.8 Diagnostics Bundle
+### 7.8 Reload Drain State
+
+Path:
+
+- `.ccb/ccbd/reload-drain.json`
+
+Required purpose:
+
+- record bounded pending unload/replace drain state before dynamic unload or
+  replacement is exposed
+- preserve explicit timeout, age, and pending-count bounds for drain decisions
+
+Minimum content:
+
+- `bounds`
+- `records`
+- for each record: intent kind, agent name, phase, status, created/updated
+  timestamps, timeout deadline, max-age deadline, reason, and busy observation
+
+Write semantics:
+
+- this file is not backend lifecycle authority, lease authority, runtime
+  authority, or namespace authority
+- writes must occur only from explicit drain state-machine operations; daemon
+  heartbeat and steady-state handler reads must not scan it
+- Phase 4 `retired` records are terminal state markers only and must not imply
+  tmux pane removal, provider stop, runtime authority deletion, service graph
+  publish, or namespace patch
+
+### 7.9 Diagnostics Bundle
 
 Command:
 

@@ -10,6 +10,7 @@ from agents.store import AgentRestoreStore
 from ccbd.lifecycle_report_store import CcbdShutdownReportStore, CcbdStartupReportStore
 from ccbd.metrics import ControlPlaneMetrics
 from ccbd.project_view import ProjectViewStateStore
+from ccbd.reload_drain import DrainQueueStore
 from ccbd.restore_report_store import CcbdRestoreReportStore
 from ccbd.services import (
     CcbdLifecycleStore,
@@ -65,6 +66,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.namespace_event_store = ProjectNamespaceEventStore(app.paths)
     app.project_view_state_store = ProjectViewStateStore(app.paths, project_id=app.project_id)
     app.start_policy_store = CcbdStartPolicyStore(app.paths)
+    app.reload_drain_store = DrainQueueStore(app.paths)
     app.ownership_guard = OwnershipGuard(app.paths, app.mount_manager, clock=app.clock)
     app.restore_store = AgentRestoreStore(app.paths)
     app.project_namespace = ProjectNamespaceController(app.paths, app.project_id, clock=app.clock)

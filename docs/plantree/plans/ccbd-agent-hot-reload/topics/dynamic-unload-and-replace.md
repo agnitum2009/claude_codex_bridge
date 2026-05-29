@@ -34,6 +34,17 @@ Rules:
 - `.ccb/agents/<agent>` is preserved unless a separate cleanup command removes
   safe residue.
 
+Phase 4 landed only the bounded state foundation:
+
+- pending unloads are represented as drain intents with initial
+  `pending_unload`, then pure transitions to `draining`, `retiring`, or
+  terminal `retired`/`timed_out`;
+- bounds are `max_pending`, `timeout_s`, and `max_age_s`;
+- busy/idle is provided by an injectable predicate, not by a direct comms or
+  provider-execution dependency;
+- `retired` is a terminal state marker only in Phase 4 and does not remove
+  panes, mutate runtime authority, or publish a new graph.
+
 ## Replace Model
 
 Provider, workspace mode, model, key, URL, and runtime-home changes are replace
@@ -62,6 +73,10 @@ Rules:
 - Codex and Claude session-boundary checks must stay provider-specific.
 - Pending replacement must not block unrelated additive reloads forever.
 - Pending replacement must have a maximum age and maximum queue length.
+
+Phase 4 represents replacement as `pending_replace` drain intent records sharing
+the same bounded queue as unload. It does not yet execute the replacement path
+or supersede duplicate replacement requests.
 
 ## Failure Handling
 

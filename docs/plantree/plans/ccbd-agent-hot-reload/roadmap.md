@@ -30,22 +30,27 @@ Date: 2026-05-29
   classifier reports no-op, view-only, add, remove, replace, move/layout, and
   invalid-config cases without publishing a graph or touching tmux/runtime
   authority.
+- Added Phase 4 bounded drain/retire state machinery: a pure drain queue model
+  with timeout, pending-count, and age bounds, an explicit `reload-drain.json`
+  store, injectable busy predicate transitions, retired terminal state, and
+  dry-run drain intent suggestions for unload/replace plans. Phase 4 still does
+  not publish a graph, patch namespace, mutate runtime authority, or execute
+  tmux operations.
 
 ## In Progress
 
-- Phase 4 bounded draining and retiring design is the next implementation
-  target before dynamic unload or replace can be exposed.
+- Phase 5 namespace patch/additive mutation design is the next implementation
+  target. It must stay behind dry-run-proven plans and must preserve
+  project/session-scoped CCB-owned tmux behavior.
 
 ## Next
 
-1. Add bounded draining and retiring state machinery for unload, including
-   queue limits, timeouts, and explicit failure responses.
-2. Add namespace additive/remove patch operations behind dry-run-proven plans.
-3. Expose additive mutating reload: view-only, add agent, and add window.
-4. Expose dynamic unload for idle and bounded-draining agents.
-5. Expose replacement only after unload semantics are safe; busy replacement
+1. Add namespace additive/remove patch operations behind dry-run-proven plans.
+2. Expose additive mutating reload: view-only, add agent, and add window.
+3. Expose dynamic unload for idle and bounded-draining agents.
+4. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
-6. Run the automatic and manual matrix in
+5. Run the automatic and manual matrix in
     [topics/test-matrix.md](topics/test-matrix.md).
 
 ## Deferred

@@ -139,7 +139,8 @@ Deliverables:
 
 - Add runtime states or lifecycle markers for `draining`, `retiring`,
   `pending_unload`, and `retired`.
-- Stop accepting new jobs for draining agents.
+- Define the state/predicate boundary needed to stop accepting new jobs for
+  draining agents once mutating unload is enabled.
 - Keep running work visible until completion, cancellation, timeout, or force.
 - Add queue length and age limits for pending unload/replace records.
 - Add clear terminal errors when a reload is rejected because a previous drain
@@ -147,10 +148,35 @@ Deliverables:
 
 Exit criteria:
 
-- Idle unload retires the runtime and removes the managed pane.
-- Busy unload waits, then either completes within the configured bound or
-  returns a stable timeout/rejected state.
-- Pending queues cannot grow unbounded.
+- Idle drain reaches `idle_ready` / `retiring` without mutating runtime or tmux.
+- Busy drain waits, then either reaches `idle_ready` within the configured
+  bound or returns a stable timeout/rejected state.
+- Pending unload/replace queues cannot grow unbounded.
+- Actual new-job rejection, runtime retirement writes, and managed-pane removal
+  remain deferred until mutating unload phases wire this state to dispatcher and
+  namespace operations.
+
+Phase 4 implementation status:
+
+- Added `ccbd.reload_drain` as pure state machinery with `DrainIntent`,
+  `DrainRecord`, `DrainBounds`, `DrainQueue`, `DrainQueueStore`,
+  `plan_drain_transition()`, and `retire_record()`.
+- Bounds are explicit: `max_pending` caps non-terminal unload/replace records
+  across the queue, `timeout_s` caps active draining time, and `max_age_s` caps
+  stale intent age before or during drain.
+- Busy/idle is an injected predicate over the current `DrainRecord`; the module
+  does not import dispatcher, comms, provider execution, tmux, namespace, or
+  service-graph publish code.
+- `DrainQueueStore` persists only explicit state-machine calls to
+  `.ccb/ccbd/reload-drain.json`; heartbeat and request steady state do not scan
+  it.
+- Phase 3 dry-run plans now include `drain_intents` suggestions for
+  `remove_agent` and `replace_agent`, but `safe_to_apply=false` and
+  `mutation_enabled=false` remain unchanged.
+- Non-dry-run `project_reload_config` / `ccb reload` is still rejected. Phase 4
+  performs no tmux delete/create, graph publish, namespace patch, runtime
+  authority write, config watch, mount, unmount, provider start, or provider
+  stop.
 
 Rollback:
 
@@ -158,7 +184,8 @@ Rollback:
 
 ## Phase 5: Namespace Patch Operations
 
-Goal: mutate only the target CCB-owned tmux surfaces.
+Goal: introduce namespace patch/additive mutation behind dry-run-proven plans,
+without full namespace recreation or unrelated pane churn.
 
 Deliverables:
 

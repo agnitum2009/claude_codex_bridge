@@ -164,6 +164,11 @@ def render_reload(payload: Mapping[str, object]) -> tuple[str, ...]:
             lines.append(f'reload_operation: {_operation_line(operation)}')
         else:
             lines.append(f'reload_operation: {operation}')
+    for intent in tuple(payload.get('drain_intents') or ()):
+        if isinstance(intent, Mapping):
+            lines.append(f'reload_drain_intent: {_drain_intent_line(intent)}')
+        else:
+            lines.append(f'reload_drain_intent: {intent}')
     for reason in tuple(payload.get('reasons') or ()):
         lines.append(f'reload_reason: {reason}')
     for warning in tuple(payload.get('warnings') or ()):
@@ -184,6 +189,20 @@ def _operation_line(operation: Mapping[str, object]) -> str:
     if operation.get('fields'):
         fields.append(f'fields={",".join(str(item) for item in tuple(operation.get("fields") or ()))}')
     reason = operation.get('reason')
+    if reason:
+        fields.append(f'reason={reason}')
+    return ' '.join(fields)
+
+
+def _drain_intent_line(intent: Mapping[str, object]) -> str:
+    fields = [f'intent_kind={intent.get("intent_kind")}']
+    for key in ('agent', 'initial_phase'):
+        value = intent.get(key)
+        if value not in (None, ''):
+            fields.append(f'{key}={value}')
+    if intent.get('dry_run_only') is not None:
+        fields.append(f'dry_run_only={str(bool(intent.get("dry_run_only"))).lower()}')
+    reason = intent.get('reason')
     if reason:
         fields.append(f'reason={reason}')
     return ' '.join(fields)

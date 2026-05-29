@@ -171,6 +171,10 @@ class CcbdOpsPathMixin:
     def ccbd_fault_injection_path(self):
         return self.ccbd_dir / 'fault-injection.json'
 
+    @property
+    def ccbd_reload_drain_path(self):
+        return self.ccbd_dir / 'reload-drain.json'
+
 
 class CcbdArtifactsPathMixin:
     @property

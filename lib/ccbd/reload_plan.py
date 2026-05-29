@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from agents.config_identity import project_config_identity_payload
+from ccbd.reload_drain import drain_intent_suggestions_for_reload_operations
 
 
 DRY_RUN_ONLY_WARNING = 'Phase 3 dry-run only; mutation capability is disabled.'
@@ -57,12 +58,18 @@ def build_reload_dry_run_plan(
         )
 
     plan_class = _select_plan_class(operations)
+    drain_intents = drain_intent_suggestions_for_reload_operations(
+        operations,
+        old_config_signature=old_identity.get('config_signature'),
+        new_config_signature=new_identity.get('config_signature'),
+    )
     return _plan_payload(
         status='ok',
         plan_class=plan_class,
         old_identity=old_identity,
         new_identity=new_identity,
         operations=operations,
+        drain_intents=drain_intents,
         reasons=_operation_reasons(operations),
         warnings=warnings,
         errors=[],
@@ -83,6 +90,7 @@ def build_invalid_reload_dry_run_plan(
         old_identity=old_identity,
         new_identity={'known_agents': (), 'config_signature': None},
         operations=[],
+        drain_intents=[],
         reasons=['new config could not be loaded or validated'],
         warnings=[DRY_RUN_ONLY_WARNING],
         errors=[str(error)],
@@ -107,6 +115,7 @@ def _identity_preserving_plan(
             old_identity=old_identity,
             new_identity=new_identity,
             operations=[],
+            drain_intents=[],
             reasons=['config identity and presentation fields are unchanged'],
             warnings=warnings,
             errors=[],
@@ -132,6 +141,7 @@ def _identity_preserving_plan(
         old_identity=old_identity,
         new_identity=new_identity,
         operations=operations,
+        drain_intents=[],
         reasons=['config identity is unchanged; presentation-only fields changed'],
         warnings=warnings,
         errors=[],
@@ -291,6 +301,7 @@ def _plan_payload(
     old_identity: dict[str, object],
     new_identity: dict[str, object],
     operations: list[dict[str, object]],
+    drain_intents: list[dict[str, object]],
     reasons: list[str],
     warnings: list[str],
     errors: list[str],
@@ -308,6 +319,7 @@ def _plan_payload(
         'old_known_agents': list(old_identity.get('known_agents') or ()),
         'new_known_agents': list(new_identity.get('known_agents') or ()),
         'operations': operations,
+        'drain_intents': drain_intents,
         'reasons': reasons,
         'warnings': warnings,
         'errors': errors,

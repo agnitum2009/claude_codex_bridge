@@ -20,6 +20,19 @@ Date: 2026-05-29
   - `ccb reload --dry-run` renders daemon payloads and returns non-zero for
     invalid-config dry-run results;
   - non-dry-run reload is rejected.
+  - Phase 4 dry-run payloads may include bounded `drain_intents` suggestions
+    for `remove_agent` and `replace_agent`, but they remain no-mutation plans
+    with `safe_to_apply=false`.
+- Bounded drain/retire state:
+  - idle intent transitions immediately to `idle_ready` / `retiring`;
+  - busy intent remains `waiting` / `draining` until timeout;
+  - `timeout_s`, `max_age_s`, and `max_pending` reject or terminate bounded
+    records;
+  - unload and replace intents share the queue bound without unbounded growth;
+  - `retired` is terminal;
+  - busy/idle predicate is injectable;
+  - state-machine and store tests do not call tmux, publish a service graph,
+    patch namespace, mutate runtime authority, or start/stop providers.
 - Handler graph routing:
   - after graph replacement, `submit`, `project_view`, `ping`, and focus
     handlers resolve the new graph;
@@ -100,9 +113,12 @@ Date: 2026-05-29
     report `replace_agent` and leave the running pane untouched;
   - delete or move an existing agent; dry-run should report `remove_agent` or
     `move_agent`/`layout_change` and leave panes untouched;
+  - for delete or replace dry-run, inspect the payload for `drain_intents`
+    suggestions only; no pending drain store entry, pane change, graph publish,
+    or runtime authority write should occur from dry-run alone;
   - break TOML or config validation; dry-run should report `invalid_config`
     while `ccb ping ccbd` still shows the old config signature.
-- Phase 4+ mutating checks:
+- Phase 5+ mutating checks:
 - Start a project with two windows and four agents.
 - Start a long-running/manual task in `agent2`.
 - Edit `.ccb/ccb.config` to add `agent5` to an existing window.
