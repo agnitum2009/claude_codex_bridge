@@ -242,6 +242,19 @@ Phase 6a design-only status:
   reuse through new narrow APIs.
 - Non-dry-run `project_reload_config` and `ccb reload` remain rejected.
 
+Phase 6b first-step status:
+
+- Added `ProjectNamespaceController.apply_additive_patch(...)` and
+  `NamespacePatchApplyResult`.
+- The implementation supports only `add_window` patch plans. Append-only
+  `add_agent` is still blocked.
+- Tests use a fake tmux backend and assert the patch path does not call full
+  namespace ensure/recreate/reflow/kill paths.
+- The API creates only new window/sidebar/agent pane evidence and does not
+  mount providers, write runtime authority, update lease/lifecycle, or publish
+  a service graph.
+- Non-dry-run `project_reload_config` and `ccb reload` remain rejected.
+
 Deliverables:
 
 - Enable view-only, add-agent, and add-window reload.

@@ -53,6 +53,16 @@ Date: 2026-05-29
   - document the before/after pane-id proof required for `preserved_agents`;
   - keep non-dry-run reload rejected until the narrow apply API has fake-backend
     tests.
+- Phase 6b namespace additive patch API:
+  - `add_window` fake-backend apply creates only the new window, optional
+    sidebar pane, and new agent panes;
+  - new pane identities include project id, role, slot key, window, namespace
+    epoch, and `managed_by=ccbd`;
+  - preserved-agent before/after snapshots are gate evidence only;
+  - append-only `add_agent` remains blocked in this first step;
+  - failures before or during patch return diagnostics with graph/runtime/lease
+    publish flags false;
+  - non-dry-run reload remains rejected.
 - Bounded drain/retire state:
   - idle intent transitions immediately to `idle_ready` / `retiring`;
   - busy intent remains `waiting` / `draining` until timeout;

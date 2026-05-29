@@ -269,3 +269,16 @@ backend unit-tested namespace patch apply API for `add_window` only:
 
 After that passes, add append-only `add_agent`, then wire runtime mounts, then
 open non-dry-run reload behind the transaction order above.
+
+Implementation status:
+
+- `ProjectNamespaceController.apply_additive_patch(...)` now exists and returns
+  `NamespacePatchApplyResult`.
+- The first implementation supports `add_window` only and blocks append-only
+  `add_agent`.
+- The fake-backend tests cover new window/sidebar/agent pane creation,
+  `managed_by=ccbd` identity evidence, preservation snapshots, failure
+  diagnostics, and continued non-dry-run reload rejection.
+- The API is not wired into `project_reload_config`; it does not mount
+  providers, write runtime authority, update lease/lifecycle, publish a graph,
+  or add config watching.
