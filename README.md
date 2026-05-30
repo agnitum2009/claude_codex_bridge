@@ -180,6 +180,8 @@ Type directly in an agent pane, or route work between agents:
 | Force cleanup before rebuilding | `ccb kill -f` then `ccb -n` |
 | Update to the latest stable release | `ccb update` |
 | Inspect the active config layer | `ccb config validate` |
+| Preview a config reload plan without changing tmux | `ccb reload --dry-run` |
+| Apply supported config changes without restarting other agents | `ccb reload` |
 
 ## tmux Basics
 
@@ -246,6 +248,8 @@ Higher layers replace lower layers as a whole; they are not merged. The project 
 | Sidebar behavior | `[ui.sidebar]` | Controls whether the sidebar appears in every window, plus width and Comms height. |
 | Per-agent model/API | `[agents.<name>]` | Configure `model`, `key`, `url`, and related agent-local overrides. |
 | Role description | `[agents.<name>] description = "..."` | Give an agent a short responsibility note; longer workflow rules belong in memory. |
+
+After editing `.ccb/ccb.config` in a mounted project, run `ccb reload --dry-run` to preview the plan and `ccb reload` to apply it. The explicit reload path can dynamically add agents, add windows, unload idle agents, and remove idle windows while keeping unrelated agents and panes running. It does not run as a background file watcher, and unsafe changes such as busy unloads, provider replacement, agent moves, and arbitrary reshapes are rejected without killing existing panes.
 
 If you want to discuss the configuration before writing it by hand, use the `ccb-config` skill and describe the target team. It proposes a complete config first, then writes `.ccb/ccb.config` only after confirmation.
 
@@ -327,7 +331,7 @@ $ccb-config Design a team for a Python library: main coordinates work, three wor
 2. `ccb-config` reads the current config authority and decides whether this is a new config, an edit, or a migration.
 3. It proposes one complete config before writing.
 4. You confirm the proposal, then it edits only `.ccb/ccb.config`.
-5. It validates the config and tells you to restart CCB for the change to take effect.
+5. It validates the config and tells you to use `ccb reload --dry-run` / `ccb reload` when the change can be applied dynamically.
 
 By default, `ccb-config` does not edit `.ccb/ccb_memory.md` or `.ccb/agents/<agent>/memory.md`. It should touch those memory files only when you explicitly ask for workflow memory or role memory design.
 
@@ -441,10 +445,21 @@ v7 highlights:
 - Native CCB sidebar with per-window project view, agent status, and mouse switching.
 - Comms split from agent activity, making communication status and provider pane activity clearer.
 - `version = 2` `[windows]` topology for workflow-oriented tmux window grouping.
+- Explicit `ccb reload` support for dynamic agent/window load and idle unload without restarting unrelated agents.
 - Compact / hybrid config compatibility, so single-window teams do not need forced migration.
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.0.12</b> - Dynamic Reload Release</summary>
+
+- Adds explicit hot reload for `.ccb/ccb.config`: use `ccb reload --dry-run` to preview and `ccb reload` to apply supported changes.
+- Dynamically mounts append-only agents and new windows under the existing ccbd daemon without interrupting unrelated panes.
+- Dynamically unloads idle removed agents and idle removed windows while preserving remaining agent panes.
+- Treats config signature drift as reload-pending instead of a daemon restart trigger; busy unloads and unsafe replacements still fail closed.
+
+</details>
+
+<details>
 <summary><b>v7.0.11</b> - Provider Activity And Sidebar Focus Release</summary>
 
 - Records provider-native activity evidence from hook artifacts so sidebar status can reflect active, pending, idle, and failed provider work more accurately.
