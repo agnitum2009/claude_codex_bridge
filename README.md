@@ -467,6 +467,7 @@ v7 highlights:
 - Adds three configurable sidebar sections under `[ui.sidebar.view]`: `agents_height`, `comms_height`, and `tips_height`.
 - Changes the default native sidebar split to Agents `50%`, Comms `15%`, and Tips `35%`.
 - Carries the height settings through config parsing, project_view payloads, reload planning, and the Rust sidebar TUI.
+- Fixes reload reliability for same-name agent remounts: a dynamically unloaded retired agent can be rebuilt under the same name without `runtime_authority_already_exists`, while old stopped session records remain available for inheritance.
 - Updates the inherited Codex/Claude `ccb-config` skill docs and references so generated or migrated windows topology exposes all three values.
 
 </details>

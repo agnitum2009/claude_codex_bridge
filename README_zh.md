@@ -464,6 +464,7 @@ v7 线重点：
 - 在 `[ui.sidebar.view]` 下新增三段 sidebar 高度配置：`agents_height`、`comms_height`、`tips_height`。
 - 原生 sidebar 默认内部分区调整为 Agents `50%`、Comms `15%`、Tips `35%`。
 - config 解析、project_view payload、reload 计划和 Rust sidebar TUI 都会传递并使用这些高度设置。
+- 修复同名 agent reload/remount 可靠性：动态卸载后的 retired agent 可以用同名重新创建，不再被旧 runtime authority residue 阻塞；已停止的旧 session 记录仍可保留并供重建继承。
 - 同步更新 Codex/Claude 继承的 `ccb-config` skill 文档和 reference，生成或迁移 windows topology 时会暴露这三个参数。
 
 </details>
