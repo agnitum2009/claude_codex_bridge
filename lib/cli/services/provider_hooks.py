@@ -83,6 +83,7 @@ def prepare_provider_workspace(
     completion_dir: Path,
     agent_name: str,
     refresh_profile: bool = False,
+    auto_permission: bool = False,
 ) -> ResolvedProviderProfile:
     runtime_dir = layout.agent_provider_runtime_dir(spec.name, spec.provider)
     resolved_profile = (
@@ -106,6 +107,7 @@ def prepare_provider_workspace(
         runtime_dir=runtime_dir,
         resolved_profile=resolved_profile,
         workspace_path=workspace_path,
+        auto_permission=auto_permission,
     )
     prepare_workspace_provider_hooks(
         provider=spec.provider,
@@ -157,6 +159,7 @@ def _materialize_provider_home(
     runtime_dir: Path,
     resolved_profile: ResolvedProviderProfile | None,
     workspace_path: Path,
+    auto_permission: bool,
 ) -> None:
     provider = str(spec.provider or '').strip().lower()
     if provider == 'claude':
@@ -168,6 +171,7 @@ def _materialize_provider_home(
             project_root=layout.project_root,
             agent_name=spec.name,
             workspace_path=workspace_path,
+            auto_permission=auto_permission,
             memory_projection_event_path=layout.agent_events_path(spec.name),
             memory_projection_marker_path=Path(runtime_dir) / 'claude-memory-projection.json',
         )

@@ -11,6 +11,7 @@ import tarfile
 from release_artifacts import release_artifact_name
 from cli.roles_runtime.commands import cmd_roles
 from cli.tools_runtime.neovim import provision_neovim
+from rolepacks.sources import role_catalog_status
 
 from ..install import (
     download_tarball,
@@ -205,28 +206,152 @@ def _provision_neovim_after_update() -> None:
 
 
 def _update_builtin_roles_after_update(*, install_dir: Path) -> None:
+    _update_catalog_roles_after_update(install_dir=install_dir)
+
+
+def _update_catalog_roles_after_update(*, install_dir: Path) -> None:
+    try:
+        rows = tuple(role_catalog_status(refresh_default=True))
+    except Exception as exc:
+        print(f'⚠️  Agent Roles catalog unavailable: {type(exc).__name__}: {exc}')
+        return
     choice = _roles_update_choice()
+    if choice == 'env-skip':
+        print('ℹ️  Role Pack update skipped by CCB_INSTALL_ROLES=0')
+        _print_catalog_followups(rows)
+        return
     if choice == 'declined':
         print('ℹ️  Role Pack update skipped.')
-        print('   Run `ccb roles update ccb.archi` later to refresh roles and dependencies.')
+        _print_catalog_followups(rows)
         return
     if choice == 'noninteractive-skip':
         print('ℹ️  Role Pack update skipped in non-interactive update.')
-        print('   Run `ccb roles update ccb.archi` later to refresh roles and dependencies.')
+        _print_catalog_followups(rows)
+        return
+    _refresh_installed_catalog_roles(rows, install_dir=install_dir)
+    try:
+        refreshed_rows = tuple(role_catalog_status(refresh_default=True))
+    except Exception:
+        refreshed_rows = rows
+    _print_catalog_followups(refreshed_rows)
+    _install_new_catalog_roles_interactive(refreshed_rows, install_dir=install_dir)
+
+
+def _refresh_installed_catalog_roles(rows: tuple[dict[str, object], ...], *, install_dir: Path) -> None:
+    update_rows = [row for row in rows if row.get('status') == 'update_available']
+    current_rows = [row for row in rows if row.get('status') == 'current']
+    if not update_rows:
+        if current_rows:
+            print('✅ Installed Role Packs already match the catalog.')
+        else:
+            print('ℹ️  No installed catalog Role Packs to update.')
         return
     stdout = sys.stdout
     stderr = sys.stderr
-    code = cmd_roles(['update', 'ccb.archi'], script_root=install_dir, cwd=Path.cwd(), stdout=stdout, stderr=stderr)
-    if code == 0:
-        print('✅ Role Pack ready: ccb.archi')
-    else:
-        print('⚠️  Role Pack update failed: ccb.archi')
+    failures = 0
+    for row in update_rows:
+        role_id = str(row.get('role_id') or '').strip()
+        if not role_id:
+            continue
+        code = cmd_roles(['update', role_id], script_root=install_dir, cwd=Path.cwd(), stdout=stdout, stderr=stderr)
+        if code == 0:
+            print(f'✅ Role Pack updated: {role_id}')
+        else:
+            failures += 1
+            print(f'⚠️  Role Pack update failed: {role_id}')
+    if failures:
+        print(f'⚠️  Role Pack updates had {failures} failure(s).')
+
+
+def _print_catalog_followups(rows: tuple[dict[str, object], ...]) -> None:
+    available = [row for row in rows if row.get('status') == 'available']
+    missing = [row for row in rows if row.get('status') == 'installed_source_missing']
+    if available:
+        print('🆕 New Agent Roles available:')
+        for index, row in enumerate(available, start=1):
+            role_id = str(row.get('role_id') or '').strip()
+            version = str(row.get('version') or '').strip()
+            name = str(row.get('name') or '').strip()
+            description = _short_catalog_text(str(row.get('description') or '').strip())
+            label = f'{role_id} v{version}' if version else role_id
+            details = ' - '.join(item for item in (name, description) if item)
+            print(f'   {index}. {label}' + (f': {details}' if details else ''))
+        print('   Install with `ccb roles install <role-id>`; bind with `ccb roles add <role-id>:<provider>`.')
+    for row in missing:
+        role_id = str(row.get('role_id') or '').strip()
+        source_path = str(row.get('path') or '').strip()
+        print(f'⚠️  Installed Role Pack source missing: {role_id}' + (f' ({source_path})' if source_path else ''))
+
+
+def _install_new_catalog_roles_interactive(rows: tuple[dict[str, object], ...], *, install_dir: Path) -> None:
+    available = [row for row in rows if row.get('status') == 'available']
+    if not available or not _stream_is_tty(sys.stdin) or not _stream_is_tty(sys.stdout):
+        return
+    print('Install newly available Agent Roles now? Enter numbers, all, or blank to skip: ', end='', flush=True)
+    try:
+        answer = sys.stdin.readline()
+    except Exception:
+        return
+    selected = _select_catalog_role_ids(answer, available)
+    if not selected:
+        print('ℹ️  New Role Pack installation skipped.')
+        return
+    stdout = sys.stdout
+    stderr = sys.stderr
+    failures = 0
+    for role_id in selected:
+        code = cmd_roles(['install', role_id], script_root=install_dir, cwd=Path.cwd(), stdout=stdout, stderr=stderr)
+        if code == 0:
+            print(f'✅ Role Pack installed: {role_id}')
+        else:
+            failures += 1
+            print(f'⚠️  Role Pack install failed: {role_id}')
+    if failures:
+        print(f'⚠️  Role Pack installs had {failures} failure(s).')
+
+
+def _select_catalog_role_ids(answer: str, rows: list[dict[str, object]]) -> tuple[str, ...]:
+    text = str(answer or '').strip().lower()
+    if not text or text in {'n', 'no', 'skip'}:
+        return ()
+    if text in {'a', 'all', '*'}:
+        return tuple(str(row.get('role_id') or '').strip() for row in rows if str(row.get('role_id') or '').strip())
+    selected: list[str] = []
+    by_id = {str(row.get('role_id') or '').strip().lower(): str(row.get('role_id') or '').strip() for row in rows}
+    for item in text.replace(',', ' ').split():
+        if item.isdigit():
+            index = int(item) - 1
+            if 0 <= index < len(rows):
+                role_id = str(rows[index].get('role_id') or '').strip()
+                if role_id:
+                    selected.append(role_id)
+            continue
+        role_id = by_id.get(item)
+        if role_id:
+            selected.append(role_id)
+    deduped: list[str] = []
+    for role_id in selected:
+        if role_id not in deduped:
+            deduped.append(role_id)
+    return tuple(deduped)
+
+
+def _short_catalog_text(text: str, *, limit: int = 96) -> str:
+    compact = ' '.join(str(text or '').split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(0, limit - 3)].rstrip() + '...'
 
 
 def _roles_update_choice() -> str:
+    requested = str(os.environ.get('CCB_INSTALL_ROLES') or '').strip().lower()
+    if requested in {'0', 'false', 'off', 'no'}:
+        return 'env-skip'
+    if requested in {'1', 'true', 'on', 'yes'}:
+        return 'accepted'
     if not _stream_is_tty(sys.stdin) or not _stream_is_tty(sys.stdout):
         return 'noninteractive-skip'
-    print('Install/refresh bundled Role Packs and dependencies now? [Y/n] ', end='', flush=True)
+    print('Refresh installed Agent Roles from the catalog now? [Y/n] ', end='', flush=True)
     try:
         answer = sys.stdin.readline()
     except Exception:

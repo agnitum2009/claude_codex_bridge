@@ -28,6 +28,10 @@
 
    给出复现、验证、回归测试、手工验收、回滚和提 PR 前检查清单。
 
+5. [05-root-install-confirmation.md](./05-root-install-confirmation.md)
+
+   设计 root 安装确认门禁：默认拒绝、强提醒、显式确认后允许 root profile 安装，并给出 doctor 诊断字段。
+
 ## 一句话结论
 
 本问题的核心不是用户系统损坏，也不是 Python、Volta、Codex CLI、Claude Code 任意一个工具单独损坏。
@@ -69,9 +73,9 @@ CCB_USE_MANAGED_VENV=1 \
 
 1. source/dev 安装的 Python 入口闭环。
 2. 安装后真实 `ccb` 入口 smoke test。
-3. Droid MCP 注册超时和非核心化。
-4. `ccb doctor` 增强 provider 路径诊断。
-5. Claude Code 首次确认 blocked 状态识别。
+3. root 安装确认门禁，默认拒绝但允许显式 root profile 安装。
+4. Droid MCP 注册超时和非核心化。
+5. `ccb doctor` 增强 provider 路径诊断。
+6. Claude Code 首次确认 blocked 状态识别。
 
 这些修复建议拆成多个 PR，而不是一个大 PR。
-

@@ -80,6 +80,7 @@ def prepare_start_agents(
             completion_dir=paths.agent_provider_runtime_dir(agent_name, spec.provider) / 'completion',
             agent_name=agent_name,
             refresh_profile=True,
+            auto_permission=context.command.auto_permission,
         )
         result = validator.validate(plan)
         if not result.ok:

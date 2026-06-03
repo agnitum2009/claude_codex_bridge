@@ -36,8 +36,11 @@ Date: 2026-06-02
    - role with plugin content
 5. Create at least one reference role that demonstrates memory, skills, tools,
    and host adapter metadata without depending on CCB internals.
-6. Add a lightweight validator or validation checklist for the v0.1 preview.
-7. Publish `v0.1.0-spec-preview` only when the first-release checklist passes.
+6. Decide which roles are production-ready under `roles/` versus educational
+   examples under `reference_roles/`, so CCB can install from the catalog
+   without vendoring role content into `ccb_source`.
+7. Add a lightweight validator or validation checklist for the v0.1 preview.
+8. Publish `v0.1.0-spec-preview` only when the first-release checklist passes.
 
 ## Deferred
 

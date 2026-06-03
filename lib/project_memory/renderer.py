@@ -42,7 +42,9 @@ def render_memory_bundle(
     lines.extend(['-->', '', CCB_RUNTIME_COORDINATION_RULES.rstrip(), ''])
 
     for source in sources:
-        if not source.exists or not source.content.strip():
+        if not source.exists and not source.warning:
+            continue
+        if not source.content.strip() and not source.warning:
             continue
         lines.extend(_render_source_section(source))
 

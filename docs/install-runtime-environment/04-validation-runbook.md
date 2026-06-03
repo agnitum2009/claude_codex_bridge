@@ -471,3 +471,137 @@ SeemSeam/claude_codex_bridge:fix/source-install-python-wrapper
   -> bfly123/claude_code_bridge:main
 ```
 
+## 16. Root 安装确认验证
+
+详细设计见 [05-root-install-confirmation.md](./05-root-install-confirmation.md)。
+
+这些用例只在实现 root 安装确认门禁后执行。优先使用容器、临时 root shell 或 CI fixture，不要在日常用户环境里反复用 root 安装。
+
+### 16.1 非 root 行为不变
+
+工作目录：
+
+```bash
+cd /Users/yuanfeijie/Desktop/project/claude_code_bridge
+```
+
+命令：
+
+```bash
+./install.sh install
+```
+
+期望：
+
+```text
+不出现 root install prompt
+继续走原安装流程
+```
+
+### 16.2 root 交互默认取消
+
+在临时 root 环境中：
+
+```bash
+./install.sh install
+```
+
+在提示处直接回车。
+
+期望：
+
+```text
+显示 Root install is not recommended
+显示 root profile 路径和 provider auth 风险
+Installation cancelled
+退出码非 0
+```
+
+### 16.3 root 交互确认继续
+
+在临时 root 环境中：
+
+```bash
+./install.sh install
+```
+
+在提示处输入：
+
+```text
+y
+```
+
+期望：
+
+```text
+安装继续
+bin directory 为 /root/.local/bin
+role store 为 /root/.local/share/ccb/roles
+tool store 为 /root/.local/share/ccb/tools
+```
+
+安装后验证：
+
+```bash
+/root/.local/bin/ccb --print-version
+/root/.local/bin/ccb doctor
+```
+
+期望 doctor 能看到：
+
+```text
+user_id: 0
+user_name: root
+root_runtime: true
+install_root_owned: true
+project_owner: <uid:name>
+ccb_dir_owner: <uid:name or missing>
+```
+
+如果当前项目不是 root-owned，还应看到 ownership warning。
+
+### 16.4 root 非交互必须显式确认
+
+在临时 root 环境中：
+
+```bash
+printf '' | ./install.sh install
+```
+
+期望：
+
+```text
+ERROR: Root install requires explicit confirmation.
+退出码非 0
+```
+
+显式确认：
+
+```bash
+CCB_ALLOW_ROOT_INSTALL=1 ./install.sh install
+```
+
+期望：
+
+```text
+WARN: Continuing root install because CCB_ALLOW_ROOT_INSTALL=1 is set.
+安装继续
+```
+
+### 16.5 sudo 误用提示
+
+从普通用户执行：
+
+```bash
+sudo ./install.sh install
+```
+
+期望：
+
+```text
+Detected sudo user: <name>
+This will not install CCB for <name>; it will install for root.
+Continue root install? (y/N):
+```
+
+默认回车必须取消。

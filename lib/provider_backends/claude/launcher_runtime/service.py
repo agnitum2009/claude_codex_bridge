@@ -68,6 +68,7 @@ def build_start_cmd(
     home_overrides = prepare_home_overrides_fn(
         runtime_dir,
         profile,
+        auto_permission=bool(command.auto_permission),
         agent_name=spec.name,
         workspace_path=restore_target.run_cwd,
     )

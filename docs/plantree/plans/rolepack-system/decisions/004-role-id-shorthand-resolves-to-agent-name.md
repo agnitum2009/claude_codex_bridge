@@ -4,10 +4,10 @@ Date: 2026-06-01
 
 ## Context
 
-Users should be able to configure fixed built-in roles with less boilerplate.
-For example, writing `ccb.archi:codex` in a CCB window layout is clearer than
-manually adding both an `archi:codex` leaf and an `[agents.archi] role =
-"ccb.archi"` overlay.
+Users should be able to configure catalog roles with less boilerplate.
+For example, writing `agentroles.archi:codex` in a CCB window layout is
+clearer than manually adding both an `archi:codex` leaf and an
+`[agents.archi] role = "agentroles.archi"` overlay.
 
 At the same time, CCB runtime surfaces such as sidebar rows, mailbox owners,
 job targets, and provider runtime records need ergonomic project-local agent
@@ -16,7 +16,8 @@ names. A role id is package identity, not the mounted agent instance name.
 ## Decision
 
 CCB may accept a role-id shorthand in config leaves. A leaf whose name is a
-publisher-qualified role id such as `ccb.archi` is resolved during config load:
+publisher-qualified role id such as `agentroles.archi` is resolved during
+config load:
 
 1. The role id must exist in the installed system role store.
 2. Missing installed roles are config errors with guidance to run
@@ -43,7 +44,7 @@ Example shorthand:
 
 ```toml
 [windows]
-main = "agent1:codex, ccb.archi:codex"
+main = "agent1:codex, agentroles.archi:codex"
 ```
 
 Resolved runtime meaning:
@@ -53,13 +54,13 @@ Resolved runtime meaning:
 main = "agent1:codex, archi:codex"
 
 [agents.archi]
-role = "ccb.archi"
+role = "agentroles.archi"
 provider = "codex"
 ```
 
 The project-local agent name remains `archi`. Sidebar, mailbox, job, and pane
-labels use `archi`, not `ccb.archi`. The role id may appear only as secondary
-metadata in diagnostics or details.
+labels use `archi`, not `agentroles.archi`. The role id may appear only as
+secondary metadata in diagnostics or details.
 
 `ccb ask <role-id> ...` is a convenience alias, not a runtime target name. It
 resolves to the single configured agent bound to that role id. If no configured
@@ -68,9 +69,9 @@ asks the user to target the project-local agent name directly.
 
 Alias errors use one format:
 
-- no match: `role ccb.archi is not bound to any configured agent; target the
-  project-local agent name or add the role to config`
-- multiple matches: `role ccb.archi is bound to multiple agents: archi,
+- no match: `role agentroles.archi is not bound to any configured agent; target
+  the project-local agent name or add the role to config`
+- multiple matches: `role agentroles.archi is bound to multiple agents: archi,
   archi-review; target one agent name explicitly`
 
 ## Consequences

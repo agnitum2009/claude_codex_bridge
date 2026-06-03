@@ -98,9 +98,11 @@ def print_start_help(*, file=None) -> None:
 
             Roles:
               ccb roles list
-              ccb roles install ccb.archi
-              ccb roles update ccb.archi
-              ccb roles add ccb.archi:codex
+              ccb roles install agentroles.archi
+              ccb roles update agentroles.archi
+              ccb roles sync [path]
+              ccb roles add agentroles.archi:codex
+              ccb roles doctor agentroles.archi
             """
         ).strip(),
         file=file,
@@ -353,15 +355,16 @@ _COMMAND_HELP = {
           ccb tools update neovim   Refresh the managed profile wrapper.
     """,
     "roles": """
-        usage: ccb roles <list|show|install|update|add|doctor> ...
+        usage: ccb roles <list|show|install|update|sync|add|doctor> ...
 
         Role Pack management:
           ccb roles list
-          ccb roles show ccb.archi
-          ccb roles install ccb.archi
-          ccb roles update ccb.archi
-          ccb roles add ccb.archi:codex
-          ccb roles doctor ccb.archi
+          ccb roles show agentroles.archi
+          ccb roles install agentroles.archi
+          ccb roles update agentroles.archi
+          ccb roles sync [path]
+          ccb roles add agentroles.archi:codex
+          ccb roles doctor agentroles.archi
     """,
 }
 

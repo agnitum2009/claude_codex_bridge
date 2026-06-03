@@ -6,15 +6,18 @@ from typing import TextIO
 
 from agents.models import parse_layout_spec
 from project.discovery import find_nearest_project_anchor
-from rolepacks import (
+from rolepacks.service import (
     RolePackError,
     add_role_to_project_config,
     install_role,
     list_builtin_roles,
     load_installed_role,
     role_status,
+    sync_roles_from_path,
     update_role,
 )
+from rolepacks.manifest import normalize_role_id
+from rolepacks.sources import role_catalog_status
 
 
 def cmd_roles(
@@ -39,6 +42,8 @@ def cmd_roles(
             return _cmd_install(args, script_root=script_root, stdout=stdout)
         if args.command == 'update':
             return _cmd_update(args, script_root=script_root, stdout=stdout)
+        if args.command == 'sync':
+            return _cmd_sync(args, cwd=cwd, stdout=stdout)
         if args.command == 'doctor':
             return _cmd_doctor(args, script_root=script_root, stdout=stdout)
         if args.command == 'add':
@@ -57,11 +62,16 @@ def _build_parser() -> argparse.ArgumentParser:
     show = sub.add_parser('show')
     show.add_argument('role_id')
     install = sub.add_parser('install')
-    install.add_argument('role_id')
+    install.add_argument('role_id', nargs='?')
+    install.add_argument('--path', default=None)
     install.add_argument('--skip-tools', action='store_true', default=False)
     update = sub.add_parser('update')
-    update.add_argument('role_id')
+    update.add_argument('role_id', nargs='?')
+    update.add_argument('--path', default=None)
     update.add_argument('--skip-tools', action='store_true', default=False)
+    sync = sub.add_parser('sync')
+    sync.add_argument('path', nargs='?', default='.')
+    sync.add_argument('--with-tools', action='store_true', default=False)
     doctor = sub.add_parser('doctor')
     doctor.add_argument('role_id')
     add = sub.add_parser('add')
@@ -73,9 +83,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_list(args, *, script_root: Path, stdout: TextIO) -> int:
-    roles = list_builtin_roles(script_root=script_root)
     print('roles_status: ok', file=stdout)
-    for role in roles:
+    rows = role_catalog_status()
+    if rows:
+        for row in rows:
+            line = (
+                f'role: id={row.get("role_id")} name={row.get("name")} '
+                f'version={row.get("version")} installed_version={row.get("installed_version")} '
+                f'status={row.get("status")} source={row.get("source")}'
+            )
+            warning = str(row.get('warning') or '').strip()
+            if warning:
+                line += f' warning={warning}'
+            print(line, file=stdout)
+        return 0
+    for role in list_builtin_roles(script_root=script_root):
         print(
             f'role: id={role.id} name={role.name} version={role.version} '
             f'providers={",".join(role.providers)}',
@@ -85,9 +107,10 @@ def _cmd_list(args, *, script_root: Path, stdout: TextIO) -> int:
 
 
 def _cmd_show(args, *, script_root: Path, stdout: TextIO) -> int:
-    role = load_installed_role(args.role_id)
+    role_id = normalize_role_id(args.role_id)
+    role = load_installed_role(role_id)
     if role is None:
-        role = next((item for item in list_builtin_roles(script_root=script_root) if item.id == args.role_id), None)
+        role = next((item for item in list_builtin_roles(script_root=script_root) if item.id == role_id), None)
     if role is None:
         raise RolePackError(f'unknown role: {args.role_id}')
     print('roles_status: ok', file=stdout)
@@ -97,20 +120,63 @@ def _cmd_show(args, *, script_root: Path, stdout: TextIO) -> int:
 
 
 def _cmd_install(args, *, script_root: Path, stdout: TextIO) -> int:
-    payload = install_role(args.role_id, script_root=script_root, with_tools=not bool(args.skip_tools))
+    payload = install_role(
+        args.role_id,
+        script_root=script_root,
+        source_path=Path(args.path) if args.path else None,
+        with_tools=not bool(args.skip_tools),
+    )
     _print_payload(payload, stdout=stdout)
     return 0
 
 
 def _cmd_update(args, *, script_root: Path, stdout: TextIO) -> int:
-    payload = update_role(args.role_id, script_root=script_root, with_tools=not bool(args.skip_tools))
+    payload = update_role(
+        args.role_id,
+        script_root=script_root,
+        source_path=Path(args.path) if args.path else None,
+        with_tools=not bool(args.skip_tools),
+    )
     _print_payload(payload, stdout=stdout)
+    return 0
+
+
+def _cmd_sync(args, *, cwd: Path, stdout: TextIO) -> int:
+    source_path = Path(args.path).expanduser()
+    if not source_path.is_absolute():
+        source_path = cwd / source_path
+    payload = sync_roles_from_path(source_path, with_tools=bool(args.with_tools))
+    print(f'sync_status: {payload.get("sync_status")}', file=stdout)
+    print(f'path: {payload.get("path")}', file=stdout)
+    roles = payload.get('roles')
+    if isinstance(roles, tuple):
+        for row in roles:
+            if not isinstance(row, dict):
+                continue
+            print(
+                f'role: id={row.get("role_id")} status={row.get("status")} '
+                f'version={row.get("version")} digest={row.get("digest")} path={row.get("path")}',
+                file=stdout,
+            )
+            tools = row.get('tools')
+            if isinstance(tools, tuple):
+                for item in tools:
+                    if not isinstance(item, dict):
+                        continue
+                    print(
+                        'tool: '
+                        f'id={item.get("tool_id")} '
+                        f'action={item.get("action")} '
+                        f'status={item.get("status")} '
+                        f'required={str(bool(item.get("required"))).lower()}',
+                        file=stdout,
+                    )
     return 0
 
 
 def _cmd_doctor(args, *, script_root: Path, stdout: TextIO) -> int:
     payload = role_status(args.role_id, script_root=script_root, include_tools=True)
-    exists = bool(payload.get('builtin') or payload.get('installed'))
+    exists = bool(payload.get('available') or payload.get('installed'))
     tools_failed = payload.get('tools_status') == 'failed'
     print('roles_status: ok' if exists and not tools_failed else 'roles_status: missing' if not exists else 'roles_status: degraded', file=stdout)
     _print_payload(payload, stdout=stdout)
@@ -169,7 +235,7 @@ def _one_line(text: str) -> str:
 def _parse_add_role_spec(value: str) -> tuple[str, str | None]:
     text = str(value or '').strip()
     if not text:
-        raise RolePackError('roles add requires a role spec, for example ccb.archi:codex')
+        raise RolePackError('roles add requires a role spec, for example agentroles.archi:codex')
     try:
         node = parse_layout_spec(text)
     except Exception as exc:

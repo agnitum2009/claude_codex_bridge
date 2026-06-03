@@ -5,6 +5,7 @@ from typing import Any
 
 from provider_model_shortcuts import provider_model_startup_args, startup_args_contain_model_flag
 from provider_profiles.models import ProviderProfileSpec
+from role_aliases import canonical_role_id
 
 from .api import AgentApiSpec
 from ..enums import PermissionMode, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode, normalize_runtime_mode
@@ -79,6 +80,17 @@ class AgentSpec:
         normalized = str(self.model).strip()
         if not normalized:
             raise AgentValidationError('model cannot be empty')
+        return canonical_role_id(normalized)
+
+    def _normalize_role(self) -> str | None:
+        if self.role is None:
+            return None
+        normalized = str(self.role).strip().lower()
+        if not normalized:
+            raise AgentValidationError('role cannot be empty')
+        allowed = set('abcdefghijklmnopqrstuvwxyz0123456789._-')
+        if any(ch not in allowed for ch in normalized) or '.' not in normalized:
+            raise AgentValidationError('role must use publisher.role form, for example agentroles.archi')
         return normalized
 
     def _normalize_role(self) -> str | None:

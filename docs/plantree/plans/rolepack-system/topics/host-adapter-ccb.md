@@ -17,56 +17,64 @@ Explicit binding:
 main = "agent1:codex, archi:codex"
 
 [agents.archi]
-role = "ccb.archi"
+role = "agentroles.archi"
 provider = "codex"
 workspace_mode = "inplace"
 permission = "manual"
 ```
 
 `role` is metadata for projection and behavior. The project-local agent name is
-still `archi`; the stable role id is `ccb.archi`.
+still `archi`; the stable role id is the catalog role id, for example
+`agentroles.archi`.
 
 Shorthand binding:
 
 ```toml
 [windows]
-main = "agent1:codex, ccb.archi:codex"
+main = "agent1:codex, agentroles.archi:codex"
 ```
 
-When a window leaf uses a publisher-qualified role id such as `ccb.archi`, CCB
-checks the installed system role store during config load. If the role is
-installed, the leaf resolves to the role manifest's default agent name, for
-example `archi`, and CCB adds the equivalent role binding. If the role is not
-installed, config loading fails with guidance to run `ccb roles install
-ccb.archi`.
+When a window leaf uses a publisher-qualified role id such as
+`agentroles.archi`, CCB checks the installed system role store during config
+load. If the role is installed, the leaf resolves to the role manifest's
+default agent name, for example `archi`, and CCB adds the equivalent role
+binding. If the role is not installed, config loading fails with guidance to
+run `ccb roles install agentroles.archi`.
 
 Expansion runs after TOML and window leaf parsing, before agent defaults,
 overlay merge, and final topology validation. The expanded form must flow
 through the same validation path as an explicit `archi:codex` leaf with
-`[agents.archi] role = "ccb.archi"`.
+`[agents.archi] role = "agentroles.archi"`.
 
 Runtime surfaces use the project-local agent name. The sidebar row, mailbox
 owner, job target, pane label, and primary ask target are `archi`, not
-`ccb.archi`. The role id may be shown only as secondary diagnostic metadata.
+`agentroles.archi`. The role id may be shown only as secondary diagnostic
+metadata.
 
 ## CLI Surface
 
 ```bash
 ccb roles list
-ccb roles show ccb.archi
-ccb roles install ccb.archi
-ccb roles add ccb.archi:codex
-ccb roles doctor ccb.archi
+ccb roles show agentroles.archi
+ccb roles install agentroles.archi
+ccb roles add agentroles.archi:codex
+ccb roles doctor agentroles.archi
 ```
 
-`install` mutates the system role store and prepares declared dependencies.
-`update` refreshes role assets and declared dependencies. `add` mutates project
-config and lock. `doctor` reports installed/builtin state in the first slice.
-`refresh` is a planned follow-up.
+`install` resolves role content from `agent-roles-spec` by default, mutates the
+local system role store, and prepares declared dependencies. `update` refreshes
+installed role assets from the catalog and declared dependencies. `add` mutates
+project config and lock. `doctor` reports catalog, installed, lock, projection,
+and tool state. `refresh` is a planned follow-up.
 
-`ccb ask ccb.archi ...` is a convenience alias. It resolves to the single
-configured agent bound to `ccb.archi`; if there is no match or more than one
-match, CCB fails and asks the user to target the project-local agent name.
+`ccb update` should refresh the `agent-roles-spec` catalog, update already
+installed roles when newer catalog content exists, and prompt before installing
+newly available roles that are not yet in the local CCB role store.
+
+`ccb ask agentroles.archi ...` is a convenience alias. It resolves to the
+single configured agent bound to `agentroles.archi`; if there is no match or
+more than one match, CCB fails and asks the user to target the project-local
+agent name.
 
 Alias errors must distinguish:
 

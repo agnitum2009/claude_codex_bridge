@@ -71,6 +71,7 @@ def ensure_agent_runtime(
         workspace_path=provider_workspace_path,
         completion_dir=runtime_dir / 'completion',
         agent_name=spec.name,
+        auto_permission=command.auto_permission,
     )
     return _ensure_agent_runtime_impl(
         context,

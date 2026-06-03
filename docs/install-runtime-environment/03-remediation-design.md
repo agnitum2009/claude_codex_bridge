@@ -18,6 +18,7 @@
 6. Droid MCP 注册不能阻塞 Claude/Codex 主安装流程。
 7. doctor 能逐步暴露 provider CLI 路径漂移问题。
 8. Claude Code 首次确认应被诊断为 provider blocked，而不是误判成 CCB 路由失败。
+9. root 安装不再硬拒绝，但必须默认取消并要求显式确认。
 
 ## 3. 非目标
 
@@ -29,6 +30,8 @@
 - 不要求自动点击 Claude Code 安全确认。
 - 不要求改变 CCB 的 agent 调度语义。
 - 不要求恢复旧 `ask --wait` 的同步行为。
+- 不把 root 安装变成推荐路径。
+- 不自动把 root profile 和普通用户 profile 合并。
 
 ## 4. PR 1：source/dev Python wrapper
 
@@ -391,11 +394,13 @@ agent_blocker: name=lead provider=claude kind=interactive_prompt reason=trust_or
 建议顺序：
 
 1. `fix/source-install-python-wrapper`
-2. `fix/droid-install-timeout`
-3. `feat/doctor-runtime-path-diagnostics`
-4. `feat/claude-prompt-blocker-diagnostics`
+2. `fix/install-entrypoint-smoke-check`
+3. `fix/root-install-confirmation-gate`
+4. `fix/droid-install-timeout`
+5. `feat/doctor-runtime-path-diagnostics`
+6. `feat/claude-prompt-blocker-diagnostics`
 
-不要把 1 到 5 全部塞进一个 PR。
+不要把所有安装、provider 和 doctor 改动塞进一个 PR。
 
 ## 11. 当前用户可立即使用的稳定安装方案
 
@@ -442,3 +447,51 @@ fix/source-install-python-wrapper
 - 不依赖 Claude/Codex 外部行为。
 - 容易写自动化测试。
 
+## 13. 独立 PR：root 安装确认门禁
+
+详细设计见 [05-root-install-confirmation.md](./05-root-install-confirmation.md)。
+
+### 13.1 问题
+
+当前 `install.sh` 在入口直接拒绝 root，可以防止普通用户误用 `sudo`，但也让真实 root 用户无法把 root 作为独立 profile 安装和运行 CCB。
+
+### 13.2 目标
+
+root 安装应从“硬拒绝”改成“强提醒 + 默认拒绝 + 显式确认后继续”：
+
+```text
+非 root -> 行为不变
+交互式 root -> 显示强提醒，默认 N
+非交互 root -> 必须设置 CCB_ALLOW_ROOT_INSTALL=1
+sudo 场景 -> 额外说明这会安装到 root，而不是 SUDO_USER
+```
+
+### 13.3 推荐实现
+
+用 `confirm_root_install_if_needed` 替换 `require_non_root_execution`。
+
+同时在安装元数据和 doctor 输出中记录：
+
+```text
+user_id
+user_name
+home
+root_runtime
+install_root_owned
+project_owner
+ccb_dir_owner
+sudo_user
+```
+
+### 13.4 验收标准
+
+必须覆盖：
+
+```text
+root 回车取消
+root 输入 n 取消
+root 输入 y 继续
+root 非交互无 CCB_ALLOW_ROOT_INSTALL 失败
+root 非交互 CCB_ALLOW_ROOT_INSTALL=1 继续
+sudo 用户额外看到 root profile 风险提醒
+```

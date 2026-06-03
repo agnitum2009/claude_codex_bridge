@@ -43,6 +43,8 @@ EXCLUDES = {
     # Maintainer-only utilities are versioned in git but must not ship in release tarballs.
     "dev_tools",
     "dist",
+    # Production roles live in the external agent-roles-spec catalog.
+    "roles",
 }
 _HOST_SYSTEMS = {
     "linux": "Linux",

@@ -20,12 +20,12 @@ def test_parse_layout_spec_roundtrip_with_worktree_workspace_marker() -> None:
 
 
 def test_parse_layout_spec_accepts_role_id_leaf_token() -> None:
-    layout = parse_layout_spec('agent1:codex, ccb.archi:codex')
+    layout = parse_layout_spec('agent1:codex, agentroles.archi:codex')
     leaves = layout.iter_leaves()
 
-    assert leaves[1].name == 'ccb.archi'
+    assert leaves[1].name == 'agentroles.archi'
     assert leaves[1].provider == 'codex'
-    assert layout.render() == 'agent1:codex, ccb.archi:codex'
+    assert layout.render() == 'agent1:codex, agentroles.archi:codex'
 
 
 def test_prune_layout_preserves_branch_shape_when_possible() -> None:

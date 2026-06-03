@@ -226,6 +226,7 @@ def test_reload_non_dry_run_no_change_noops_and_parser_accepts_explicit_apply(tm
     assert payload['status'] == 'noop'
     assert payload['stage'] == 'no_op'
     assert payload['plan_class'] == 'no_change'
+    assert payload['diagnostics']['reason'] == 'no_change'
     assert payload['diagnostics']['graph_published'] is False
     assert payload['diagnostics']['reason'] == 'no_change'
     assert app.service_graph is old_graph

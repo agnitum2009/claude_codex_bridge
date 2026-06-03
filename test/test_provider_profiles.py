@@ -1797,6 +1797,70 @@ def test_materialize_claude_home_config_preserves_runtime_hooks_and_permissions(
     assert payload['permissions']['allow'] == ['Bash(ls)']
 
 
+def test_materialize_claude_home_config_refreshes_ccb_only_permissions_for_auto_permission(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_settings = source_home / '.claude' / 'settings.json'
+    source_settings.parent.mkdir(parents=True, exist_ok=True)
+    source_settings.write_text(
+        json.dumps(
+            {
+                'permissions': {
+                    'allow': ['Read', 'Write', 'Edit', 'Bash(git:*)', 'Bash(ccb ask *)'],
+                    'deny': [],
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    target_settings = target_home / '.claude' / 'settings.json'
+    target_settings.parent.mkdir(parents=True, exist_ok=True)
+    target_settings.write_text(
+        json.dumps(
+            {
+                'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'echo hook'}]}]},
+                'permissions': {
+                    'allow': ['Bash(ccb ask *)', 'Bash(ccb ping *)', 'Bash(ccb pend *)'],
+                    'deny': [],
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home, auto_permission=True)
+
+    payload = json.loads(layout.settings_path.read_text(encoding='utf-8'))
+    assert payload['hooks']['Stop'][0]['hooks'][0]['command'] == 'echo hook'
+    assert payload['permissions']['allow'] == ['Read', 'Write', 'Edit', 'Bash(git:*)', 'Bash(ccb ask *)']
+
+
+def test_materialize_claude_home_config_preserves_custom_permissions_for_auto_permission(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_settings = source_home / '.claude' / 'settings.json'
+    source_settings.parent.mkdir(parents=True, exist_ok=True)
+    source_settings.write_text(
+        json.dumps({'permissions': {'allow': ['Read', 'Write'], 'deny': []}}, ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
+    target_settings = target_home / '.claude' / 'settings.json'
+    target_settings.parent.mkdir(parents=True, exist_ok=True)
+    target_settings.write_text(
+        json.dumps({'permissions': {'allow': ['Bash(ls)'], 'deny': []}}, ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home, auto_permission=True)
+
+    payload = json.loads(layout.settings_path.read_text(encoding='utf-8'))
+    assert payload['permissions']['allow'] == ['Bash(ls)']
+
+
 def test_materialize_claude_home_config_refreshes_inherited_skill_assets(tmp_path: Path) -> None:
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'

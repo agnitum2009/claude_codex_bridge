@@ -58,7 +58,7 @@ def test_submit_ask_resolves_unique_role_id_alias(monkeypatch: pytest.MonkeyPatc
     captured: dict[str, object] = {}
 
     class _Spec:
-        role = 'ccb.archi'
+        role = 'agentroles.archi'
 
     class _FakeClient:
         def submit(self, envelope) -> dict:
@@ -85,10 +85,50 @@ def test_submit_ask_resolves_unique_role_id_alias(monkeypatch: pytest.MonkeyPatc
 
     summary = ask_service.submit_ask(
         context,
-        ParsedAskCommand(project=None, target='ccb.archi', sender=None, message='review'),
+        ParsedAskCommand(project=None, target='agentroles.archi', sender=None, message='review'),
     )
 
     assert captured == {'to_agent': 'archi', 'delivery_scope': DeliveryScope.SINGLE}
+    assert summary.jobs[0]['agent_name'] == 'archi'
+
+
+def test_submit_ask_resolves_legacy_role_id_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-ask-legacy-role-alias'
+    project_root.mkdir()
+    context = _build_context(project_root)
+    captured: dict[str, object] = {}
+
+    class _Spec:
+        role = 'agentroles.archi'
+
+    class _FakeClient:
+        def submit(self, envelope) -> dict:
+            captured['to_agent'] = envelope.to_agent
+            return {
+                'job_id': 'job_1',
+                'agent_name': 'archi',
+                'target_name': 'archi',
+                'status': 'accepted',
+            }
+
+    monkeypatch.setattr(
+        ask_service,
+        'load_project_config',
+        lambda project_root: SimpleNamespace(config=SimpleNamespace(agents={'agent1': object(), 'archi': _Spec()})),
+    )
+    monkeypatch.setattr(ask_service, 'resolve_ask_sender', lambda context, sender: 'agent1')
+    monkeypatch.setattr(
+        ask_service,
+        'invoke_mounted_daemon',
+        lambda context, allow_restart_stale, request_fn: request_fn(_FakeClient()),
+    )
+
+    summary = ask_service.submit_ask(
+        context,
+        ParsedAskCommand(project=None, target='ccb.archi', sender=None, message='review'),
+    )
+
+    assert captured == {'to_agent': 'archi'}
     assert summary.jobs[0]['agent_name'] == 'archi'
 
 
@@ -103,10 +143,10 @@ def test_submit_ask_role_id_alias_requires_binding(monkeypatch: pytest.MonkeyPat
         lambda project_root: SimpleNamespace(config=SimpleNamespace(agents={'agent1': object()})),
     )
 
-    with pytest.raises(ValueError, match='role ccb.archi is not bound to any configured agent'):
+    with pytest.raises(ValueError, match='role agentroles.archi is not bound to any configured agent'):
         ask_service.submit_ask(
             context,
-            ParsedAskCommand(project=None, target='ccb.archi', sender=None, message='review'),
+            ParsedAskCommand(project=None, target='agentroles.archi', sender=None, message='review'),
         )
 
 
@@ -116,7 +156,7 @@ def test_submit_ask_role_id_alias_rejects_multiple_bindings(monkeypatch: pytest.
     context = _build_context(project_root)
 
     class _Spec:
-        role = 'ccb.archi'
+        role = 'agentroles.archi'
 
     monkeypatch.setattr(
         ask_service,
@@ -126,10 +166,10 @@ def test_submit_ask_role_id_alias_rejects_multiple_bindings(monkeypatch: pytest.
         ),
     )
 
-    with pytest.raises(ValueError, match='role ccb.archi is bound to multiple agents: archi, archi_review'):
+    with pytest.raises(ValueError, match='role agentroles.archi is bound to multiple agents: archi, archi_review'):
         ask_service.submit_ask(
             context,
-            ParsedAskCommand(project=None, target='ccb.archi', sender=None, message='review'),
+            ParsedAskCommand(project=None, target='agentroles.archi', sender=None, message='review'),
         )
 
 

@@ -5,6 +5,10 @@ import importlib
 from pathlib import Path
 from typing import Any
 
+from role_aliases import canonical_role_id
+
+from .agent_role_adapter import is_agent_role_manifest, translate_agent_role_manifest
+
 
 SUPPORTED_ROLE_SCHEMA = 'rolepack/v1'
 
@@ -57,11 +61,11 @@ class RoleManifest:
 def normalize_role_id(value: str) -> str:
     role_id = str(value or '').strip().lower()
     if not role_id or '.' not in role_id:
-        raise RoleManifestError('role id must use publisher.role form, for example ccb.archi')
+        raise RoleManifestError('role id must use publisher.role form, for example agentroles.archi')
     allowed = set('abcdefghijklmnopqrstuvwxyz0123456789._-')
     if any(ch not in allowed for ch in role_id):
         raise RoleManifestError(f'invalid role id: {value!r}')
-    return role_id
+    return canonical_role_id(role_id)
 
 
 def load_role_manifest(path: Path) -> RoleManifest:
@@ -74,6 +78,9 @@ def load_role_manifest(path: Path) -> RoleManifest:
 
 def role_manifest_from_mapping(root: Path, manifest: dict[str, Any]) -> RoleManifest:
     schema = str(manifest.get('schema') or '').strip()
+    if is_agent_role_manifest(manifest):
+        manifest = translate_agent_role_manifest(root, manifest, read_toml=read_toml_manifest)
+        schema = str(manifest.get('schema') or '').strip()
     if schema != SUPPORTED_ROLE_SCHEMA:
         raise RoleManifestError(f'{root}: unsupported role schema: {schema!r}')
     role_id = normalize_role_id(str(manifest.get('id') or ''))

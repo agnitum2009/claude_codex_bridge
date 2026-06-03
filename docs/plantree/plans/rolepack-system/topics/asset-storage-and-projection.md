@@ -11,11 +11,19 @@ rebuildable assets.
 
 ## Storage Layers
 
-System role store:
+Catalog source:
+
+```text
+agent-roles-spec/
+  roles/
+  reference_roles/
+```
+
+System role store installed cache:
 
 ```text
 $XDG_DATA_HOME/ccb/roles/
-  ccb.archi/
+  agentroles.archi/
     current -> versions/0.1.0
     versions/
       0.1.0/
@@ -33,7 +41,7 @@ project/.ccb/
   ccb.config
   role-lock.json
   roles/
-    ccb.archi/
+    agentroles.archi/
       memory.override.md
       config.toml
 ```
@@ -42,20 +50,21 @@ Agent runtime projection:
 
 ```text
 project/.ccb/agents/archi/provider-state/codex/home/
-  skills/archi-diff -> $XDG_DATA_HOME/ccb/roles/ccb.archi/current/skills/codex/archi-diff
-  skills/archi-full -> $XDG_DATA_HOME/ccb/roles/ccb.archi/current/skills/codex/archi-full
+  skills/archi-diff -> $XDG_DATA_HOME/ccb/roles/agentroles.archi/current/skills/codex/archi-diff
+  skills/archi-full -> $XDG_DATA_HOME/ccb/roles/agentroles.archi/current/skills/codex/archi-full
   AGENTS.md
   sessions/
 ```
 
-The provider home may contain symlinks or copied projected assets, but the
-authority remains the system role store plus project lock.
+The provider home may contain symlinks or copied projected assets. The role
+catalog authority is `agent-roles-spec`; the local installed cache and project
+lock define what a user and project have adopted.
 
 ## Shareable Assets
 
 These may live in the system role store or a content-addressed shared store:
 
-- `role.toml`
+- `role.toml` from `agent-roles-spec`
 - role `README.md`
 - role memory templates
 - provider-specific skills
@@ -94,8 +103,8 @@ These must not be shared through role assets:
 - Projection refresh must be explicit and diagnosable.
 - Removing a role from an agent must remove only projected assets owned by that
   role; it must not delete user-authored provider files.
-- Project lock changes should be visible in diagnostics before runtime restart
-  or reload.
+- Catalog and installed-cache changes should be visible in diagnostics before
+  project locks, runtime restart, or reload change project behavior.
 
 ## Version And Locking
 
@@ -105,10 +114,10 @@ The project should keep a role lock file:
 {
   "schema": "rolepack-lock/v1",
   "roles": {
-    "ccb.archi": {
+    "agentroles.archi": {
       "version": "0.1.0",
       "digest": "sha256:...",
-      "source": "builtin"
+      "source": "agent-roles-spec"
     }
   }
 }
@@ -118,9 +127,10 @@ The config can reference a role without duplicating the lock:
 
 ```toml
 [agents.archi]
-role = "ccb.archi"
+role = "agentroles.archi"
 provider = "codex"
 ```
 
-The lock records the resolved package. The config records the desired binding.
-
+The lock records the resolved package adopted by the project. The config
+records the desired binding. Updating the catalog or installed cache does not
+silently move the project lock.

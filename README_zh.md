@@ -255,7 +255,7 @@ CCB 配置有三层，优先级从低到高：
 | sidebar 行为 | `[ui.sidebar]` | 控制 sidebar 是否每个 window 都显示、宽度和 Comms 高度。 |
 | 工具 window | `[tool_windows.<name>]` | 添加 Neovim 这类非 agent 托管 window；sidebar 只显示一行，不是 `ask` 目标。 |
 | 单 agent 模型/API | `[agents.<name>]` | 可为不同 agent 配 `model`、`key`、`url` 等。 |
-| Role Pack 绑定 | `ccb.archi:codex` | 通过 window leaf 绑定可复用角色包；role 资产统一安装，再投影到解析出的 agent。 |
+| Role Pack 绑定 | `agentroles.archi:codex` | 通过 window leaf 绑定可复用角色包；role 资产统一安装，再投影到解析出的 agent。 |
 | 角色说明 | `[agents.<name>] description = "..."` | 给 agent 一个简短职责说明；更长的工作流规则建议写到 memory。 |
 
 在已启动的项目里修改 `.ccb/ccb.config` 后，先运行 `ccb reload --dry-run` 预览计划，再运行 `ccb reload` 应用。显式 reload 可以动态新增 agent、新增 window、新增/删除托管工具 window、卸载 idle agent、删除 idle window，同时保持无关 agent 和 pane 继续运行。它不是后台文件监听；busy agent 卸载、provider 替换、agent 移动、工具命令替换和任意布局重排会被拒绝，不会 kill 现有 pane。
@@ -268,22 +268,23 @@ Role Pack 用来定义可复用的 agent 角色。一个 role 可以包含稳定
 记忆、provider-specific skills、工具 hooks 和依赖准备逻辑。这样项目配置会更短，
 专门角色也能跨项目复用，不需要在每个项目里复制一大段角色说明。
 
-目前内置 role 只有 `ccb.archi`，用于架构审查，并由 Architec 支撑；后续会
-陆续引入更多专业角色。在 `install.sh install` 或 `ccb update` 时确认安装/刷新
-bundled roles 即可；也可以手动刷新：
+目前 catalog role 里已有 `agentroles.archi`，用于架构审查，来自
+`agent-roles-spec`，并由 Architec 支撑；后续会陆续引入更多专业角色。
+在 `install.sh install` 时确认安装/刷新 catalog roles；`ccb update` 会刷新
+已安装 role，并报告新 catalog role。也可以手动刷新：
 
 ```bash
-ccb roles update ccb.archi
+ccb roles update agentroles.archi
 ```
 
 在项目里使用这个 role 时，把它作为 window leaf 加进去：
 
 ```bash
-ccb roles add ccb.archi:codex
+ccb roles add agentroles.archi:codex
 ccb reload
 ```
 
-这会写入紧凑形式 `ccb.archi:codex`。运行时 CCB 会把它解析成项目本地
+这会写入紧凑形式 `agentroles.archi:codex`。运行时 CCB 会把它解析成项目本地
 agent `archi`，并把 role memory 和 skills 投影到该 agent 的 managed
 provider home。
 

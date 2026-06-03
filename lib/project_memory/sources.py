@@ -76,7 +76,7 @@ def load_memory_sources(
 
 def _role_memory_sources(project_root: Path, *, agent_name: str) -> tuple[ProjectMemorySource, ...]:
     try:
-        from rolepacks import project_role_memory_sources
+        from rolepacks.runtime_lookup import project_role_memory_sources
 
         return tuple(
             source

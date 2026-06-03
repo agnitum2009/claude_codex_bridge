@@ -7,14 +7,22 @@ from typing import Any
 from agents.config_loader_runtime.role_lookup import RoleLookupError, installed_role_default_agent_name, looks_like_role_id, normalize_role_id
 from agents.models import AgentValidationError, LayoutLeaf, LayoutNode, ProjectConfig, normalize_agent_name, parse_layout_spec
 
-from ..common import ALLOWED_TOP_LEVEL_KEYS, ConfigValidationError
+from ..common import ALLOWED_TOP_LEVEL_KEYS, CONFIG_FILENAME, ConfigValidationError
 from .agent_specs import parse_agents
 from .expectations import expect_bool, expect_string, expect_string_list
 from .topology import agents_from_topology_windows, parse_sidebar, parse_sidebar_view, parse_tool_windows, parse_topology_windows
 
 
-def validate_project_config(document: dict[str, Any], *, source_path: Path | None = None) -> ProjectConfig:
-    document = _expand_role_id_shorthand(document)
+def validate_project_config(
+    document: dict[str, Any],
+    *,
+    source_path: Path | None = None,
+    project_root: Path | None = None,
+) -> ProjectConfig:
+    document = _expand_role_id_shorthand(
+        document,
+        project_root=Path(project_root).expanduser().resolve() if project_root is not None else _project_root_from_source_path(source_path),
+    )
     _validate_document_shape(document)
     windows = parse_topology_windows(document.get('windows'))
     tool_windows = parse_tool_windows(document.get('tool_windows'))
@@ -150,7 +158,7 @@ def _build_project_config(
         raise ConfigValidationError(str(exc)) from exc
 
 
-def _expand_role_id_shorthand(document: dict[str, Any]) -> dict[str, Any]:
+def _expand_role_id_shorthand(document: dict[str, Any], *, project_root: Path | None) -> dict[str, Any]:
     if not isinstance(document.get('windows'), dict):
         return document
     expanded = deepcopy(document)
@@ -159,7 +167,7 @@ def _expand_role_id_shorthand(document: dict[str, Any]) -> dict[str, Any]:
     for window_name, layout_text in windows.items():
         layout = parse_layout_spec(str(layout_text))
         role_bindings: dict[str, str] = {}
-        resolved = _expand_role_layout(layout, role_bindings=role_bindings)
+        resolved = _expand_role_layout(layout, role_bindings=role_bindings, project_root=project_root)
         if role_bindings:
             windows[window_name] = resolved.render()
             for agent_name, role_id in role_bindings.items():
@@ -177,14 +185,14 @@ def _expand_role_id_shorthand(document: dict[str, Any]) -> dict[str, Any]:
     return expanded
 
 
-def _expand_role_layout(node, *, role_bindings: dict[str, str]):
+def _expand_role_layout(node, *, role_bindings: dict[str, str], project_root: Path | None):
     if node.kind == 'leaf':
         assert node.leaf is not None
         name = str(node.leaf.name or '').strip()
         if looks_like_role_id(name):
             role_id = normalize_role_id(name)
             try:
-                agent_name = normalize_agent_name(installed_role_default_agent_name(role_id))
+                agent_name = normalize_agent_name(installed_role_default_agent_name(role_id, project_root=project_root))
             except RoleLookupError as exc:
                 raise ConfigValidationError(str(exc)) from exc
             except AgentValidationError as exc:
@@ -208,9 +216,20 @@ def _expand_role_layout(node, *, role_bindings: dict[str, str]):
     assert node.right is not None
     return LayoutNode(
         kind=node.kind,
-        left=_expand_role_layout(node.left, role_bindings=role_bindings),
-        right=_expand_role_layout(node.right, role_bindings=role_bindings),
+        left=_expand_role_layout(node.left, role_bindings=role_bindings, project_root=project_root),
+        right=_expand_role_layout(node.right, role_bindings=role_bindings, project_root=project_root),
     )
+
+
+def _project_root_from_source_path(source_path: Path | None) -> Path | None:
+    if source_path is None:
+        return None
+    path = Path(source_path).expanduser().resolve()
+    if path == Path.home().expanduser().resolve() / '.ccb' / CONFIG_FILENAME:
+        return None
+    if path.name == CONFIG_FILENAME and path.parent.name == '.ccb':
+        return path.parent.parent
+    return None
 
 
 __all__ = ['validate_project_config']

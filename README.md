@@ -260,7 +260,7 @@ The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3
 | Sidebar behavior | `[ui.sidebar]` | Controls whether the sidebar appears in every window, plus width and Comms height. |
 | Tool windows | `[tool_windows.<name>]` | Add managed non-agent windows such as Neovim; they appear as one sidebar row and are not `ask` targets. |
 | Per-agent model/API | `[agents.<name>]` | Configure `model`, `key`, `url`, and related agent-local overrides. |
-| Role Pack binding | `ccb.archi:codex` | Bind a reusable role package through a window leaf; role assets are installed once and projected into the derived agent. |
+| Role Pack binding | `agentroles.archi:codex` | Bind a reusable role package through a window leaf; role assets are installed once and projected into the derived agent. |
 | Role description | `[agents.<name>] description = "..."` | Give an agent a short responsibility note; longer workflow rules belong in memory. |
 
 After editing `.ccb/ccb.config` in a mounted project, run `ccb reload --dry-run` to preview the plan and `ccb reload` to apply it. The explicit reload path can dynamically add agents, add windows, add/remove managed tool windows, unload idle agents, and remove idle windows while keeping unrelated agents and panes running. It does not run as a background file watcher, and unsafe changes such as busy unloads, provider replacement, agent moves, tool command replacement, and arbitrary reshapes are rejected without killing existing panes.
@@ -274,25 +274,26 @@ responsibilities, memory, provider-specific skills, tool hooks, and dependency
 setup. This keeps project config short and makes specialized agents reusable
 instead of copying long role instructions into every project.
 
-The current built-in role is `ccb.archi`, an architecture reviewer role backed
-by Architec. More specialized roles will be added over time. Install or refresh
-bundled roles when prompted during `install.sh install` or `ccb update`; you
-can also refresh manually:
+The current catalog role is `agentroles.archi`, an architecture reviewer role
+from `agent-roles-spec` backed by Architec. More specialized roles will be
+added over time. Install or refresh catalog roles when prompted during
+`install.sh install`; `ccb update` refreshes already installed roles and reports
+new catalog roles. You can also refresh manually:
 
 ```bash
-ccb roles update ccb.archi
+ccb roles update agentroles.archi
 ```
 
 To use the role in a project, add it as a window leaf:
 
 ```bash
-ccb roles add ccb.archi:codex
+ccb roles add agentroles.archi:codex
 ccb reload
 ```
 
-This writes the compact form `ccb.archi:codex`. At runtime CCB resolves it to
-the project-local agent `archi`, then projects the role memory and skills into
-that agent's managed provider home.
+This writes the compact form `agentroles.archi:codex`. At runtime CCB resolves
+it to the project-local agent `archi`, then projects the role memory and skills
+into that agent's managed provider home.
 
 <details>
 <summary><b>Config format examples: single window, multi-window, per-agent model/API</b></summary>

@@ -4,21 +4,22 @@ Date: 2026-06-01
 
 ## Objective
 
-Use `ccb.archi` as the first concrete Role Pack. It validates the model because
-it needs fixed role identity, role memory, provider skills, external tool
-installation, diagnostics, and project-level binding.
+Use `agentroles.archi` from `agent-roles-spec` as the first concrete CCB
+consumed Role Pack. It validates the model because it needs fixed role
+identity, role memory, provider skills, external tool installation,
+diagnostics, and project-level binding.
 
 ## Role Identity
 
 ```toml
-schema = "rolepack/v1"
-id = "ccb.archi"
+schema = "agent-role/preview-0.1"
+id = "agentroles.archi"
 name = "Architecture Reviewer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Architecture review role powered by Architec."
 
 [identity]
-default_agent_name = "archi"
+default_name = "archi"
 category = "review"
 purpose = "Review architecture, boundaries, coupling, and structural risk."
 non_goals = ["business implementation", "release publishing"]
@@ -45,7 +46,7 @@ Explicit binding:
 main = "agent1:codex, archi:codex"
 
 [agents.archi]
-role = "ccb.archi"
+role = "agentroles.archi"
 provider = "codex"
 workspace_mode = "inplace"
 permission = "manual"
@@ -55,19 +56,19 @@ Shorthand binding:
 
 ```toml
 [windows]
-main = "agent1:codex, ccb.archi:codex"
+main = "agent1:codex, agentroles.archi:codex"
 ```
 
-The visible target is `archi`. The stable role id is `ccb.archi`. When the
-shorthand form is used, CCB resolves `ccb.archi` through the installed system
-role store and derives `archi` from `identity.default_agent_name`.
+The visible target is `archi`. The stable role id is `agentroles.archi`. When
+the shorthand form is used, CCB resolves `agentroles.archi` through the
+installed system role store and derives `archi` from the role identity.
 
-Sidebar must display `archi`, not `ccb.archi`. `ccb.archi` may appear in role
-details or diagnostics, but not as the main agent row label.
+Sidebar must display `archi`, not `agentroles.archi`. The role id may appear in
+role details or diagnostics, but not as the main agent row label.
 
 ## Doctor Expectations
 
-`ccb roles doctor ccb.archi` should report:
+`ccb roles doctor agentroles.archi` should report:
 
 - installed role version and digest
 - Architec wrapper path
@@ -79,23 +80,29 @@ details or diagnostics, but not as the main agent row label.
 
 ## First Slice Boundaries
 
-Implemented in the first code slice:
+Implemented in the first code slice, with migration needed:
 
-- built-in `roles/ccb.archi` manifest and source-tree assets
+- legacy `ccb.archi` compatibility input alias, which resolves to
+  `agentroles.archi`
 - system role store install
-- CCB config binding through `[agents.<name>] role = "ccb.archi"`
+- CCB config binding through `[agents.<name>] role = "agentroles.archi"`
 - project role lock writing
 - role memory inclusion in generated provider memory
 - Codex and Claude role skill projection into managed provider homes
-- `ccb roles list/show/install/add/doctor`
-
-Still in scope for the complete first role:
-
+- `ccb roles list/show/install/update/sync/add/doctor`
 - Architec tool lifecycle execution in a CCB-owned venv
-- richer `doctor` checks for `archi`, `hippocampus`, and `llmgateway`
+- `doctor` checks for the managed wrapper and `llmgateway` config without
+  printing secrets
 - shorthand config validation with sidebar display as `archi`
-- real `test_ccb2` validation with `ccb reload`, `ccb ask archi`, and the
-  `ccb ask ccb.archi` alias
+- real `test_ccb2` validation for install/update/sync/add, projection,
+  startup, reload, and runtime doctor
+
+Still in scope after the first production role PR:
+
+- an explicit role projection refresh/adopt command for already-running agents
+- a policy decision on whether missing locked content is warning-only or a hard
+  mount error
+- final release packaging/publishing by agent4
 
 Out of scope:
 

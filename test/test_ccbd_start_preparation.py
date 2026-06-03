@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -201,3 +202,96 @@ permission = "manual"
         / 'CLAUDE.md'
     )
     assert f'workspace_path: {resume_dir.resolve()}' in managed_memory.read_text(encoding='utf-8')
+
+
+def test_prepare_start_agents_refreshes_ccb_only_claude_permissions_when_auto_permission(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo-start-prep-claude-permissions'
+    source_home = tmp_path / 'source-home'
+    (source_home / '.claude').mkdir(parents=True)
+    (source_home / '.claude' / 'settings.json').write_text(
+        json.dumps(
+            {
+                'permissions': {
+                    'allow': ['Read', 'Write', 'Edit', 'Bash(git:*)', 'Bash(ccb ask *)'],
+                    'deny': [],
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    (project_root / '.ccb').mkdir(parents=True)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        """version = 2
+default_agents = ["reviewer"]
+
+[agents.reviewer]
+provider = "claude"
+target = "."
+workspace_mode = "inplace"
+restore = "auto"
+permission = "manual"
+""",
+        encoding='utf-8',
+    )
+    bootstrap_project(project_root)
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=True, auto_permission=True)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+    config = load_project_config(project_root).config
+    paths = PathLayout(project_root)
+    managed_settings = (
+        paths.agent_provider_state_dir('reviewer', 'claude')
+        / 'home'
+        / '.claude'
+        / 'settings.json'
+    )
+    managed_settings.parent.mkdir(parents=True)
+    managed_settings.write_text(
+        json.dumps(
+            {
+                'permissions': {
+                    'allow': ['Bash(ccb ask *)', 'Bash(ccb ping *)', 'Bash(ccb pend *)'],
+                    'deny': [],
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(
+        'cli.services.provider_hooks.current_provider_source_home',
+        lambda: source_home,
+    )
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=project_root, has_history=False),
+    )
+
+    prepare_start_agents(
+        targets=('reviewer',),
+        config=config,
+        paths=paths,
+        context=context,
+        project_root=project_root,
+        project_id=context.project.project_id,
+        tmux_socket_path=None,
+        tmux_session_name=None,
+        workspace_window_id=None,
+        resolve_agent_binding_fn=lambda **kwargs: None,
+        project_binding_filter_fn=lambda binding, **kwargs: binding,
+        restore_state_builder=lambda restore_mode: AgentRestoreState(
+            restore_mode=RestoreMode(restore_mode),
+            last_checkpoint=None,
+            conversation_summary='pending restore',
+        ),
+    )
+
+    payload = json.loads(managed_settings.read_text(encoding='utf-8'))
+    assert payload['permissions']['allow'] == ['Read', 'Write', 'Edit', 'Bash(git:*)', 'Bash(ccb ask *)']

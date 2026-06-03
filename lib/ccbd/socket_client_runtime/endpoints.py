@@ -85,8 +85,8 @@ def _payload_cancel(job_id: str) -> dict:
 def _payload_start(
     *,
     agent_names: tuple[str, ...] = (),
-    restore: bool = False,
-    auto_permission: bool = False,
+    restore: bool = True,
+    auto_permission: bool = True,
     terminal_size: tuple[int, int] | None = None,
 ) -> dict:
     payload = {

@@ -43,7 +43,7 @@ tool-backed role, it should include skills and tool lifecycle scripts.
 
 ```toml
 schema = "rolepack/v1"
-id = "ccb.archi"
+id = "agentroles.archi"
 name = "Architecture Reviewer"
 version = "0.1.0"
 description = "Architecture review role powered by Architec."
@@ -96,8 +96,7 @@ recommended_workspace_mode = "inplace"
 ## Required Manifest Fields
 
 - `schema`: schema version, starting with `rolepack/v1`.
-- `id`: stable role id. Built-ins should use `ccb.<role>`. Community roles
-  should use `<publisher>.<role>`.
+- `id`: stable role id. Catalog roles should use `<publisher>.<role>`.
 - `name`: human-readable name.
 - `version`: semver-compatible version.
 - `description`: short user-facing explanation.
@@ -139,4 +138,3 @@ MCP servers are tool protocols. A role may require or recommend MCP servers.
 
 Role Packs bind identity, responsibilities, memory, skills, tools, and
 permissions into one reusable agent archetype.
-

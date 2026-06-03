@@ -20,16 +20,30 @@ across projects without copying every skill or tool into every `.ccb` tree.
 - [topics/asset-storage-and-projection.md](topics/asset-storage-and-projection.md):
   system role store, project locks, agent runtime projection, and state
   boundaries.
+- [topics/catalog-update-flow.md](topics/catalog-update-flow.md): `ccb update`
+  behavior for refreshing `agent-roles-spec`, updating installed roles, and
+  prompting for newly available roles.
+- [topics/current-roles-management-scheme.md](topics/current-roles-management-scheme.md):
+  current first-slice source resolution, installed-store, sync, project-lock,
+  and update behavior.
 - [topics/host-adapter-ccb.md](topics/host-adapter-ccb.md): CCB-specific
   config, CLI, reload, memory, and skill projection behavior.
-- [topics/distribution-and-trust.md](topics/distribution-and-trust.md): local,
-  bundled, GitHub, and future registry distribution with trust controls.
+- [topics/distribution-and-trust.md](topics/distribution-and-trust.md):
+  `agent-roles-spec`, local path, GitHub, and future registry distribution
+  with trust controls.
 - [topics/lifecycle-and-tooling.md](topics/lifecycle-and-tooling.md): install,
   update, doctor, repair, and external tool dependency semantics.
+- [topics/management-runtime-boundaries.md](topics/management-runtime-boundaries.md):
+  import, dependency, and command-boundary rules that keep role management from
+  breaking provider startup or hooks.
 - [topics/test-and-governance.md](topics/test-and-governance.md): automated
   tests, real-project tests, PR acceptance rules, and compatibility gates.
 - [topics/archi-role-first-slice.md](topics/archi-role-first-slice.md): first
   concrete role slice for Architec-backed architecture review.
+- [history/agent3-roles-management-review-2026-06-03.md](history/agent3-roles-management-review-2026-06-03.md):
+  architecture review findings for the current roles management scheme.
+- [history/final-rolepack-validation-2026-06-03.md](history/final-rolepack-validation-2026-06-03.md):
+  final PR/review/test checkpoint before handing release to agent4.
 - [decisions/001-role-id-separate-from-agent-name.md](decisions/001-role-id-separate-from-agent-name.md):
   fixed role identity must be independent from the project-local agent name.
 - [decisions/002-system-role-store-project-locks.md](decisions/002-system-role-store-project-locks.md):
@@ -40,6 +54,9 @@ across projects without copying every skill or tool into every `.ccb` tree.
 - [decisions/004-role-id-shorthand-resolves-to-agent-name.md](decisions/004-role-id-shorthand-resolves-to-agent-name.md):
   CCB role-id shorthand expands to a project-local agent name, while sidebar
   and ask use that local name.
+- [decisions/005-agent-roles-spec-is-catalog-authority.md](decisions/005-agent-roles-spec-is-catalog-authority.md):
+  `agent-roles-spec` owns role package content; CCB owns consumption,
+  installation, projection, update prompts, and diagnostics.
 
 ## Related Sources
 
@@ -65,8 +82,12 @@ In scope:
   homes without sharing provider sessions or auth.
 - CCB adapter behavior for `.ccb/ccb.config`, `ccb roles ...`, `ccb reload`,
   and diagnostics.
-- Governance rules for accepting community roles by PR.
-- A first built-in `ccb.archi` role backed by Architec.
+- Dependency boundaries that keep role management, config loading, projection,
+  provider startup, and provider hooks independently failure-contained.
+- `agent-roles-spec` catalog consumption, including update-time refresh of
+  installed roles and prompts for newly available roles.
+- A first CCB-consumable architecture role from `agent-roles-spec`, backed by
+  Architec where the role declares those tools.
 
 Out of scope for the first slice:
 
@@ -76,6 +97,7 @@ Out of scope for the first slice:
 - Making MCP mandatory for roles.
 - Running arbitrary third-party installers without explicit user approval.
 - Full UI-driven role browsing.
+- Keeping production role package content inside the CCB source tree.
 
 ## Guiding Model
 

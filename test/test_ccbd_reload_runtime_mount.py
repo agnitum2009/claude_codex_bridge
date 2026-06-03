@@ -478,6 +478,7 @@ def test_project_reload_non_dry_run_no_change_noops_after_runtime_mount_helper(t
     assert payload['status'] == 'noop'
     assert payload['stage'] == 'no_op'
     assert payload['plan_class'] == 'no_change'
+    assert payload['diagnostics']['reason'] == 'no_change'
     assert payload['diagnostics']['graph_published'] is False
     assert payload['diagnostics']['reason'] == 'no_change'
     assert app.service_graph is old_graph

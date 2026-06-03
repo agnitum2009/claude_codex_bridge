@@ -6,21 +6,31 @@ Date: 2026-06-01
 
 1. Should the first schema be authored only as `role.toml`, or should a JSON
    Schema artifact be published in parallel for non-Python hosts?
-2. Should community roles be vendored into the CCB repository first, or should
-   CCB support direct `github:owner/repo//path` installation in the first
-   slice?
-3. What minimum trust gate is required before running a third-party role
+2. What minimum trust gate is required before running a third-party role
    installer: explicit prompt, allowlist, digest pin, signature, or all of
    these?
-4. Should role memory changes require agent restart, provider-native clear, or
+3. Should role memory changes require agent restart, provider-native clear, or
    an explicit projection refresh command?
-5. How should a host resolve conflicts when two roles want to install the same
+4. How should a host resolve conflicts when two roles want to install the same
    provider skill name?
-6. Should role tool dependencies be allowed to install into user-level
+5. Should role tool dependencies be allowed to install into user-level
    language package managers, or must the first CCB implementation always use
    CCB-owned venv/cache roots?
-7. Should role ids use `publisher.role` only, or should the spec also reserve a
+6. Should role ids use `publisher.role` only, or should the spec also reserve a
    URI-like form such as `rolepack://publisher/role`?
+7. After an installed role is updated from `agent-roles-spec`, should CCB only
+   mark bound project locks as stale, or should it offer an interactive
+   project-lock update for the current project?
+8. If project-locked role content is missing from the installed store, should
+   CCB keep warning-only behavior and mount the agent with role memory/skills
+   suppressed, or fail startup/reload for that role-bound agent?
+9. When a required role tool hook fails during install, update, or sync, should
+   CCB roll back `current` and metadata, or record an installed-but-degraded
+   state that doctor and reload can surface?
+10. What transaction model should protect role install/update/sync and
+   project config plus role-lock writes from concurrent or partial failures?
+11. Should GitHub catalog clone/pull failures be represented as explicit
+   catalog diagnostics instead of silently returning no default catalog?
 
 ## Resolved
 
@@ -33,3 +43,22 @@ Date: 2026-06-01
 - CCB role-id shorthand resolves to a project-local agent name, and sidebar
   rows use that local name. See
   [decisions/004-role-id-shorthand-resolves-to-agent-name.md](decisions/004-role-id-shorthand-resolves-to-agent-name.md).
+- Production role package content should live in `agent-roles-spec`, not in
+  the CCB source tree. CCB consumes the catalog and owns local installation,
+  projection, update prompts, and diagnostics. See
+  [decisions/005-agent-roles-spec-is-catalog-authority.md](decisions/005-agent-roles-spec-is-catalog-authority.md).
+- CCB may manage a consumption-only GitHub cache of `agent-roles-spec` under
+  `$XDG_CACHE_HOME/ccb/role-catalogs/agent-roles-spec` when no local catalog is
+  available. User-level system role sources and local env/path catalogs still
+  take precedence, and role content changes go to upstream `agent-roles-spec`
+  by pull request. See
+  [decisions/005-agent-roles-spec-is-catalog-authority.md](decisions/005-agent-roles-spec-is-catalog-authority.md)
+  and [topics/distribution-and-trust.md](topics/distribution-and-trust.md).
+- User-level system role sources at `~/.ccb/roles` and `~/.roles` are the
+  first local editable role library. They are visible in `ccb roles list` and
+  can be snapshotted into the installed store by `ccb roles add`; project-level
+  `.roles` directories are deferred.
+- During `ccb update`, CCB reports newly available catalog roles, prompts
+  interactively before installing them into the local role store, and prints
+  follow-up install commands in non-interactive runs. See
+  [topics/catalog-update-flow.md](topics/catalog-update-flow.md).

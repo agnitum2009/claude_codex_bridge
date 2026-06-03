@@ -53,6 +53,7 @@ def _consume_compact_leaf(
     leaf,
     *,
     path: Path,
+    project_root: Path | None,
     default_agents: list[str],
     agents: dict[str, dict[str, str]],
     cmd_enabled: bool,
@@ -71,7 +72,7 @@ def _consume_compact_leaf(
     if looks_like_role_id(token):
         role_id = normalize_role_id(token)
         try:
-            token = normalize_agent_name(installed_role_default_agent_name(role_id))
+            token = normalize_agent_name(installed_role_default_agent_name(role_id, project_root=project_root))
         except RoleLookupError as exc:
             raise ConfigValidationError(f'{path}: {exc}') from exc
         except Exception as exc:
@@ -95,7 +96,7 @@ def _consume_compact_leaf(
     return cmd_enabled
 
 
-def _parse_compact_config_document(text: str, *, path: Path) -> dict[str, object]:
+def _parse_compact_config_document(text: str, *, path: Path, project_root: Path | None = None) -> dict[str, object]:
     layout_text = _normalize_compact_layout_text(text)
     if not layout_text:
         raise ConfigValidationError(f'{path}: config is empty')
@@ -111,6 +112,7 @@ def _parse_compact_config_document(text: str, *, path: Path) -> dict[str, object
         cmd_enabled = _consume_compact_leaf(
             leaf,
             path=path,
+            project_root=project_root,
             default_agents=default_agents,
             agents=agents,
             cmd_enabled=cmd_enabled,
@@ -123,18 +125,18 @@ def _parse_compact_config_document(text: str, *, path: Path) -> dict[str, object
         'default_agents': default_agents,
         'agents': agents,
         'cmd_enabled': cmd_enabled,
-        'layout': _expand_compact_role_layout(layout).render(),
+        'layout': _expand_compact_role_layout(layout, project_root=project_root).render(),
     }
 
 
-def _expand_compact_role_layout(node):
+def _expand_compact_role_layout(node, *, project_root: Path | None):
     if node.kind == 'leaf':
         assert node.leaf is not None
         name = str(node.leaf.name or '').strip()
         if looks_like_role_id(name):
             role_id = normalize_role_id(name)
             try:
-                name = normalize_agent_name(installed_role_default_agent_name(role_id))
+                name = normalize_agent_name(installed_role_default_agent_name(role_id, project_root=project_root))
             except RoleLookupError as exc:
                 raise ConfigValidationError(str(exc)) from exc
             except Exception as exc:
@@ -151,8 +153,8 @@ def _expand_compact_role_layout(node):
     assert node.right is not None
     return LayoutNode(
         kind=node.kind,
-        left=_expand_compact_role_layout(node.left),
-        right=_expand_compact_role_layout(node.right),
+        left=_expand_compact_role_layout(node.left, project_root=project_root),
+        right=_expand_compact_role_layout(node.right, project_root=project_root),
     )
 
 
@@ -215,8 +217,14 @@ def _parse_toml_config_document(text: str, *, path: Path) -> dict[str, object]:
     return dict(document)
 
 
-def _parse_hybrid_config_document(text: str, overlay_text: str, *, path: Path) -> dict[str, object]:
-    base_document = _parse_compact_config_document(text, path=path)
+def _parse_hybrid_config_document(
+    text: str,
+    overlay_text: str,
+    *,
+    path: Path,
+    project_root: Path | None = None,
+) -> dict[str, object]:
+    base_document = _parse_compact_config_document(text, path=path, project_root=project_root)
     overlay_document = _parse_toml_config_document(overlay_text, path=path)
     return _merge_hybrid_overlay(base_document, overlay_document, path=path)
 
@@ -275,22 +283,26 @@ def _deep_merge_dicts(base: dict[str, object], overlay: dict[str, object]) -> di
     return merged
 
 
-def _load_config_document(path: Path) -> dict[str, object]:
+def _load_config_document(path: Path, *, project_root: Path | None = None) -> dict[str, object]:
     text = path.read_text(encoding='utf-8')
     kind, primary_text, overlay_text = _classify_config_document(text)
     if kind == 'rich':
         return _parse_toml_config_document(primary_text, path=path)
     if kind == 'hybrid':
         assert overlay_text is not None
-        return _parse_hybrid_config_document(primary_text, overlay_text, path=path)
-    return _parse_compact_config_document(primary_text, path=path)
+        return _parse_hybrid_config_document(primary_text, overlay_text, path=path, project_root=project_root)
+    return _parse_compact_config_document(primary_text, path=path, project_root=project_root)
 
 
 def load_project_config(project_root: Path) -> ConfigLoadResult:
     project_path = project_config_path(project_root)
     if project_path.exists():
         return ConfigLoadResult(
-            config=validate_project_config(_load_config_document(project_path), source_path=project_path),
+            config=validate_project_config(
+                _load_config_document(project_path, project_root=Path(project_root).expanduser().resolve()),
+                source_path=project_path,
+                project_root=project_root,
+            ),
             source_path=project_path,
             source_kind=CONFIG_SOURCE_PROJECT,
             used_default=False,

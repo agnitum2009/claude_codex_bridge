@@ -197,6 +197,23 @@ def test_update_via_tarball_uses_staged_unix_installer(monkeypatch, tmp_path: Pa
 
 def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: Path) -> None:
     calls: list[dict[str, object]] = []
+    rows = (
+        {
+            "role_id": "agentroles.archi",
+            "status": "update_available",
+            "version": "0.2.0",
+            "installed_version": "0.1.0",
+            "name": "Architecture Reviewer",
+            "description": "Reviews architecture drift.",
+        },
+        {
+            "role_id": "agentroles.new",
+            "status": "available",
+            "version": "0.1.0",
+            "name": "New Role",
+            "description": "New catalog role.",
+        },
+    )
 
     class _TtyInput:
         def isatty(self) -> bool:
@@ -208,6 +225,7 @@ def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: 
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
     stdout = _TtyOutput()
     monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
+    monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
 
     def _fake_cmd_roles(argv, *, script_root, cwd, stdout, stderr):
         calls.append({"argv": argv, "script_root": script_root, "cwd": cwd})
@@ -218,12 +236,24 @@ def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: 
 
     update_runtime._update_builtin_roles_after_update(install_dir=tmp_path / "install")
 
-    assert calls == [{"argv": ["update", "ccb.archi"], "script_root": tmp_path / "install", "cwd": Path.cwd()}]
-    assert "Install/refresh bundled Role Packs and dependencies now?" in stdout.getvalue()
-    assert "Role Pack ready: ccb.archi" in stdout.getvalue()
+    assert calls == [{"argv": ["update", "agentroles.archi"], "script_root": tmp_path / "install", "cwd": Path.cwd()}]
+    assert "Refresh installed Agent Roles from the catalog now?" in stdout.getvalue()
+    assert "Role Pack updated: agentroles.archi" in stdout.getvalue()
+    assert "New Agent Roles available" in stdout.getvalue()
+    assert "agentroles.new v0.1.0" in stdout.getvalue()
 
 
 def test_update_roles_prompt_declines_without_update(monkeypatch, tmp_path: Path) -> None:
+    rows = (
+        {
+            "role_id": "agentroles.new",
+            "status": "available",
+            "version": "0.1.0",
+            "name": "New Role",
+            "description": "New catalog role.",
+        },
+    )
+
     class _TtyInput:
         def isatty(self) -> bool:
             return True
@@ -234,18 +264,30 @@ def test_update_roles_prompt_declines_without_update(monkeypatch, tmp_path: Path
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
     stdout = _TtyOutput()
     monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
+    monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
     monkeypatch.setattr(
         update_runtime,
         "cmd_roles",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not update roles")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not update roles")),
     )
 
     update_runtime._update_builtin_roles_after_update(install_dir=tmp_path / "install")
 
     assert "Role Pack update skipped" in stdout.getvalue()
+    assert "agentroles.new v0.1.0" in stdout.getvalue()
 
 
 def test_update_roles_noninteractive_skips_without_prompt(monkeypatch, tmp_path: Path) -> None:
+    rows = (
+        {
+            "role_id": "agentroles.new",
+            "status": "available",
+            "version": "0.1.0",
+            "name": "New Role",
+            "description": "New catalog role.",
+        },
+    )
+
     class _PipeInput:
         def isatty(self) -> bool:
             return False
@@ -253,15 +295,35 @@ def test_update_roles_noninteractive_skips_without_prompt(monkeypatch, tmp_path:
     monkeypatch.setattr(update_runtime.sys, "stdin", _PipeInput())
     stdout = _PipeOutput()
     monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
+    monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
     monkeypatch.setattr(
         update_runtime,
         "cmd_roles",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not update roles")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not update roles")),
     )
 
     update_runtime._update_builtin_roles_after_update(install_dir=tmp_path / "install")
 
     assert "non-interactive update" in stdout.getvalue()
+    assert "agentroles.new v0.1.0" in stdout.getvalue()
+
+
+def test_update_roles_new_catalog_role_selection_parser() -> None:
+    rows = [
+        {"role_id": "agentroles.one"},
+        {"role_id": "agentroles.two"},
+        {"role_id": "agentroles.three"},
+    ]
+
+    assert update_runtime._select_catalog_role_ids("", rows) == ()
+    assert update_runtime._select_catalog_role_ids("2", rows) == ("agentroles.two",)
+    assert update_runtime._select_catalog_role_ids("1, 3", rows) == ("agentroles.one", "agentroles.three")
+    assert update_runtime._select_catalog_role_ids("all", rows) == (
+        "agentroles.one",
+        "agentroles.two",
+        "agentroles.three",
+    )
+    assert update_runtime._select_catalog_role_ids("agentroles.two", rows) == ("agentroles.two",)
 
 
 def test_update_neovim_prompt_accepts_interactive_yes(monkeypatch, capsys) -> None:

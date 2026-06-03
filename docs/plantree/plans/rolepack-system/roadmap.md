@@ -14,41 +14,104 @@ Date: 2026-06-01
   [decisions/003-rolepacks-are-host-neutral-with-adapters.md](decisions/003-rolepacks-are-host-neutral-with-adapters.md).
 - Accepted CCB role-id shorthand and role-id ask alias semantics in
   [decisions/004-role-id-shorthand-resolves-to-agent-name.md](decisions/004-role-id-shorthand-resolves-to-agent-name.md).
-- Captured the first `ccb.archi` role slice in
+- Chose `agent-roles-spec` as the role catalog authority; CCB consumes the
+  catalog but does not keep production role packages in its source tree. See
+  [decisions/005-agent-roles-spec-is-catalog-authority.md](decisions/005-agent-roles-spec-is-catalog-authority.md).
+- Captured the first `agentroles.archi` role slice in
   [topics/archi-role-first-slice.md](topics/archi-role-first-slice.md).
 - Added the first source-tree `roles/ccb.archi` package, role manifest parsing,
   system-store install, `ccb roles list/show/install/add/doctor`, config
   `role` parsing, project role locks, role memory inclusion, and Codex/Claude
   role skill projection.
+- Implemented CCB role-id shorthand in config loading and role-id ask alias
+  routing with project-local agent names.
+- Added `agent-roles-spec` catalog discovery with production `roles/`
+  discovery by default, `reference_roles/` opt-in for development/testing,
+  catalog digest status, and no production fallback to CCB source-tree role
+  packages.
+- Changed `ccb update` role handling so it updates already installed catalog
+  roles when their version or digest changed, reports new catalog roles, and
+  prompts interactively before installing newly available roles without binding
+  them to a project or editing project locks.
+- Added a lightweight `rolepacks.runtime_lookup` path for role memory and
+  skill projection, so provider home materialization no longer imports role
+  management services.
+- Added runtime stale-lock protection: if an installed role's `current`
+  version or digest no longer matches a project's `.ccb/role-lock.json`, CCB
+  reports a `role_lock_mismatch` warning instead of silently projecting the
+  drifted role memory or skills.
+- Extended project role locks with `default_agent_name` so role-id shorthand
+  keeps using the project-adopted visible agent name even when installed
+  `current` has drifted.
+- Rendered warning-only role memory sources so `role_lock_mismatch` is visible
+  in generated provider memory, not only in projection event metadata.
+- Changed installed role versions to content-addressed paths
+  `versions/<version>/<digest>/` and made runtime/config lookup resolve project
+  locks by version plus digest before consulting mutable `current`.
+- Added duplicate catalog-source diagnostics so registered sources cannot
+  silently shadow the default `agent-roles-spec` role id.
+- Added a legacy compatibility alias from `ccb.archi` to `agentroles.archi`
+  across roles CLI commands, config shorthand, ask routing, and installed
+  store lookup. New writes use the canonical `agentroles.archi` id.
+- Removed source-tree `roles/ccb.archi` content and excluded the source-tree
+  `roles/` directory from release artifacts; production role content is now
+  expected from `agent-roles-spec`.
+- Added GitHub-backed `agent-roles-spec` catalog fallback through a CCB-owned
+  user cache under `$XDG_CACHE_HOME/ccb/role-catalogs/agent-roles-spec`, with
+  local env/path catalogs taking precedence. The cache is consumption-only;
+  role content changes go to the upstream GitHub repository by PR.
+- Added user-level system role sources at `~/.ccb/roles` and `~/.roles`.
+  These local editable role sources take precedence over the remote catalog,
+  are visible in `ccb roles list`, and can be snapshotted into the installed
+  store when added to a project. Project-level `.roles` is deferred.
+- Added explicit `ccb roles sync [path]` for local source edits. With no path,
+  it defaults to the current working directory, updates only already installed
+  same-id roles discovered under that path, and does not change project locks.
+- Completed the production `agentroles.archi` PR in `agent-roles-spec` as
+  GitHub PR #1, with production role content removed from `ccb_source`.
+- Hardened installed role snapshots so Python tool hooks do not generate
+  bytecode caches, polluted content-addressed targets are repaired on
+  reinstall, and project locks write the installed metadata digest.
+- Made duplicate catalog diagnostics visible in `ccb roles list`, including
+  the `reference_roles` opt-in case where production `roles/` wins.
+- Completed real `/home/bfly/yunwei/test_ccb2` validation for catalog list,
+  install/update/tool doctor, project add/lock, digest pinning, `roles sync`
+  path/default behavior, provider memory/skill projection, `ccb` startup,
+  `ccb reload`, and runtime doctor. See
+  [history/final-rolepack-validation-2026-06-03.md](history/final-rolepack-validation-2026-06-03.md).
 
 ## In Progress
 
-- Validate the first CCB adapter slice in a live project and decide whether
-  `ccb roles refresh` or provider restart is the right first projection update
-  command.
+- Hand release execution to agent4 after the final validation checkpoint. See
+  [topics/management-runtime-boundaries.md](topics/management-runtime-boundaries.md).
 
 ## Next
 
-1. Harden role projection cleanup when a role is removed or changed.
-2. Implement CCB role-id shorthand in config loading and role-id ask alias
-   routing, with sidebar rows still displaying project-local names such as
-   `archi`; keep shorthand expansion before defaults/overlay/topology
-   validation and share explicit-binding validation.
-3. Add `ccb roles refresh` and decide its relationship to `ccb reload`.
-4. Add role tool lifecycle execution for `install/update/doctor` using
-   [topics/lifecycle-and-tooling.md](topics/lifecycle-and-tooling.md).
-5. Land the built-in `ccb.archi` Role Pack and validate it in a real
-   `/home/bfly/yunwei/test_ccb2` project.
-6. Add PR governance and compatibility tests from
+1. Decide whether stale role locks should stay warning-only or become hard
+   startup errors for mounted agents, especially when locked digest content is
+   missing.
+2. Add import-boundary smoke tests so config loading, provider hooks, and
+   provider-home projection cannot accidentally import role management or
+   network-capable source discovery paths.
+3. Harden role install/update/sync resilience: tool-hook failure state or
+   rollback, concurrent same-role operations, and config-plus-lock mutation
+   consistency.
+4. Improve stale lock diagnostics in CLI output.
+5. Add `ccb roles refresh` or project role adopt/check command and decide its
+   relationship to `ccb reload`.
+6. Harden role projection cleanup when a role is removed or changed.
+7. Add PR governance and compatibility tests from
    [topics/test-and-governance.md](topics/test-and-governance.md).
 
 ## Deferred
 
 - Public role registry or marketplace.
 - Signed remote role distribution.
-- Automatic background update checks.
+- Automatic background update checks outside explicit `ccb update`.
 - Role replacement for already-running agents without restart or explicit
   projection refresh.
 - Multi-role composition on one agent.
 - Role dependency solving across conflicting tool versions.
 - UI browser for discovering community roles.
+- Installed role garbage collection for unreferenced digest versions.
+- Signed or otherwise authenticated catalog/cache updates.

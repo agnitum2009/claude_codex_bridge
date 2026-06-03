@@ -72,7 +72,7 @@ def test_copy_repo_tree_excludes_runtime_state(tmp_path: Path) -> None:
     assert (destination / "inherit_skills" / "claude_skills" / "ask" / "SKILL.md").exists()
     assert (destination / "useful_tools" / "codex_skills" / "plan-tree" / "SKILL.md").exists()
     assert (destination / "useful_tools" / "claude_skills" / "plan-tree" / "SKILL.md").exists()
-    assert (destination / "roles" / "ccb.archi" / "role.toml").exists()
+    assert not (destination / "roles").exists()
     assert not (destination / ".git").exists()
     assert not (destination / ".ccb").exists()
     assert not (destination / ".ccb-requests").exists()

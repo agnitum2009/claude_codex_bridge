@@ -142,6 +142,12 @@ When `ccb` starts a managed Claude agent:
 - managed `settings.json` projection must treat inherited system settings as the
   baseline and preserve managed runtime sections such as `hooks` and compatible
   Claude-written runtime state such as `permissions`
+- when CCB starts a managed Claude runtime with `auto_permission=true`, a
+  managed `permissions` section that has drifted into a CCB-only command
+  allowlist must not be preserved over inherited user permissions; CCB may drop
+  that stale narrow section during managed-home materialization so the explicit
+  `--permission-mode bypassPermissions` startup contract is not undermined by
+  old Plan Mode/manual-review residue
 - managed `settings.json` projection must treat Claude auth env keys such as
   `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` as auth authority, not generic
   config

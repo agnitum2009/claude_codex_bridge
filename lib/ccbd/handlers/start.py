@@ -9,15 +9,17 @@ def build_start_handler(app):
             if str(item).strip()
         )
         terminal_size = _terminal_size_from_payload(payload)
+        restore = _bool_payload(payload, 'restore', default=True)
+        auto_permission = _bool_payload(payload, 'auto_permission', default=True)
         with app.start_maintenance_lock:
             summary = app.runtime_supervisor.start(
                 agent_names=requested,
-                restore=bool(payload.get('restore')),
-                auto_permission=bool(payload.get('auto_permission')),
+                restore=restore,
+                auto_permission=auto_permission,
                 terminal_size=terminal_size,
             )
             app.persist_start_policy(
-                auto_permission=bool(payload.get('auto_permission')),
+                auto_permission=auto_permission,
                 source='start_command',
             )
         return summary.to_record()
@@ -34,3 +36,9 @@ def _terminal_size_from_payload(payload: dict) -> tuple[int, int] | None:
     if width <= 0 or height <= 0:
         return None
     return width, height
+
+
+def _bool_payload(payload: dict, key: str, *, default: bool) -> bool:
+    if key not in payload:
+        return bool(default)
+    return bool(payload.get(key))

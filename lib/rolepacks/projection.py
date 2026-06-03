@@ -4,7 +4,7 @@ from pathlib import Path
 
 from provider_core.projected_assets import route_projected_tree
 
-from .service import project_role_skill_sources
+from .runtime_lookup import project_role_skill_sources
 
 
 def project_role_skills_to_home(

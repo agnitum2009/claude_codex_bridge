@@ -30,6 +30,7 @@ from ..home_layout import ClaudeHomeLayout, claude_layout_for_home, claude_layou
 from .session_paths import read_session_payload, session_file_for_runtime_dir, state_dir_for_runtime_dir
 
 _CLAUDE_RUNTIME_SETTINGS_KEYS = ('hooks', 'permissions')
+_CLAUDE_CCB_PERMISSION_PREFIX = 'Bash(ccb '
 _CLAUDE_AUTH_ENV_KEYS = ('ANTHROPIC_AUTH_TOKEN',)
 _CLAUDE_API_AUTH_ENV_KEYS = ('ANTHROPIC_API_KEY',)
 _CLAUDE_ROUTE_ENV_KEYS = ('ANTHROPIC_BASE_URL',)
@@ -65,6 +66,7 @@ def prepare_claude_home_overrides(
     profile,
     *,
     refresh_home: bool = True,
+    auto_permission: bool = False,
     project_root: Path | None = None,
     agent_name: str | None = None,
     workspace_path: Path | None = None,
@@ -79,6 +81,7 @@ def prepare_claude_home_overrides(
             project_root=project_root,
             agent_name=agent_name,
             workspace_path=workspace_path,
+            auto_permission=auto_permission,
             memory_projection_event_path=memory_projection_event_path,
             memory_projection_marker_path=memory_projection_marker_path,
         )
@@ -97,6 +100,7 @@ def materialize_claude_home_config(
     project_root: Path | None = None,
     agent_name: str | None = None,
     workspace_path: Path | None = None,
+    auto_permission: bool = False,
     memory_projection_event_path: Path | None = None,
     memory_projection_marker_path: Path | None = None,
 ) -> ClaudeHomeLayout:
@@ -109,6 +113,7 @@ def materialize_claude_home_config(
         project_root=project_root,
         agent_name=agent_name,
         workspace_path=workspace_path,
+        auto_permission=auto_permission,
     )
     record_memory_projection_event(
         memory_result,
@@ -175,6 +180,7 @@ def _prepare_managed_home(
     project_root: Path | None,
     agent_name: str | None,
     workspace_path: Path | None,
+    auto_permission: bool,
 ) -> dict[str, object]:
     target_layout.home_root.mkdir(parents=True, exist_ok=True)
     target_layout.claude_dir.mkdir(parents=True, exist_ok=True)
@@ -189,7 +195,7 @@ def _prepare_managed_home(
             path=target_layout.claude_dir / 'CLAUDE.md',
         )
 
-    _materialize_settings(source_home, target_layout, profile=profile)
+    _materialize_settings(source_home, target_layout, profile=profile, auto_permission=auto_permission)
     _materialize_macos_keychain_preferences(source_home, target_layout, profile=profile)
     _materialize_auth(source_home, target_layout, profile=profile)
     _materialize_trust(source_home, target_layout, profile=profile)
@@ -337,10 +343,16 @@ def _materialize_home_hook_assets(source_home: Path, target_layout: ClaudeHomeLa
             _sync_tree(source_home / dirname, target_layout.home_root / dirname)
 
 
-def _materialize_settings(source_home: Path, target_layout: ClaudeHomeLayout, *, profile) -> None:
+def _materialize_settings(
+    source_home: Path,
+    target_layout: ClaudeHomeLayout,
+    *,
+    profile,
+    auto_permission: bool = False,
+) -> None:
     payload = _projected_settings_payload(source_home / '.claude' / 'settings.json', profile=profile)
     existing = _read_json_object(target_layout.settings_path)
-    merged = _merge_settings_payload(payload, existing=existing, profile=profile)
+    merged = _merge_settings_payload(payload, existing=existing, profile=profile, auto_permission=auto_permission)
     if merged is None:
         return
     target_layout.settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -525,6 +537,7 @@ def _merge_settings_payload(
     *,
     existing: dict[str, object],
     profile=None,
+    auto_permission: bool = False,
 ) -> dict[str, object] | None:
     existing_payload = dict(existing or {})
     projected_payload = dict(projected or {})
@@ -534,6 +547,8 @@ def _merge_settings_payload(
     for key in _CLAUDE_RUNTIME_SETTINGS_KEYS:
         value = existing_payload.get(key)
         if value is not None:
+            if key == 'permissions' and auto_permission and _is_ccb_only_permission_payload(value):
+                continue
             merged[key] = value
 
     if merged:
@@ -541,6 +556,21 @@ def _merge_settings_payload(
     if projected is not None:
         return {}
     return None
+
+
+def _is_ccb_only_permission_payload(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    allow = value.get('allow')
+    if not isinstance(allow, list):
+        return False
+    normalized = tuple(str(item or '').strip() for item in allow if str(item or '').strip())
+    if not normalized:
+        return False
+    if any(not item.startswith(_CLAUDE_CCB_PERMISSION_PREFIX) for item in normalized):
+        return False
+    deny = value.get('deny')
+    return deny in (None, [])
 
 
 def _carry_forward_managed_auth_env(
