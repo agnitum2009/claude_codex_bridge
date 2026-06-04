@@ -13,7 +13,11 @@ Use these snippets as starting points. Adapt to the user's domain and keep memor
 - Implementation workers own complete changes within their assigned scope and report changed files, verification, blockers, and risks.
 - `reviewer` reviews behavior, tests, regressions, and risk before release or merge.
 - `discuss` is for design discussion, clarification, and exploratory analysis.
-- Use CCB `ask --callback` when a nested delegated result is needed to finish the active task. Use `ask --silence` only for independent fire-and-forget work.
+- In normal user turns, delegate with plain CCB `ask` and stop; do not use
+  `ask --callback`.
+- Use CCB `ask --callback` only while handling an active CCB parent task, and
+  only when the delegated result is required before finishing that parent task.
+  Use `ask --silence` only for independent fire-and-forget work.
 - For parallel work, use separate root work packages so chains such as `main -> worker1 -> reviewer` and `main -> worker2 -> reviewer` can progress independently.
 - Do not create multiple callback dependencies from one active task unless CCB explicitly supports fan-in.
 - Prefer direct owner-to-next-owner handoffs; do not route through `main` only to relay work.
@@ -30,7 +34,9 @@ Use these snippets as starting points. Adapt to the user's domain and keep memor
 - Delegate implementation as coherent work packages, not tiny fragments.
 - Give workers clear ownership, relevant files, assumptions, expected output, and verification expectations.
 - For parallel implementation, create separate root work packages with clear package IDs instead of one task that waits on multiple callback children.
-- Tell workers the intended next route when useful, for example: implement, verify, ask `reviewer` directly with `ask --callback` if review is needed, then report the final result.
+- Tell workers the intended next route when useful, for example: implement,
+  verify, and if the worker is handling an active CCB task and needs review
+  before replying, ask `reviewer` directly with `ask --callback`.
 - Integrate worker results and decide when review is needed.
 - Keep replies concise: conclusions, changed files, verification, blockers, risks, and next action.
 <!-- CCB-ROLE-END -->
@@ -46,7 +52,9 @@ Use these snippets as starting points. Adapt to the user's domain and keep memor
 - Read the local code and follow existing patterns before editing.
 - Avoid unrelated refactors and do not revert user or other-agent changes.
 - Verify the change with focused tests or explain why verification was not possible.
-- If review is needed before finishing the active task, ask `reviewer` with `ask --callback` and include changed files, behavior, tests, blockers, and risks.
+- If review is needed before finishing an active CCB parent task, ask
+  `reviewer` with `ask --callback` and include changed files, behavior, tests,
+  blockers, and risks. Outside an active parent task, use plain `ask`.
 - After reviewer feedback returns, fix or explicitly address findings, then reply to the original requester with the final result.
 - Report changed files, behavior, verification, blockers, and residual risks.
 <!-- CCB-ROLE-END -->

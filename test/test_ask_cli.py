@@ -62,14 +62,18 @@ def test_ask_alias_help_uses_canonical_usage(monkeypatch) -> None:
 
     assert code == 0
     text = stdout.getvalue()
-    assert 'ask [--compact] [--silence] [--callback] <target> [--] <message...>' in text
+    assert 'ask [--compact] [--silence] [--callback] [--artifact-request] [--artifact-reply] <target> [--] <message...>' in text
     assert '--compact request a distilled reply that preserves key information' in text
     assert '--silence request silent-on-success delivery; failures/blockers still surface' in text
     assert '--callback route the result back as a new task to the current agent' in text
+    assert '--artifact-request force the request body into a CCB text artifact' in text
+    assert '--artifact-reply force the final reply into a CCB text artifact' in text
+    assert '--artifact-io enable both --artifact-request and --artifact-reply' in text
     assert 'nested asks from active tasks must use --callback or --silence' in text
     assert 'ask --compact agent1 review latest diff' in text
     assert 'ask --silence agent1 run smoke check' in text
     assert 'ask --callback agent2 collect evidence for this task' in text
+    assert 'ask --callback --artifact-reply agent2 collect long evidence' in text
     assert 'ask get <job_id>    diagnostics-only: inspect one submitted job' in text
     assert '--task-id' not in text
     assert '[from <sender>]' not in text

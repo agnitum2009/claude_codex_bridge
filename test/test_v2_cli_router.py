@@ -960,13 +960,20 @@ def test_run_cli_entrypoint_prints_ask_help() -> None:
 
     assert result == 0
     assert "Usage:" in stdout.getvalue()
-    assert "ccb ask [--compact] [--silence] [--callback] <target> [--] <message...>" in stdout.getvalue()
+    assert (
+        "ccb ask [--compact] [--silence] [--callback] [--artifact-request] [--artifact-reply] <target> [--] <message...>"
+        in stdout.getvalue()
+    )
     assert "--compact request a distilled reply that preserves key information" in stdout.getvalue()
     assert "--silence request silent-on-success delivery; failures/blockers still surface" in stdout.getvalue()
     assert "--callback route the result back as a new task to the current agent" in stdout.getvalue()
+    assert "--artifact-request force the request body into a CCB text artifact" in stdout.getvalue()
+    assert "--artifact-reply force the final reply into a CCB text artifact" in stdout.getvalue()
+    assert "--artifact-io enable both --artifact-request and --artifact-reply" in stdout.getvalue()
     assert "ccb ask --compact agent1 review latest diff" in stdout.getvalue()
     assert "ccb ask --silence agent1 run smoke check" in stdout.getvalue()
     assert "ccb ask --callback agent2 collect evidence for this task" in stdout.getvalue()
+    assert "ccb ask --callback --artifact-reply agent2 collect long evidence" in stdout.getvalue()
     assert "ccb ask get <job_id>    diagnostics-only: inspect one submitted job" in stdout.getvalue()
     assert stderr.getvalue() == ""
 

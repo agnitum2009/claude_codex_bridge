@@ -6,7 +6,7 @@ from agents.config_loader_runtime.role_lookup import looks_like_role_id, normali
 from agents.models import AgentValidationError
 from ccbd.api_models import DeliveryScope, MessageEnvelope
 from mailbox_runtime.targets import NON_AGENT_ACTORS, normalize_actor_name
-from storage.text_artifacts import maybe_spill_text
+from storage.text_artifacts import artifact_stub, maybe_spill_text, write_text_artifact
 
 from .models import AskSummary
 
@@ -79,12 +79,11 @@ def submit_ask(
         compact=bool(getattr(command, 'compact', False)),
         silence_on_success=command.silence,
     )
-    message_body, body_artifact = maybe_spill_text(
+    message_body, body_artifact = _artifact_request_body(
         context.paths,
-        text=message_body,
-        kind='ask-request',
+        message_body,
         owner_id=f'{normalized_sender}-to-{normalized_target}',
-        prefix='CCB ask request is larger than 4 KiB and was stored as an artifact.',
+        force=bool(getattr(command, 'artifact_request', False)),
     )
     payload = invoke_mounted_daemon_fn(
         context,
@@ -109,9 +108,39 @@ def submit_ask(
 
 
 def _route_options(command) -> dict[str, object]:
-    if not bool(getattr(command, 'callback', False)):
-        return {}
-    return {'mode': 'callback'}
+    options: dict[str, object] = {}
+    if bool(getattr(command, 'callback', False)):
+        options['mode'] = 'callback'
+    if bool(getattr(command, 'artifact_request', False)):
+        options['artifact_request'] = True
+    if bool(getattr(command, 'artifact_reply', False)):
+        options['artifact_reply'] = True
+    return options
+
+
+def _artifact_request_body(layout, message_body: str, *, owner_id: str, force: bool):
+    if force:
+        artifact = write_text_artifact(
+            layout,
+            text=message_body,
+            kind='ask-request',
+            owner_id=owner_id,
+        )
+        return (
+            artifact_stub(
+                prefix='CCB ask request was stored as an artifact by --artifact-request.',
+                artifact=artifact,
+                include_preview=False,
+            ),
+            artifact,
+        )
+    return maybe_spill_text(
+        layout,
+        text=message_body,
+        kind='ask-request',
+        owner_id=owner_id,
+        prefix='CCB ask request is larger than 4 KiB and was stored as an artifact.',
+    )
 
 
 def message_with_reply_guidance(

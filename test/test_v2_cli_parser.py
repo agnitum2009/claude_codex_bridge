@@ -198,6 +198,43 @@ def test_parse_ask_with_callback_flag(parser: CliParser) -> None:
     )
 
 
+def test_parse_ask_with_artifact_flags(parser: CliParser) -> None:
+    parsed = parser.parse(
+        [
+            'ask',
+            '--callback',
+            '--artifact-request',
+            '--artifact-reply',
+            'agent1',
+            'from',
+            'agent2',
+            'collect',
+            'evidence',
+        ]
+    )
+    assert parsed == ParsedAskCommand(
+        project=None,
+        target='agent1',
+        sender='agent2',
+        message='collect evidence',
+        callback=True,
+        artifact_request=True,
+        artifact_reply=True,
+    )
+
+
+def test_parse_ask_artifact_io_enables_request_and_reply(parser: CliParser) -> None:
+    parsed = parser.parse(['ask', '--artifact-io', 'agent1', 'from', 'agent2', 'collect', 'evidence'])
+    assert parsed == ParsedAskCommand(
+        project=None,
+        target='agent1',
+        sender='agent2',
+        message='collect evidence',
+        artifact_request=True,
+        artifact_reply=True,
+    )
+
+
 @pytest.mark.parametrize(
     ('argv', 'message'),
     [

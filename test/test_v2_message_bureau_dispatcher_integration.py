@@ -401,6 +401,51 @@ def test_dispatcher_spills_large_completion_reply_before_terminal_persistence(tm
     assert reply.reply == terminal['reply']
 
 
+def test_dispatcher_forces_short_completion_reply_artifact(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-forced-reply-artifact'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='produce short evidence',
+            task_id='task-forced-reply-artifact',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'artifact_reply': True},
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+    dispatcher.complete(job_id, _decision(reply='short result'))
+
+    job = dispatcher.get(job_id)
+    assert job is not None
+    terminal = dict(job.terminal_decision or {})
+    reply_body = str(terminal['reply'])
+    assert 'stored as an artifact by --artifact-reply' in reply_body
+    assert 'Preview:' not in reply_body
+    assert 'short result' not in reply_body
+    artifact = dict(terminal['diagnostics']['reply_artifact'])
+    assert terminal['diagnostics']['artifact_reply_forced'] is True
+    artifact_path = Path(str(artifact['path']))
+    assert artifact_path.exists()
+    assert artifact_path.read_text(encoding='utf-8') == 'short result'
+
+    message = MessageStore(layout).list_all()[-1]
+    reply = ReplyStore(layout).list_message(message.message_id)[-1]
+    assert reply.reply_artifact == artifact
+    assert reply.reply == reply_body
+
+
 def test_dispatcher_routes_reply_into_registered_caller_mailbox(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-registered-caller'
     ctx = _bootstrap_test_project(project_root)
@@ -671,6 +716,62 @@ def test_dispatcher_callback_continuation_uses_artifact_for_large_child_reply(tm
     assert child_reply is not None
     assert child_reply.reply_artifact is not None
     assert Path(str(child_reply.reply_artifact['path'])).read_text(encoding='utf-8') == long_reply
+
+
+def test_dispatcher_callback_continuation_uses_forced_artifact_for_short_child_reply(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-forced-short-child'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    parent_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='user',
+            body='review with file-backed evidence',
+            task_id='task-callback-forced-artifact',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+
+    child_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='collect short evidence',
+            task_id='task-callback-forced-artifact',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback', 'artifact_reply': True},
+        )
+    ).jobs[0].job_id
+    edge = CallbackEdgeStore(layout).get_latest_for_child_job(child_job_id)
+    assert edge is not None
+    dispatcher.complete(parent_job_id, _decision(reply='delegated'))
+
+    dispatcher.tick()
+    dispatcher.complete(child_job_id, _decision(reply='short child result'))
+
+    edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
+    assert edge is not None
+    continuation_job = dispatcher.get(edge.continuation_job_id)
+    assert continuation_job is not None
+    assert 'Full child reply artifact:' in continuation_job.request.body
+    assert 'short child result' not in continuation_job.request.body
+    child_reply = ReplyStore(layout).get_latest(edge.child_reply_id)
+    assert child_reply is not None
+    assert child_reply.reply_artifact is not None
+    assert Path(str(child_reply.reply_artifact['path'])).read_text(encoding='utf-8') == 'short child result'
 
 
 def test_dispatcher_callback_rejects_without_active_parent(tmp_path: Path) -> None:

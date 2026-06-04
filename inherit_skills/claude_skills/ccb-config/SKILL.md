@@ -237,7 +237,9 @@ Rules:
 - Keep role memory direct and operational, not promotional.
 - For `main`, include that tasks should be split into large coherent chunks, not tiny fragments, because workers are full agents with their own planning and implementation ability.
 - For parallel workflows, describe parallel work as separate root work packages. Do not imply that one active task can fan out to multiple callback dependencies and then fan in automatically.
-- Prefer direct owner-to-next-owner handoffs such as `main -> worker -> reviewer` when the next result is needed, using `ask --callback` at each active dependency step.
+- Prefer direct owner-to-next-owner handoffs such as `main -> worker -> reviewer`
+  when the next result is needed. Use `ask --callback` only at an active CCB
+  dependency step; normal user-turn delegation should use plain `ask`.
 
 Shared memory block marker:
 

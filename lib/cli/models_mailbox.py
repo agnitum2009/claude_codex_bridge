@@ -15,6 +15,8 @@ class ParsedAskCommand:
     compact: bool = False
     silence: bool = False
     callback: bool = False
+    artifact_request: bool = False
+    artifact_reply: bool = False
     kind: str = 'ask'
 
 

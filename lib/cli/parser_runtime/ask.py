@@ -40,6 +40,8 @@ def _parse_route_options(remaining: list[str], *, error_type):
     compact = False
     silence = False
     callback = False
+    artifact_request = False
+    artifact_reply = False
     while remaining and remaining[0].startswith('-'):
         option = remaining.pop(0)
         if option in _REMOVED_ASK_FLAGS:
@@ -54,12 +56,22 @@ def _parse_route_options(remaining: list[str], *, error_type):
             if option == '--callback':
                 callback = True
                 continue
+            if option == '--artifact-request':
+                artifact_request = True
+                continue
+            if option == '--artifact-reply':
+                artifact_reply = True
+                continue
+            if option == '--artifact-io':
+                artifact_request = True
+                artifact_reply = True
+                continue
         if option not in ASK_OPTIONS_WITH_VALUES:
             raise error_type(f'unknown ask option: {option}')
         if not remaining:
             raise error_type(f'{option} requires a value')
         _set_option_value(options, option, remaining.pop(0), error_type=error_type)
-    return options, compact, silence, callback
+    return options, compact, silence, callback, artifact_request, artifact_reply
 
 
 def parse_ask(
@@ -74,7 +86,10 @@ def parse_ask(
         return action_command
 
     remaining = list(tokens)
-    options, compact, silence, callback = _parse_route_options(remaining, error_type=error_type)
+    options, compact, silence, callback, artifact_request, artifact_reply = _parse_route_options(
+        remaining,
+        error_type=error_type,
+    )
 
     stdin_text = read_optional_stdin()
     if stdin_text:
@@ -95,6 +110,8 @@ def parse_ask(
         compact=compact,
         silence=silence,
         callback=callback,
+        artifact_request=artifact_request,
+        artifact_reply=artifact_reply,
     )
 
 

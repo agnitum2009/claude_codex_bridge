@@ -28,7 +28,7 @@ SUBCOMMANDS = {
 }
 
 ASK_OPTIONS_WITH_VALUES = {'--task-id', '--reply-to', '--mode'}
-ASK_FLAG_OPTIONS = {'--callback', '--compact', '--silence'}
+ASK_FLAG_OPTIONS = {'--artifact-io', '--artifact-reply', '--artifact-request', '--callback', '--compact', '--silence'}
 WAIT_COMMAND_TO_MODE = {
     'wait-any': 'any',
     'wait-all': 'all',

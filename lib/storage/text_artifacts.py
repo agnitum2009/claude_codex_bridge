@@ -86,22 +86,22 @@ def write_text_artifact(
     }
 
 
-def artifact_stub(*, prefix: str, artifact: dict[str, Any]) -> str:
+def artifact_stub(*, prefix: str, artifact: dict[str, Any], include_preview: bool = True) -> str:
     preview = str(artifact.get('preview') or '').rstrip()
+    show_preview = bool(include_preview and preview)
     lines = [
         prefix.rstrip() or 'CCB large text artifact.',
         f"Full text: {artifact.get('path')}",
         f"Bytes: {artifact.get('bytes')}",
         f"SHA256: {artifact.get('sha256')}",
     ]
-    if preview:
+    if show_preview:
         lines.extend(['', 'Preview:', preview])
-    lines.extend(
-        [
-            '',
-            'Instruction: read the full text file above before acting when the preview is insufficient.',
-        ]
-    )
+    if show_preview:
+        instruction = 'Instruction: read the full text file above before acting when the preview is insufficient.'
+    else:
+        instruction = 'Instruction: read the full text file above before acting.'
+    lines.extend(['', instruction])
     return '\n'.join(lines).rstrip()
 
 
