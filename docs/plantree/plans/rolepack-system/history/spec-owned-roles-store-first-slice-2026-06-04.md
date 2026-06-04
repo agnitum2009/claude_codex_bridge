@@ -24,6 +24,13 @@ payload management toward a spec-owned `agent-roles` package manager and
   JSON error, and non-JSON failure paths as Role Pack errors so the CLI emits
   `roles_status: failed` without traceback.
 
+## Direct-Switch Delta
+
+The initial opt-in position was superseded during the same release train. The
+current direction is default-on delegation to `agent-roles`, `.roles/installed`
+as the preferred store, automatic copy migration from the legacy CCB role store,
+and `CCB_AGENT_ROLES_MANAGER=0` as a temporary rollback valve.
+
 ## Validation
 
 - `agent-roles-spec`: `3 passed`
@@ -39,16 +46,15 @@ payload management toward a spec-owned `agent-roles` package manager and
 
 ## Release Position
 
-This slice is releaseable only as an opt-in preview. It is not ready to become
-the default CCB Role Pack payload path because installed `agent-roles` version
-gating, migration from existing CCB stores, and final architecture review are
-not complete.
+This slice is no longer the final release position. `v7.2.11` was created from
+the opt-in handoff before cancellation completed and must be superseded by the
+direct-switch migration build after review and validation.
 
 ## Residual Risks
 
 - A globally installed incompatible `agent-roles` command could return an
-  unexpected JSON schema if CCB enables the manager without version checks.
+  unexpected JSON schema until version negotiation is added.
 - Dual-store lookup must keep old project locks resolving old content-addressed
-  snapshots until a deliberate migration exists.
+  snapshots through the copy migration window.
 - Tool hook execution remains CCB-owned; the package manager writes role
   payloads but does not decide CCB required/optional tool policy.

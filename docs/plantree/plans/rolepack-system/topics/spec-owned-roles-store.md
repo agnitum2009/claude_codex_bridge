@@ -69,6 +69,12 @@ CCB may keep a compatibility bridge from the current
 Project locks must keep resolving old installed snapshots until a deliberate
 migration path exists.
 
+The current CCB bridge uses `.roles/installed` as the preferred installed-role
+store and keeps `$XDG_DATA_HOME/ccb/roles` as a read fallback. Role-management
+commands copy legacy installed snapshots into `.roles/installed` before package
+operations so existing project locks can resolve the same version/digest from
+the new store. The old store is not deleted during migration.
+
 ## Agent Roles Tool Contract
 
 The spec project should expose a stable tool or library boundary. CCB should be
@@ -125,23 +131,25 @@ then adds CCB-specific behavior:
 `ccb roles add` remains CCB-owned because it mutates `.ccb/ccb.config` and
 `.ccb/role-lock.json`.
 
+Delegation is default-on in CCB. `CCB_AGENT_ROLES_MANAGER=0`, `legacy`, or `ccb`
+is a temporary rollback valve for troubleshooting, not the normal release path.
+
 ## Migration Sequence
 
-1. Specify the `agent-roles` package-manager CLI/API and `.roles` metadata in
-   `agent-roles-spec`.
-2. Add a compatibility command in CCB that can read both the current
-   `$XDG_DATA_HOME/ccb/roles/` store and the new spec-owned store.
-3. Move catalog sync and same-id role payload update logic behind the
-   spec-owned tool/API.
-4. Make `ccb roles list/install/update/sync/doctor` call the spec-owned
-   package operations for payload work while preserving existing CCB output and
-   i18n behavior.
-5. Keep CCB project locks stable by recording the resolved digest and installed
-   path returned by the spec-owned package manager.
-6. Add migration tests for existing v7.2.x installs, including legacy
-   `ccb.archi` metadata and stale source paths.
-7. Only after compatibility is proven, stop writing new role payloads into the
-   CCB-private role store.
+1. Done: specify the `agent-roles` package-manager CLI/API and `.roles`
+   metadata in `agent-roles-spec`.
+2. Done: add CCB compatibility reads for both `$XDG_DATA_HOME/ccb/roles/` and
+   `.roles/installed`.
+3. Done: make `ccb roles install/update/sync` call `agent-roles` by default for
+   package payload operations while preserving CCB output and tool-hook policy.
+4. Done: copy legacy installed role snapshots into `.roles/installed` at CCB
+   management boundaries, including legacy `ccb.archi` aliases.
+5. Next: validate old-version upgrades with existing project locks and stale
+   `source_path` metadata.
+6. Next: move migration ownership from the CCB compatibility bridge into
+   `agent-roles` once the package manager exposes a stable migration command.
+7. Later: remove the CCB-private installed role writer after at least one release
+   cycle with the rollback valve.
 
 ## Non-Goals
 
@@ -163,12 +171,9 @@ then adds CCB-specific behavior:
 - Tool hook ownership must stay explicit: role packages declare hooks, but CCB
   decides whether running them is allowed or required in a CCB update/install
   context.
-- Preview delegation currently leaves `ccb roles sync --with-tools` on the
-  legacy CCB path; the default-on design must make package sync and CCB tool-hook
-  policy compose without losing the spec-owned store.
-- The manager JSON contract should fail closed when `roles` or other structured
-  fields have unexpected types, rather than collapsing malformed payloads into an
-  apparently empty result.
+- CCB currently owns the compatibility migration bridge. Long term, migration
+  should be a first-class `agent-roles` operation because `.roles` package state
+  belongs to `agent-roles-spec`.
 - Development-only source checkout discovery must not become a stable production
   dependency. Released CCB should prefer `AGENT_ROLES_CLI`, `agent-roles` on
   `PATH`, an installed Python package, or an explicit `AGENT_ROLES_SPEC_HOME`.

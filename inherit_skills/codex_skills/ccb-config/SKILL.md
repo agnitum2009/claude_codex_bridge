@@ -196,6 +196,9 @@ provider = "codex"
    `$XDG_DATA_HOME/ccb/roles` into `.ccb/ccb.config`. Config records the
    canonical role id; package storage is resolved by CCB and the Agent Roles
    package manager.
+10. Role package install/update uses the Agent Roles `.roles/installed` store by
+    default. Existing legacy `$XDG_DATA_HOME/ccb/roles` installs are migration
+    input only; do not preserve legacy store paths in config.
 
 ## Skill Injection Requests
 

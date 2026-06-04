@@ -17,7 +17,9 @@ class AgentRolesManagerError(ValueError):
 
 def manager_enabled() -> bool:
     value = str(os.environ.get('CCB_AGENT_ROLES_MANAGER') or '').strip().lower()
-    return value in {'1', 'true', 'yes', 'on', 'agent-roles', 'spec'}
+    if value in {'0', 'false', 'no', 'off', 'legacy', 'ccb'}:
+        return False
+    return True
 
 
 def install(role_id: str | None, *, source_path: Path | None = None) -> dict[str, object]:
@@ -120,6 +122,14 @@ def _agent_roles_source_root() -> Path | None:
         if value:
             candidates.append(Path(value).expanduser())
     candidates.append(Path.home() / 'yunwei' / 'agent-roles-spec')
+    try:
+        from .sources import default_agent_roles_source
+
+        default_source = default_agent_roles_source()
+    except Exception:
+        default_source = None
+    if default_source is not None:
+        candidates.append(default_source)
     for candidate in candidates:
         if (candidate / 'agent_roles' / 'cli.py').is_file():
             return candidate.resolve()

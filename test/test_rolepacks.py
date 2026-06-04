@@ -18,12 +18,13 @@ from project_memory import load_memory_sources
 from provider_profiles.codex_home_config import materialize_codex_home_config
 from rolepacks.manifest import RoleManifestError, load_role_manifest
 from rolepacks.runtime_lookup import tree_digest
-from rolepacks.service import builtin_role_root, install_role, load_installed_role, role_status, update_role
+from rolepacks.service import builtin_role_root, install_role, load_installed_role, role_status, sync_roles_from_path, update_role
 from rolepacks.sources import (
     DEFAULT_AGENT_ROLES_SPEC_GIT_URL,
     add_role_source,
     default_agent_roles_source,
     discover_source_roles,
+    migrate_legacy_installed_roles,
     role_catalog_status,
 )
 
@@ -43,7 +44,7 @@ def _agent_roles_catalog(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv('AGENT_ROLES_SPEC_HOME', str(agent_roles_spec))
     monkeypatch.delenv('AGENT_ROLES_CLI', raising=False)
     monkeypatch.delenv('AGENT_ROLES_STORE', raising=False)
-    monkeypatch.delenv('CCB_AGENT_ROLES_MANAGER', raising=False)
+    monkeypatch.setenv('CCB_AGENT_ROLES_MANAGER', '0')
     monkeypatch.delenv('CCB_AGENT_ROLES_INCLUDE_REFERENCE', raising=False)
 
 
@@ -865,10 +866,10 @@ def test_load_installed_role_reads_spec_owned_roles_store(tmp_path: Path, monkey
     assert rows['agentroles.archi']['installed_digest'] == f'sha256:{digest}'
 
 
-def test_roles_install_can_delegate_to_agent_roles_manager(tmp_path: Path, monkeypatch) -> None:
+def test_roles_install_delegates_to_agent_roles_manager_by_default(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
     monkeypatch.setenv('AGENT_ROLES_STORE', str(tmp_path / '.roles'))
-    monkeypatch.setenv('CCB_AGENT_ROLES_MANAGER', '1')
+    monkeypatch.delenv('CCB_AGENT_ROLES_MANAGER', raising=False)
     fake_cli = tmp_path / 'agent-roles-fake.py'
     fake_cli.write_text(
         f'''from __future__ import annotations
@@ -922,6 +923,152 @@ print(json.dumps({{
     assert load_installed_role('agentroles.archi') is not None
     assert (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').is_file()
     assert not (tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json').exists()
+
+
+def test_agent_roles_manager_can_be_disabled_for_legacy_store(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    monkeypatch.setenv('AGENT_ROLES_STORE', str(tmp_path / '.roles'))
+    monkeypatch.setenv('CCB_AGENT_ROLES_MANAGER', '0')
+    monkeypatch.setenv('AGENT_ROLES_CLI', str(tmp_path / 'must-not-run'))
+
+    payload = install_role('agentroles.archi', with_tools=False)
+
+    assert payload['role_status'] == 'installed'
+    assert (tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json').is_file()
+    assert not (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').exists()
+
+
+def test_legacy_ccb_store_migrates_to_spec_owned_store(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    monkeypatch.setenv('AGENT_ROLES_STORE', str(tmp_path / '.roles'))
+    monkeypatch.setenv('CCB_AGENT_ROLES_MANAGER', '0')
+    legacy_payload = install_role('agentroles.archi', with_tools=False)
+    legacy_metadata = tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json'
+    spec_metadata = tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json'
+
+    result = migrate_legacy_installed_roles()
+    role = load_installed_role('agentroles.archi')
+    metadata = json.loads(spec_metadata.read_text(encoding='utf-8'))
+
+    assert result['migration_status'] == 'ok'
+    assert result['migrated'] == 1
+    assert legacy_metadata.is_file()
+    assert spec_metadata.is_file()
+    assert metadata['schema'] == 'agent-roles-install/v1'
+    assert metadata['id'] == 'agentroles.archi'
+    assert metadata['digest'] == legacy_payload['digest']
+    assert role is not None
+    assert str(role.root).startswith(str(tmp_path / '.roles' / 'installed'))
+
+
+def test_roles_update_manager_migrates_legacy_store_before_delegating(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    monkeypatch.setenv('AGENT_ROLES_STORE', str(tmp_path / '.roles'))
+    monkeypatch.setenv('CCB_AGENT_ROLES_MANAGER', '0')
+    install_role('agentroles.archi', with_tools=False)
+    monkeypatch.delenv('CCB_AGENT_ROLES_MANAGER', raising=False)
+    fake_cli = tmp_path / 'agent-roles-update-fake.py'
+    fake_cli.write_text(
+        '''from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import sys
+
+root = Path(os.environ["AGENT_ROLES_STORE"]) / "installed" / "agentroles.archi"
+metadata_path = root / "install.json"
+if not metadata_path.is_file():
+    print(json.dumps({"status": "failed", "error": "legacy store was not migrated"}), file=sys.stderr)
+    raise SystemExit(1)
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+current = root / "current"
+print(json.dumps({
+    "schema": "agent-roles/update/v1",
+    "status": "ok",
+    "role_status": "updated",
+    "role_id": "agentroles.archi",
+    "version": metadata["version"],
+    "digest": metadata["digest"],
+    "path": str(current.resolve()),
+    "source": metadata.get("source", "agentroles"),
+}))
+''',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('AGENT_ROLES_CLI', f'{sys.executable} {fake_cli}')
+
+    payload = update_role('agentroles.archi', with_tools=False)
+
+    assert payload['role_status'] == 'updated'
+    assert (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').is_file()
+
+
+def test_roles_update_path_uses_agent_roles_manager_store_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    monkeypatch.setenv('AGENT_ROLES_STORE', str(tmp_path / '.roles'))
+    monkeypatch.delenv('CCB_AGENT_ROLES_MANAGER', raising=False)
+    fake_cli = tmp_path / 'agent-roles-path-update-fake.py'
+    fake_cli.write_text(
+        '''from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+
+args = sys.argv[1:]
+source = Path(args[args.index("--path") + 1])
+root = Path(os.environ["AGENT_ROLES_STORE"]) / "installed" / "agentroles.archi"
+target = root / "versions" / "0.2.0" / "path-update-digest"
+if target.exists():
+    shutil.rmtree(target)
+target.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(source, target)
+current = root / "current"
+if current.exists() or current.is_symlink():
+    current.unlink()
+current.symlink_to(target, target_is_directory=True)
+(root / "install.json").write_text(json.dumps({
+    "schema": "agent-roles-install/v1",
+    "id": "agentroles.archi",
+    "version": "0.2.0",
+    "digest": "sha256:path-update-digest",
+    "source": "path",
+    "source_path": str(source),
+}, sort_keys=True, indent=2) + "\\n", encoding="utf-8")
+print(json.dumps({
+    "schema": "agent-roles/install/v1",
+    "status": "ok",
+    "role_status": "installed",
+    "role_id": "agentroles.archi",
+    "version": "0.2.0",
+    "digest": "sha256:path-update-digest",
+    "path": str(target),
+    "source": "path",
+}))
+''',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('AGENT_ROLES_CLI', f'{sys.executable} {fake_cli}')
+
+    payload = update_role('agentroles.archi', source_path=_agent_roles_archi(), with_tools=False)
+
+    assert payload['role_status'] == 'updated'
+    assert payload['path'].endswith('/.roles/installed/agentroles.archi/versions/0.2.0/path-update-digest')
+    assert (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').is_file()
+    assert not (tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json').exists()
+
+
+def test_agent_roles_manager_sync_rejects_malformed_roles_payload(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv('CCB_AGENT_ROLES_MANAGER', raising=False)
+    monkeypatch.setattr(
+        agent_roles_manager,
+        'sync',
+        lambda _path: {'schema': 'agent-roles/sync/v1', 'status': 'ok', 'roles': [{'role_id': 'ok'}, 'bad']},
+    )
+
+    with pytest.raises(Exception, match='invalid sync roles payload'):
+        sync_roles_from_path(tmp_path)
 
 
 def test_agent_roles_manager_uses_importable_module_when_command_missing(monkeypatch) -> None:

@@ -34,7 +34,7 @@ def agent_roles_installed_root() -> Path:
 def role_store_roots() -> tuple[Path, ...]:
     roots: list[Path] = []
     seen: set[Path] = set()
-    for root in (role_store_root(), agent_roles_installed_root()):
+    for root in (agent_roles_installed_root(), role_store_root()):
         try:
             resolved = root.expanduser().resolve()
         except Exception:

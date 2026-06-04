@@ -50,8 +50,8 @@ across projects without copying every skill or tool into every `.ccb` tree.
 - [history/final-rolepack-validation-2026-06-03.md](history/final-rolepack-validation-2026-06-03.md):
   final PR/review/test checkpoint before handing release to agent4.
 - [history/spec-owned-roles-store-first-slice-2026-06-04.md](history/spec-owned-roles-store-first-slice-2026-06-04.md):
-  first executable `agent-roles` package-manager bridge and opt-in CCB
-  validation checkpoint.
+  first executable `agent-roles` package-manager bridge, later superseded by the
+  direct-switch migration delta.
 - [decisions/001-role-id-separate-from-agent-name.md](decisions/001-role-id-separate-from-agent-name.md):
   fixed role identity must be independent from the project-local agent name.
 - [decisions/002-system-role-store-project-locks.md](decisions/002-system-role-store-project-locks.md):

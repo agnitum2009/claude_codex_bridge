@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.2.11-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.2.12-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
@@ -512,12 +512,21 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
-<summary><b>v7.2.11</b> - Agent Roles Manager Bridge Preview</summary>
+<summary><b>v7.2.12</b> - Agent Roles Store Migration Release</summary>
 
-- 新增 opt-in `agent-roles` manager bridge：设置 `CCB_AGENT_ROLES_MANAGER=1` 后，`ccb roles install`、`ccb roles update`、`ccb roles sync` 可委托外部 `agent-roles` CLI 处理 role payload。
-- 默认路径不变：不设置 preview flag 时，CCB 仍使用现有 CCB-owned role store。
-- runtime/config lookup 可同时解析 legacy `$XDG_DATA_HOME/ccb/roles` 安装和 spec-owned `AGENT_ROLES_STORE` / `~/.roles/installed` 安装，runtime lookup 不加载 manager bridge。
-- Preview 用户应设置 `AGENT_ROLES_CLI` 或把 `agent-roles` 放入 `PATH`；项目配置应绑定 canonical role id，而不是本地 store path。
+- 默认使用外部 `agent-roles` package manager 执行 Role Pack install、update 和 sync。
+- Role Pack payload 默认写入 spec-owned `.roles/installed` store，`$XDG_DATA_HOME/ccb/roles` 仅作为 legacy fallback。
+- 自动将已有 legacy installed role snapshot 复制到 `.roles/installed`，不删除旧 store，并保留 project lock digest 解析能力。
+- 保留 `CCB_AGENT_ROLES_MANAGER=0` / `legacy` / `ccb` 作为临时故障回退开关。
+- `ccb roles update --path ...` 也会通过 Agent Roles manager，path update 不再写 legacy CCB store。
+- Supersede v7.2.11；v7.2.11 是未完成的 opt-in preview 发布，不应作为推荐版本使用。
+
+</details>
+
+<details>
+<summary><b>v7.2.11</b> - Superseded Agent Roles Opt-In Preview</summary>
+
+- 已被 v7.2.12 supersede，因为发布方向从 opt-in `CCB_AGENT_ROLES_MANAGER=1` preview 改为 default-on Agent Roles manager migration。
 
 </details>
 

@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from agents.config_loader_runtime.role_lookup import role_store_root, role_store_roots
+from agents.config_loader_runtime.role_lookup import agent_roles_installed_root, role_store_root, role_store_roots
 from role_aliases import legacy_role_ids, role_id_candidates
 from storage.atomic import atomic_write_text
 
@@ -264,6 +264,110 @@ def installed_role_ids() -> tuple[str, ...]:
     return tuple(ids)
 
 
+def migrate_legacy_installed_roles(role_id: str | None = None) -> dict[str, object]:
+    legacy_root = role_store_root()
+    target_root = agent_roles_installed_root()
+    if _same_path(legacy_root, target_root):
+        return {'migration_status': 'skipped_same_store', 'migrated': 0, 'skipped': 0, 'failed': 0}
+    if not legacy_root.is_dir():
+        return {'migration_status': 'ok', 'migrated': 0, 'skipped': 0, 'failed': 0}
+
+    role_dirs = _legacy_role_dirs_for_migration(legacy_root, role_id)
+    migrated = 0
+    skipped = 0
+    failed = 0
+    for legacy_dir in role_dirs:
+        try:
+            canonical_id = normalize_role_id(legacy_dir.name)
+        except Exception:
+            skipped += 1
+            continue
+        target_dir = target_root / canonical_id
+        try:
+            if (target_dir / 'install.json').is_file() and (target_dir / 'current').exists():
+                skipped += 1
+                continue
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            if not target_dir.exists():
+                shutil.copytree(legacy_dir, target_dir, symlinks=True)
+            else:
+                _copy_missing_legacy_install_files(legacy_dir, target_dir)
+            _rewrite_migrated_install_metadata(target_dir, canonical_id)
+            migrated += 1
+        except Exception:
+            failed += 1
+            continue
+    status = 'partial' if failed else 'ok'
+    return {'migration_status': status, 'migrated': migrated, 'skipped': skipped, 'failed': failed}
+
+
+def _legacy_role_dirs_for_migration(legacy_root: Path, role_id: str | None) -> tuple[Path, ...]:
+    if role_id:
+        normalized = normalize_role_id(role_id)
+        candidates = [legacy_root / candidate_id for candidate_id in role_id_candidates(normalized)]
+        return tuple(candidate for candidate in candidates if candidate.is_dir())
+    role_dirs: list[Path] = []
+    for child in sorted(legacy_root.iterdir(), key=lambda item: item.name):
+        if not child.is_dir():
+            continue
+        try:
+            normalize_role_id(child.name)
+        except Exception:
+            continue
+        role_dirs.append(child)
+    return tuple(role_dirs)
+
+
+def _rewrite_migrated_install_metadata(role_dir: Path, canonical_id: str) -> None:
+    path = role_dir / 'install.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload['schema'] = 'agent-roles-install/v1'
+    payload['id'] = canonical_id
+    payload.setdefault('source', 'migrated-ccb')
+    payload['migrated_from'] = 'ccb'
+
+    role_root = _installed_role_root_from_metadata(role_dir, payload)
+    if role_root is not None:
+        try:
+            role = load_role_manifest(role_root)
+        except Exception:
+            role = None
+        if role is not None:
+            payload['id'] = role.id
+            payload['version'] = role.version
+            payload['digest'] = f'sha256:{tree_digest(role.root)}'
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=True, sort_keys=True, indent=2) + '\n')
+    _repair_current_pointer(role_dir, payload)
+
+
+def _installed_role_root_from_metadata(role_dir: Path, metadata: dict[str, Any]) -> Path | None:
+    version = str(metadata.get('version') or '').strip()
+    digest = str(metadata.get('digest') or '').strip().removeprefix('sha256:')
+    if version and digest:
+        target = role_dir / 'versions' / version / digest
+        if (target / 'role.toml').is_file():
+            return target
+    current = role_dir / 'current'
+    try:
+        if current.exists() and (current.resolve() / 'role.toml').is_file():
+            return current.resolve()
+    except Exception:
+        return None
+    return None
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except Exception:
+        return left.expanduser() == right.expanduser()
+
+
 def repair_installed_role_store(role_id: str, *, source_role: SourceRole | None = None) -> None:
     _canonicalize_installed_role_store(role_id, source_role=source_role)
 
@@ -361,6 +465,7 @@ def _repair_current_pointer(role_dir: Path, metadata: dict[str, Any]) -> None:
 
 def role_catalog_status(*, refresh_default: bool = False) -> tuple[dict[str, object], ...]:
     source_roles = {role.role_id: role for role in discover_source_roles(refresh_default=refresh_default)}
+    migrate_legacy_installed_roles()
     for role_id, source_role in source_roles.items():
         _canonicalize_installed_role_store(role_id, source_role=source_role)
     installed = set(installed_role_ids())

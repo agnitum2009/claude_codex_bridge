@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.2.11-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.2.12-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -519,12 +519,21 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
-<summary><b>v7.2.11</b> - Agent Roles Manager Bridge Preview</summary>
+<summary><b>v7.2.12</b> - Agent Roles Store Migration Release</summary>
 
-- Adds an opt-in `agent-roles` manager bridge for `ccb roles install`, `ccb roles update`, and `ccb roles sync` when `CCB_AGENT_ROLES_MANAGER=1` is set.
-- Keeps the default path unchanged: without the preview flag, CCB continues to use its existing CCB-owned role store.
-- Lets runtime/config lookup resolve both legacy `$XDG_DATA_HOME/ccb/roles` installs and spec-owned `AGENT_ROLES_STORE` / `~/.roles/installed` installs without loading the manager bridge at runtime.
-- Preview users should set `AGENT_ROLES_CLI` or place `agent-roles` on `PATH`; project config should bind canonical role ids rather than local store paths.
+- Uses the external `agent-roles` package manager by default for Role Pack install, update, and sync.
+- Writes Role Pack payloads into the spec-owned `.roles/installed` store, with `$XDG_DATA_HOME/ccb/roles` kept as a legacy fallback.
+- Copies existing legacy installed role snapshots into `.roles/installed` without deleting the old store, preserving project lock digest resolution.
+- Keeps `CCB_AGENT_ROLES_MANAGER=0` / `legacy` / `ccb` as a temporary rollback valve for troubleshooting.
+- Routes `ccb roles update --path ...` through the Agent Roles manager so path updates also write `.roles/installed`.
+- Supersedes v7.2.11, which was an incomplete opt-in preview release and should not be used as the recommended release.
+
+</details>
+
+<details>
+<summary><b>v7.2.11</b> - Superseded Agent Roles Opt-In Preview</summary>
+
+- Superseded by v7.2.12 after the release direction changed from an opt-in `CCB_AGENT_ROLES_MANAGER=1` preview to a default-on Agent Roles manager migration.
 
 </details>
 
