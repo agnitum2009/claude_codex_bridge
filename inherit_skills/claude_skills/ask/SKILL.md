@@ -44,8 +44,7 @@ says to use CCB `ask` for collaboration.
 - Plain nested `ask` from an active CCB task is rejected; choose `--callback` for
   needed dependency results or `--silence` for independent no-result-needed work.
 - Do not manually append output-policy text; `ask` injects reply guidance.
-- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for
-  explicit debugging requests, not normal ask workflow tools.
+- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for explicit debugging requests, not normal ask workflow tools.
 - For callback work with a large child result, combine `--callback` with
   `--artifact-reply`.
 
@@ -87,7 +86,5 @@ $MESSAGE
 EOF
 ```
 
-After the command returns, immediately end the turn. Do not wait for a reply,
-do not run `ask get` / `pend` / `ping` / `watch`, do not poll, do not add
-commentary. For `--callback`, report only that delegation was submitted; the
-final result belongs in the later continuation task.
+After the command returns, immediately end the turn. Do not wait for a reply, do not run `ask get` / `pend` / `ping` / `watch`, do not poll, do not add
+commentary. For `--callback`, report only that delegation was submitted; the final result belongs in the later continuation task.

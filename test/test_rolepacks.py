@@ -63,7 +63,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
-import tomllib
+import importlib
 
 
 def _canonical_role_id(value: str | None) -> str | None:
@@ -95,7 +95,50 @@ def _tree_digest(root: Path) -> str:
 
 
 def _role_manifest(path: Path) -> dict[str, object]:
-    return tomllib.loads((path / "role.toml").read_text(encoding="utf-8"))
+    text = (path / "role.toml").read_text(encoding="utf-8")
+    for module_name in ("tomllib", "tomli", "toml"):
+        try:
+            module = importlib.import_module(module_name)
+            break
+        except ModuleNotFoundError:
+            continue
+    else:
+        return _parse_minimal_toml(text)
+    return module.loads(text)
+
+
+def _parse_minimal_toml(text: str) -> dict[str, object]:
+    root: dict[str, object] = {}
+    current: dict[str, object] = root
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current = root
+            for part in line[1:-1].split("."):
+                table = current.setdefault(part.strip(), {})
+                if not isinstance(table, dict):
+                    table = {}
+                    current[part.strip()] = table
+                current = table
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        current[key.strip()] = _parse_minimal_toml_value(value.strip())
+    return root
+
+
+def _parse_minimal_toml_value(value: str) -> object:
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        return [_parse_minimal_toml_value(item.strip()) for item in inner.split(",")]
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    return value
 
 
 def _iter_role_paths(root: Path) -> list[Path]:

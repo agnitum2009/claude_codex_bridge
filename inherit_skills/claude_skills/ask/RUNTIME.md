@@ -37,9 +37,7 @@ EOF
   `--artifact-reply`.
 - Plain nested `ask` from an active CCB task is rejected; choose `--callback` for
   needed dependency results or `--silence` for independent no-result-needed work.
-- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for
-  explicit debugging requests, not normal ask workflow tools.
-- After the command returns, immediately end the turn. Do not wait for a reply,
-  do not run `ask get` / `pend` / `ping` / `watch`, do not poll.
+- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for explicit debugging requests, not normal ask workflow tools.
+- After the command returns, immediately end the turn. Do not wait for a reply, do not run `ask get` / `pend` / `ping` / `watch`, do not poll.
 - For `--callback`, report only that delegation was submitted; the final result
   belongs in the later continuation task.

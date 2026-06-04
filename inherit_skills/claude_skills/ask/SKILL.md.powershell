@@ -32,8 +32,7 @@ Choose the mode before running a command:
 - `TARGET=all` broadcasts.
 - Plain `ask` injects concise-reply guidance while still delivering the full
   reply body.
-- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for
-  explicit debugging requests, not normal ask workflow tools.
+- `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for explicit debugging requests, not normal ask workflow tools.
 - Do not manually append output-policy text; `ask` injects reply guidance.
 - For callback work with a large child result, combine `--callback` with
   `--artifact-reply`.
@@ -54,7 +53,5 @@ Use `-ArgumentList @("--compact", "$TARGET")` for compact replies,
 continuations. Use `-ArgumentList @("--artifact-io", "$TARGET")` when both the
 request and reply should be artifact-backed.
 
-After the command returns, immediately end the turn. Do not wait for a reply,
-do not run `ask get` / `pend` / `ping` / `watch`, do not poll, do not add
-commentary. For `--callback`, report only that delegation was submitted; the
-final result belongs in the later continuation task.
+After the command returns, immediately end the turn. Do not wait for a reply, do not run `ask get` / `pend` / `ping` / `watch`, do not poll, do not add
+commentary. For `--callback`, report only that delegation was submitted; the final result belongs in the later continuation task.
