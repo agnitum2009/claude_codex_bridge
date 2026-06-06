@@ -6,7 +6,8 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
+    MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -80,6 +81,9 @@ fn run_tui(args: &Args) -> io::Result<ExitAction> {
                     KeyCode::Char('j') | KeyCode::Down => app.move_selection(1),
                     KeyCode::Char('k') | KeyCode::Up => app.move_selection(-1),
                     KeyCode::Char('r') => app.restart_panes(&client),
+                    KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.force_refresh()
+                    }
                     KeyCode::Char('R') => app.recover_first_visible_comms(&client),
                     KeyCode::Enter => app.focus_selected_target(&client),
                     KeyCode::Tab => app.focus_pane_window(&client),

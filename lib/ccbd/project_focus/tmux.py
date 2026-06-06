@@ -145,7 +145,7 @@ def _send_sidebar_refresh(backend, pane_id: str) -> None:
     if not callable(runner):
         return
     try:
-        runner(['send-keys', '-t', pane_id, '-l', 'r'], capture=True, check=False, timeout=0.5)
+        runner(['send-keys', '-t', pane_id, 'C-l'], capture=True, check=False, timeout=0.5)
     except Exception:
         return
 

@@ -184,8 +184,8 @@ def test_project_focus_agent_selects_configured_window_and_pane(tmp_path: Path) 
         ['display-message', '-p', '-t', '%3', '#{session_name}'],
         ['display-message', '-p', '-t', '%4', '#{session_name}'],
         ['display-message', '-p', '-t', '%5', '#{session_name}'],
-        ['send-keys', '-t', '%3', '-l', 'r'],
-        ['send-keys', '-t', '%4', '-l', 'r'],
+        ['send-keys', '-t', '%3', 'C-l'],
+        ['send-keys', '-t', '%4', 'C-l'],
     ]
 
 
@@ -204,8 +204,8 @@ def test_project_focus_window_focuses_first_configured_agent_when_available(tmp_
         ['display-message', '-p', '-t', '%3', '#{session_name}'],
         ['display-message', '-p', '-t', '%4', '#{session_name}'],
         ['display-message', '-p', '-t', '%5', '#{session_name}'],
-        ['send-keys', '-t', '%3', '-l', 'r'],
-        ['send-keys', '-t', '%4', '-l', 'r'],
+        ['send-keys', '-t', '%3', 'C-l'],
+        ['send-keys', '-t', '%4', 'C-l'],
     ]
 
 
@@ -224,8 +224,8 @@ def test_project_focus_tool_window_selects_window_without_agent_pane_lookup(tmp_
         ['display-message', '-p', '-t', '%3', '#{session_name}'],
         ['display-message', '-p', '-t', '%4', '#{session_name}'],
         ['display-message', '-p', '-t', '%5', '#{session_name}'],
-        ['send-keys', '-t', '%3', '-l', 'r'],
-        ['send-keys', '-t', '%4', '-l', 'r'],
+        ['send-keys', '-t', '%3', 'C-l'],
+        ['send-keys', '-t', '%4', 'C-l'],
     ]
 
 
