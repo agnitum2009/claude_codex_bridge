@@ -43,6 +43,8 @@ def test_install_script_provisions_role_packs_softly() -> None:
     assert 'Missing dependency for Role Pack provisioning: npm' in text
     assert 'nodejs npm' in text
     assert 'set CCB_INSTALL_ROLES=0' in text
+    assert 'python_supports_role_tool_venv' not in text
+    assert 'print_python_venv_install_hint' not in text
 
 
 def test_sidebar_bin_wrapper_is_source_install_fallback() -> None:

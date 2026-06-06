@@ -403,31 +403,6 @@ def _architec_npm_package() -> str:
     )
 
 
-def _which_first(*names: str) -> str | None:
-    for name in names:
-        path = shutil.which(name)
-        if path:
-            return path
-    return None
-
-
-def _probe_binary_help(path: str | None) -> str:
-    if not path:
-        return 'missing'
-    try:
-        completed = subprocess.run(
-            [path, '--help'],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=20,
-            check=False,
-        )
-    except Exception:
-        return 'failed'
-    return 'ok' if completed.returncode == 0 else 'failed'
-
-
 def _probe_archi_cli(path: str | None) -> dict[str, object]:
     if not path:
         return {'status': 'missing'}

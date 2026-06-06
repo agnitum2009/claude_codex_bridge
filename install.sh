@@ -440,18 +440,6 @@ require_python_version() {
   echo "OK: Python $version ($PYTHON_BIN)"
 }
 
-python_supports_role_tool_venv() {
-  "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
-import importlib.util
-import sys
-
-for module_name in ("venv", "ensurepip"):
-    if importlib.util.find_spec(module_name) is None:
-        raise SystemExit(1)
-raise SystemExit(0)
-PY
-}
-
 print_git_install_hint() {
   local platform
   platform="$(detect_platform)"
@@ -516,36 +504,6 @@ print_npm_install_hint() {
       ;;
     *)
       echo "   Install Node.js/npm and ensure npm is on PATH"
-      ;;
-  esac
-}
-
-print_python_venv_install_hint() {
-  local platform
-  platform="$(detect_platform)"
-  case "$platform" in
-    macos)
-      echo "   macOS: install or repair Python 3.10+; Homebrew users can run 'brew install python'"
-      ;;
-    linux)
-      if command -v apt-get >/dev/null 2>&1; then
-        echo "   Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y python3-venv python3-pip"
-      elif command -v dnf >/dev/null 2>&1; then
-        echo "   Fedora/CentOS/RHEL: sudo dnf install -y python3 python3-pip"
-      elif command -v yum >/dev/null 2>&1; then
-        echo "   CentOS/RHEL: sudo yum install -y python3 python3-pip"
-      elif command -v pacman >/dev/null 2>&1; then
-        echo "   Arch/Manjaro: sudo pacman -S python python-pip"
-      elif command -v apk >/dev/null 2>&1; then
-        echo "   Alpine: sudo apk add python3 py3-pip"
-      elif command -v zypper >/dev/null 2>&1; then
-        echo "   openSUSE: sudo zypper install -y python3 python3-pip"
-      else
-        echo "   Linux: install Python venv/ensurepip support with your distro's package manager"
-      fi
-      ;;
-    *)
-      echo "   Install Python venv/ensurepip support for Python 3.10+"
       ;;
   esac
 }
