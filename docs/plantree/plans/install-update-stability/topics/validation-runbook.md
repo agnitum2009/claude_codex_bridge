@@ -71,20 +71,22 @@ Scenarios:
 ## Real Project Smoke
 
 Use a disposable project outside `ccb_source`, for example under
-`/home/bfly/yunwei/test_ccb2`.
+`/home/bfly/yunwei/test_ccb2`. When validating current source changes from this
+checkout, use `ccb_test`, not the installed `ccb`.
 
 Commands:
 
 ```bash
-ccb doctor
-ccb roles list
-ccb roles install agentroles.archi
-ccb roles doctor agentroles.archi
-ccb roles add agentroles.archi:codex --window main
-ccb
-ccb reload
-ccb doctor
-ccb kill
+cd /home/bfly/yunwei/test_ccb2
+ccb_test doctor
+ccb_test roles list
+ccb_test roles install agentroles.archi
+ccb_test roles doctor agentroles.archi
+ccb_test roles add agentroles.archi:codex --window main
+ccb_test
+ccb_test reload
+ccb_test doctor
+ccb_test kill
 ```
 
 Expected:

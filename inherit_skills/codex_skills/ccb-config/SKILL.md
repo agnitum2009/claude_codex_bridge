@@ -23,6 +23,8 @@ This skill is not a workflow-memory designer. Do not edit `.ccb/ccb_memory.md`, 
 
 Never run `ccb`, `ccb -s`, `ccb kill`, `ccb reload`, or restart commands as part of this skill workflow. Finish file writes and validation first, then tell the user what to run.
 
+When this skill is used inside the CCB source checkout, keep production/work-environment commands separate from source validation. For validating current source changes, tell the user to run `ccb_test` from an external test project such as `/home/bfly/yunwei/test_ccb2`; do not suggest running source validation with bare `ccb` or from the source checkout itself.
+
 ## Language Behavior
 
 Match the user's language for all user-facing prose. If the user writes in Chinese, present the menu, clarification question, proposal summary, warnings, and next steps in Chinese. If the user writes in English, use English. For mixed-language requests, use the dominant language of the latest user request and preserve quoted terms as written.
