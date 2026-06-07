@@ -1,9 +1,34 @@
 # Changelog
 
+## v7.3.5 (2026-06-07)
+
+### Tmux Border Hook Hotfix
+
+- **Release Path Hook Fixed**: `config/ccb-tmux-on.sh` now resolves stable
+  installed config scripts through `CODEX_INSTALL_PREFIX` or `PATH` before
+  falling back to the current release tree, preventing long-lived tmux hooks
+  from storing temporary `/tmp/ccb-v...-release.../config/ccb-border.sh`
+  paths.
+- **Border Hook Guarded**: Python runtime hook generation now writes
+  `after-select-pane` with `run-shell -b` plus a `[ -x script ] || exit 0`
+  guard, so stale script paths do not repeatedly report
+  `ccb-border.sh ... returned 127` while switching panes.
+- **Post-Update Tmux UI Refresh Added**: `ccb update` now best-effort refreshes
+  active tmux UI hooks with `set_tmux_ui_active(True)`, allowing users upgrading
+  from v7.3.4 to automatically rewrite bad hooks without turning UI refresh
+  failures into Role Pack provisioning failures.
+- **v7.3.4 Withdrawn**: v7.3.4 remains published only as a prerelease/withdrawn
+  build because it can persist temporary release paths into tmux hooks. Use
+  v7.3.5 or newer as the stable upgrade target.
+
 ## v7.3.4 (2026-06-07)
 
-### Architec NPM Tooling And Sidebar Focus Patch
+### Withdrawn Prerelease
 
+- v7.3.4 was withdrawn because its tmux border hook could persist temporary
+  release paths such as `/tmp/ccb-v...-release.../config/ccb-border.sh` into
+  long-lived sessions, causing pane clicks to report `returned 127` after the
+  temporary build directory disappeared. Use v7.3.5 or newer.
 - **Archi Role Tooling Simplified**: `agentroles.archi` now uses the global
   `@seemseam/archi` npm package as the single Architec tool source. CCB no
   longer tries to split Hippo, llmgateway, editable git checkouts, or managed
@@ -42,7 +67,7 @@
 
 - v7.3.3 was withdrawn before stable rollout because it carried a sidebar
   focus/refresh regression. It is not the recommended release and should not be
-  used for upgrades; use v7.3.4 or newer.
+  used for upgrades; use v7.3.5 or newer.
 
 ## v7.3.2 (2026-06-05)
 

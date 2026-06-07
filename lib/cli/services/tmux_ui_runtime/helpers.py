@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import shutil
 
-
 _LEGACY_BIN_DIR = Path.home() / '.local' / 'bin'
 
 

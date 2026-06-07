@@ -12,7 +12,6 @@ import tarfile
 from release_artifacts import release_artifact_name
 from cli.roles_runtime.commands import cmd_roles
 from cli.tools_runtime.neovim import provision_neovim
-from cli.services.tmux_ui import set_tmux_ui_active
 from rolepacks.sources import role_catalog_status
 
 from ..install import (
@@ -30,6 +29,12 @@ from .matching import find_matching_version, latest_version
 POST_UPDATE_COMMAND = "__post-update"
 POST_UPDATE_TIMEOUT_SECONDS = 300.0
 ENTRYPOINT_SMOKE_TIMEOUT_SECONDS = 30.0
+
+
+def set_tmux_ui_active(active: bool) -> None:
+    from cli.services.tmux_ui import set_tmux_ui_active as _set_tmux_ui_active
+
+    _set_tmux_ui_active(active)
 
 
 def cmd_update(args, *, script_root: Path) -> int:

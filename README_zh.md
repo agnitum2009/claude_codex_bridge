@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.3.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.3.5-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
@@ -512,12 +512,23 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
-<summary><b>v7.3.4</b> - Architec NPM tooling 与 sidebar focus 补丁</summary>
+<summary><b>v7.3.5</b> - Tmux border hook 热修复</summary>
+
+- 修复 tmux `after-select-pane` hook 可能持久保存 `/tmp/ccb-v...-release.../config/ccb-border.sh` 这类临时 release 路径，导致点击 pane 后报 `returned 127` 的问题。
+- border hook 改为 `run-shell -b` 并带可执行 guard，脚本路径失效时不会反复刷 tmux 错误。
+- `ccb update` 后 best-effort 刷新当前 tmux UI hooks，让从 v7.3.4 升级的 session 自动重写坏 hook，且不会把 UI 刷新失败算作 Role Pack provisioning failure。
+- v7.3.4 已撤回并标记为 prerelease；稳定升级目标请使用 v7.3.5 或更新版本。
+
+</details>
+
+<details>
+<summary><b>v7.3.4</b> - Withdrawn Prerelease</summary>
 
 - `agentroles.archi` tooling 简化为统一使用全局 `@seemseam/archi` npm 包；CCB 不再拆分管理 Hippo、llmgateway、pip、venv、git 或 editable Archi 依赖。
 - `ccb roles install/update/doctor agentroles.archi` 对齐 npm 提供的 `archi` CLI 以及包内 bundled Hippo/llmgateway capabilities。
 - `bin/ccb-arch` 改为转发到 `archi`；缺失时直接提示 `npm install -g @seemseam/archi`。
 - 修复 sidebar focus/refresh 行为，从 sidebar 选择 agent 不再不必要地 restart panes。
+- 已撤回：tmux border hook 可能持久保存临时 release 路径并在之后报 `ccb-border.sh ... returned 127`；请使用 v7.3.5 或更新版本。
 - 新增带保护的 `ccb_test` source entrypoint，用于隔离验证源码 checkout，不影响已安装的 CCB。
 - 托管 OpenCode pane 通过 `opencode.json` 和 `OPENCODE_DISABLE_AUTOUPDATE=true` 禁用 autoupdate。
 - 刷新继承的 `ccb-config` skills：支持 config-only、跟随用户语言、修复 YAML description quoting、菜单分组更清晰，并将 sidebar refresh 指引改为 restart panes。
@@ -528,7 +539,7 @@ v7 线重点：
 <details>
 <summary><b>v7.3.3</b> - Withdrawn Draft</summary>
 
-- 该版本因 sidebar focus/refresh regression 在稳定 rollout 前撤回，不作为推荐 release，也不应用于升级；请使用 v7.3.4 或更新版本。
+- 该版本因 sidebar focus/refresh regression 在稳定 rollout 前撤回，不作为推荐 release，也不应用于升级；请使用 v7.3.5 或更新版本。
 
 </details>
 
