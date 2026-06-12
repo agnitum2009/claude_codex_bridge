@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.1-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.4.2-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
@@ -549,14 +549,26 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.4.2</b> - Self-supervision 与空回复防护</summary>
+
+- 通过有界 provider-runtime snapshot、project-view 活动证据、suspicion
+  envelope 和 self-first diagnosis path 加固 CCB self-supervision。
+- Claude/Gemini hook 空回复、Codex protocol `task_complete` 空回复，以及
+  AGY done-marker 空回复会终止为带 diagnostics 的 `incomplete`。
+- 保留有意的无回复语义：`--silence` 成功仍是 `completed`，callback parent
+  的 `callback_pending` 空回复仍合法，异常 silent completion 仍可诊断。
+- 收紧默认 Role Pack install 和项目 role-lock refresh，覆盖
+  `agentroles.archi` 与 `agentroles.ccb_self`。
+
+</details>
+
+<details>
 <summary><b>v7.4.1</b> - Maintenance heartbeat 与 ccb_self 默认配置</summary>
 
 - 加固项目级 maintenance heartbeat runner、schedule 处理、activation
   去重抑制和 diagnostics 证据路径，同时保持 heartbeat 只能显式启用。
 - 空白项目内置默认配置新增 `ccb_self:codex` 并绑定 canonical
   `agentroles.ccb_self`，安装/更新时刷新推荐角色，但不改写已有自定义配置。
-- `ccb update` 刷新默认 Role Packs 和 Neovim 时不再反复交互确认，同时保持项目
-  role lock 显式更新。
 - CCB source 与 `agent-roles-spec` 的角色 id `agentroles.ccb_self` 对齐；
   `agentrole.ccb_self` 仅作为 legacy 输入兼容。
 - 收紧生成配置的单一权威、Role Pack hook 的 CCB_BIN/project-root 路径和

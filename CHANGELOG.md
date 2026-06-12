@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.4.2 (2026-06-12)
+
+### Self-Supervision And Empty Reply Guards
+
+- **Self-Supervision Evidence Hardened**: maintenance heartbeat now uses
+  bounded provider-runtime snapshots, project-view activity evidence, suspicion
+  envelopes, and a self-first diagnosis path for CCB runtime health signals.
+- **Empty Provider Replies Terminalized**: Claude/Gemini empty hook replies,
+  Codex protocol `task_complete` empty replies, and AGY pane done-marker empty
+  replies now finish as `incomplete` with diagnostics instead of looking like
+  successful empty completions.
+- **Silence And Callback Semantics Preserved**: `--silence` success remains a
+  valid completed no-reply path, callback parent `callback_pending` empty
+  replies remain legal, and abnormal silent completions stay diagnosable.
+- **Role Pack Refresh Tightened**: default Role Pack install and project role
+  lock refresh paths now handle `agentroles.archi` and `agentroles.ccb_self`
+  more consistently during update/startup.
+
 ## v7.4.1 (2026-06-11)
 
 ### Maintenance Heartbeat And ccb_self Defaults
@@ -12,13 +30,6 @@
   `ccb_self:codex` bound to canonical `agentroles.ccb_self`, and install/update
   provisioning refreshes the recommended CCB self role without changing
   existing custom project configs.
-- **Post-Update Default Provisioning Simplified**: `ccb update` now attempts
-  default Role Pack and Neovim provisioning without interactive permission
-  prompts, still honoring `CCB_INSTALL_ROLES=0` and `CCB_INSTALL_NEOVIM=0`.
-- **Project Role Lock Refresh Prompt**: project `ccb` startup now detects bound
-  Role Pack locks that lag behind the installed current role and refreshes
-  `.ccb/role-lock.json` only after interactive confirmation; non-interactive
-  starts warn without mutating the project.
 - **Role Identity Compatibility Fixed**: CCB source now matches the
   `agent-roles-spec` catalog identity `agentroles.ccb_self` and only treats
   `agentrole.ccb_self` as legacy input compatibility.

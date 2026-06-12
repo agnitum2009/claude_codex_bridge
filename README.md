@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.1-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.4.2-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -561,6 +561,23 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.4.2</b> - Self-Supervision And Empty Reply Guards</summary>
+
+- Hardens CCB self-supervision with bounded provider-runtime snapshots,
+  project-view activity evidence, suspicion envelopes, and a self-first
+  diagnosis path.
+- Treats empty Claude/Gemini hook replies, Codex protocol `task_complete`
+  empty replies, and AGY done-marker empty replies as `incomplete` with
+  diagnostics.
+- Preserves intentional no-reply behavior: `--silence` success remains
+  completed, callback parent `callback_pending` remains legal, and abnormal
+  silent completions stay diagnosable.
+- Tightens default Role Pack install and project role-lock refresh handling for
+  `agentroles.archi` and `agentroles.ccb_self`.
+
+</details>
+
+<details>
 <summary><b>v7.4.1</b> - Maintenance Heartbeat And ccb_self Defaults</summary>
 
 - Hardens the project-scoped maintenance heartbeat runner, schedule handling,
@@ -569,8 +586,6 @@ v7 highlights:
 - Adds `ccb_self:codex` bound to canonical `agentroles.ccb_self` in the
   built-in blank-project default and refreshes the recommended role during
   install/update provisioning without rewriting existing custom configs.
-- Makes `ccb update` refresh default Role Packs and Neovim without repeated
-  interactive confirmations, while keeping project role locks explicit.
 - Aligns CCB source with the `agent-roles-spec` role id
   `agentroles.ccb_self`; `agentrole.ccb_self` is accepted only as legacy input
   compatibility.
