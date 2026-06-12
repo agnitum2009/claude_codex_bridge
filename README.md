@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.4.3-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -561,6 +561,22 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.4.3</b> - PR #225 Reliability Follow-Up</summary>
+
+- Restores the Claude launcher contract: inline `--settings` now reflects the
+  materialized settings overlay without injecting provider env into settings
+  JSON.
+- Fixes Claude WSL Windows-executable environment forwarding so path variables
+  use `/p` translation while `ANTHROPIC_*` API values pass through as raw env
+  names.
+- Hardens Antigravity resume lookup for SQLite `bytes`, `str`, and
+  `memoryview` metadata and falls back to `--continue` if lookup fails.
+- Adds regression tests for the Claude settings contract, WSL API env
+  forwarding, and AGY resume fallback behavior.
+
+</details>
+
+<details>
 <summary><b>v7.4.2</b> - Self-Supervision And Empty Reply Guards</summary>
 
 - Hardens CCB self-supervision with bounded provider-runtime snapshots,

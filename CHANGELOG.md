@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.4.3 (2026-06-12)
+
+### PR #225 Reliability Follow-Up
+
+- **Claude Launcher Contract Restored**: inline `--settings` now stays equal
+  to the materialized settings overlay instead of injecting provider env into
+  settings JSON, preserving the existing launcher contract after PR #225.
+- **Claude WSL Env Forwarding Fixed**: Windows executable launches from WSL
+  now mark only path variables with `/p` in `WSLENV` and forward
+  `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` as raw
+  environment values.
+- **AGY Resume Lookup Hardened**: Antigravity conversation metadata lookup now
+  accepts SQLite `bytes`, `str`, and `memoryview` values, and falls back to
+  `--continue` if resume lookup fails instead of hard-failing launcher startup.
+- **Runtime Regression Coverage Added**: launcher tests cover the restored
+  Claude settings contract, WSL API env forwarding, and AGY resume fallback
+  behavior.
+
 ## v7.4.2 (2026-06-12)
 
 ### Self-Supervision And Empty Reply Guards

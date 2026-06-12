@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.4.3-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
@@ -549,6 +549,20 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.4.3</b> - PR #225 可靠性跟进修复</summary>
+
+- 恢复 Claude launcher contract：inline `--settings` 只反映 materialized
+  settings overlay，不再把 provider env 注入 settings JSON。
+- 修复 Claude 在 WSL 调 Windows executable 时的环境透传：路径变量使用 `/p`
+  转换，`ANTHROPIC_*` API 值作为 raw env 名透传。
+- 加固 Antigravity resume lookup，兼容 SQLite 返回的 `bytes`、`str` 和
+  `memoryview` metadata，并在查找失败时降级为 `--continue`。
+- 新增 Claude settings contract、WSL API env forwarding 和 AGY resume
+  fallback 的回归测试。
+
+</details>
+
+<details>
 <summary><b>v7.4.2</b> - Self-supervision 与空回复防护</summary>
 
 - 通过有界 provider-runtime snapshot、project-view 活动证据、suspicion
