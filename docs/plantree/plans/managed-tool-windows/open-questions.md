@@ -14,3 +14,15 @@ Date: 2026-05-30
 - Which clipboard lane should be the standard fallback inside tmux when the OS
   clipboard helper is missing: Neovim OSC52, tmux `set-clipboard`, or explicit
   platform helper installation?
+- Should browser-based Markdown preview be installed by default, or should the
+  default stay with in-buffer Markdown rendering and make browser preview an
+  optional capability-gated overlay?
+- Should inline image rendering attempt automatically when terminal support is
+  detected, or should it require an explicit command/keymap even when
+  `snacks.image` reports support?
+- Should CCB pin the managed Neovim profile plugin set with a CCB-owned lockfile
+  to reduce LazyVim/plugin drift, or follow upstream LazyVim/lazy.nvim stable
+  behavior and rely on doctor/repair when drift breaks the profile?
+- On WSL, should external file/URL opening prefer `wslview`, Windows interop
+  tools such as `explorer.exe`, or Linux desktop tools when more than one is
+  present?

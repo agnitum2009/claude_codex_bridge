@@ -27,6 +27,10 @@ authority for the feature.
 - [topics/neovim-lazyvim-provisioning.md](topics/neovim-lazyvim-provisioning.md):
   install/update provisioning for a CCB-managed Neovim and LazyVim profile,
   including tmux compatibility.
+- [topics/neovim-system-optimization.md](topics/neovim-system-optimization.md):
+  second-phase plan for making the managed Neovim profile useful and
+  diagnosable across Linux, macOS, and WSL, including folders, Markdown,
+  images, clipboard, and opener behavior.
 - [topics/test-matrix.md](topics/test-matrix.md): automatic and manual tests,
   including `test_ccb2` validation.
 - [decisions/001-tool-windows-are-not-agents.md](decisions/001-tool-windows-are-not-agents.md):

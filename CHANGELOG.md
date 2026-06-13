@@ -1,5 +1,27 @@
 # Changelog
 
+## v7.4.4 (2026-06-12)
+
+### Claude End-Turn And npm Release Surface
+
+- **Claude `end_turn` Terminalization Fixed**: Claude pane-backed asks that
+  emit a primary assistant response with `stop_reason=end_turn`, observed
+  request anchor, and non-empty reply now produce normalized
+  `TURN_BOUNDARY(reason=assistant_end_turn)` evidence and complete promptly
+  instead of waiting for the 900-second reliability timeout.
+- **Session-Boundary Empty Reply Guard Added**: empty session-boundary terminal
+  events with no prior assistant reply now finish as
+  `incomplete/task_complete_empty_reply` with `empty_provider_reply`
+  diagnostics, matching the existing protocol empty-reply policy.
+- **npm Release Surface Restored**: the source tree now includes the
+  `@seemseam/ccb` package manifest, npm CLI runner wrappers, and a
+  tag-triggered Trusted Publishing workflow that waits for GitHub release
+  artifacts before publishing the npm package.
+- **README v7 Homepage Refreshed**: public README files now use the canonical
+  v7 hero assets, npm-first install wording, and stronger `ccb_self`
+  positioning as CCB's built-in usage, config, diagnostics, and recovery
+  expert.
+
 ## v7.4.3 (2026-06-12)
 
 ### PR #225 Reliability Follow-Up

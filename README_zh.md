@@ -1,25 +1,150 @@
 <div align="center">
 
-# CCB - 可见、可控的多 Agent CLI 工作台
+# CCB
+
+**可见、可控的多 Agent CLI 工作台，用一个项目级 tmux 会话同时管理真实 CLI。**
 
 <p>
-  <img src="https://img.shields.io/badge/v7-multi--agent--workspace-0B7285?style=for-the-badge" alt="v7 multi-agent workspace">
-  <img src="https://img.shields.io/badge/terminal-tmux-2F9E44?style=for-the-badge" alt="tmux">
-  <img src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Antigravity-CF1322?style=for-the-badge" alt="providers">
+  <img src="https://img.shields.io/badge/version-7.4.4-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
+  <img src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Antigravity-0B7285.svg" alt="providers">
 </p>
-
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.3-orange.svg)]()
-[![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
 
-[为什么需要多 agents](#为什么需要多-agents) · [方案对比](#多-agents-方案怎么选) · [v7 界面](#v7-界面速览) · [快速开始](#快速开始) · [tmux 常规操作](#tmux-常规操作) · [配置团队](#配置-agent-团队) · [安装更新](#安装和更新)
+[快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [配置团队](#配置-agent-团队) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
+
+<p align="center">
+  <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB v7 可见多 Agent CLI 工作台" width="960">
+</p>
 
 </div>
 
 ---
+
+## 三件事
+
+| 看得见 | 混合 provider | 项目级控制 |
+| :--- | :--- | :--- |
+| 每个 agent 都是真实终端 pane，不是隐藏后台 worker。 | 同时运行 Codex、Claude、Gemini、OpenCode、Antigravity 等真实 CLI。 | 显式启动、attach、委派、审查、重建、更新和停止项目工作台。 |
+
+空白项目默认包含 `ccb_self`，它是 CCB 内置自理解专家，可帮助使用 CCB、解释当前布局、设计配置、诊断运行态、恢复和修复工作流。
+
+## 快速开始
+
+### 1. 安装或更新
+
+新安装推荐使用 npm 包：
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+安装完成后，后续更新直接使用 CCB 自带 updater：
+
+```bash
+ccb update
+```
+
+<details>
+<summary><b>GitHub release 包和源码安装兜底</b></summary>
+
+如果当前环境不方便使用 npm，可以到 [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 下载与你的平台匹配的包，解压后安装：
+
+```bash
+tar -xzf ccb-*.tar.gz
+cd ccb-*
+./install.sh install
+```
+
+源码安装只建议开发或临时兜底使用：
+
+```bash
+git clone https://github.com/SeemSeam/claude_codex_bridge.git
+cd claude_codex_bridge
+./install.sh install
+```
+
+源码安装会让全局 `ccb` / `ask` 链接回当前 checkout。普通用户更建议使用 npm 包。
+
+</details>
+
+### 2. 创建项目配置
+
+在项目根目录创建 `.ccb/ccb.config`。v7 推荐直接从多 window 拓扑理解配置：`[windows]` 定义窗口和 agent 分组，`agent:provider` 定义每个 agent 使用哪家 CLI，`(worktree)` 表示该 agent 使用独立 git worktree。
+
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+work = "worker1:codex(worktree), worker2:claude(worktree)"
+review = "reviewer:claude, qa:gemini"
+
+[ui.sidebar]
+mode = "every_window"
+width = "15%"
+bottom_height = 20
+
+[ui.sidebar.view]
+agents_height = "50%"
+comms_height = "15%"
+tips_height = "35%"
+comms_limit = 3
+```
+
+如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以直接问 `ccb_self`。它是 CCB 内置的 self-agent，理解 CCB 命令、配置权威层、roles、windows、reload 边界和常见恢复路径，并能用私有 `ccb-config` skill 和你讨论后生成配置方案。空白项目默认包含 `ccb_self`；已有自定义配置可用 `ccb roles add agentroles.ccb_self:codex` 添加。
+
+验证配置：
+
+```bash
+ccb config validate
+```
+
+启动工作台：
+
+```bash
+ccb
+```
+
+### 3. 开始协作
+
+你可以直接在某个 agent pane 里输入，也可以让 agent 之间协作：
+
+```text
+/ask reviewer review the latest parser changes and list blocking issues.
+```
+
+## v7 界面速览
+
+上方 hero 图来自 `ccb_test2` 项目的真实深色终端会话。图片上的标注只解释区域，不代表必须记住所有快捷键。
+
+| 区域 | 作用 |
+| :--- | :--- |
+| Sidebar | 显示当前 window、agent 列表、provider 标签、当前选中 agent 和状态提示。 |
+| Comms | 显示 ask/callback 等协作消息和通信状态。 |
+| Agent pane | 每个 pane 是一个真实 CLI 会话，例如 Codex 或 Claude。 |
+| 当前输入目标 | 状态栏和 pane 边框会提示当前输入会发给哪个 agent。 |
+| 状态栏 | 显示项目名、当前 agent、CCB 版本、日期和常用鼠标/键盘提示。 |
+| Window 分组 | v7 可用 `[windows]` 把 agent 按 main、work、review、research 等窗口分组。 |
+
+Sidebar 相关实现使用并借鉴了 [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) 的思路，在此表示感谢。
+
+## CCB 是什么
+
+CCB 是一个项目级 agent CLI 工作台。它用 tmux 管理多个真实 CLI agent，把启动、恢复、通信、配置、窗口和运行态聚合在一个项目里。
+
+- **真实 CLI，不是模拟面板**：每个 agent pane 都运行对应 provider 的真实 CLI。
+- **可见协作**：sidebar 展示窗口、agent 状态和通信区；用户可以用鼠标直接切 pane。
+- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid 和 Antigravity（`agy`）。
+- **项目级配置**：`.ccb/ccb.config` 决定团队、布局、窗口、worktree、model、key、url。
+- **内置 CCB 专家**：空白项目默认包含 `ccb_self`，它是具备 CCB 自理解能力的自维护 agent，可帮助使用 CCB、设计配置、诊断运行态、恢复工作流。
+- **Roles**：全新的角色封装概念；它让携带“重武器”（独立 skills、记忆和
+  工具依赖等）的专业角色瞬间“降临”到目标项目中，成为一个可以快速热加载和
+  卸载的独立 agent，同时保持主环境、用户全局配置和项目运行状态不发生改变。
+- **可恢复运行态**：CCB 后台守护 agent pane，支持 attach、恢复和项目级清理。
+- **显式协作通道**：agent 可以通过 `/ask`、`$ask`、callback 和 silence 进行委派与交接。
 
 ## 为什么需要多 agents
 
@@ -66,117 +191,6 @@
 CCB 也支持复杂工作流，但它不是自动生成 DAG 的 harness；复杂度主要通过 `.ccb/ccb.config`、多 window、角色记忆、worktree、model/API 配置和 ask/callback 路由显式设计。
 
 </details>
-
-## CCB 是什么
-
-CCB 是一个项目级 agent CLI 工作台。它用 tmux 管理多个真实 CLI agent，把启动、恢复、通信、配置、窗口和运行态聚合在一个项目里。
-
-- **真实 CLI，不是模拟面板**：每个 agent pane 都运行对应 provider 的真实 CLI。
-- **可见协作**：sidebar 展示窗口、agent 状态和通信区；用户可以用鼠标直接切 pane。
-- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid 和 Antigravity（`agy`）。
-- **项目级配置**：`.ccb/ccb.config` 决定团队、布局、窗口、worktree、model、key、url。
-- **Roles**：全新的角色封装概念；它让携带“重武器”（独立 skills、记忆和
-  工具依赖等）的专业角色瞬间“降临”到目标项目中，成为一个可以快速热加载和
-  卸载的独立 agent，同时保持主环境、用户全局配置和项目运行状态不发生改变。
-- **可恢复运行态**：CCB 后台守护 agent pane，支持 attach、恢复和项目级清理。
-- **显式协作通道**：agent 可以通过 `/ask`、`$ask`、callback 和 silence 进行委派与交接。
-
-## v7 界面速览
-
-下面截图来自 `ccb_test2` 项目的真实深色终端会话。图片上的标注只解释区域，不代表必须记住所有快捷键。
-
-<p align="center">
-  <img src="assets/readme_v7/ccb-test2-terminal-annotated.png" alt="CCB v7 终端工作台区域说明" width="960">
-</p>
-
-| 区域 | 作用 |
-| :--- | :--- |
-| Sidebar | 显示当前 window、agent 列表、provider 标签、当前选中 agent 和状态提示。 |
-| Comms | 显示 ask/callback 等协作消息和通信状态。 |
-| Agent pane | 每个 pane 是一个真实 CLI 会话，例如 Codex 或 Claude。 |
-| 当前输入目标 | 状态栏和 pane 边框会提示当前输入会发给哪个 agent。 |
-| 状态栏 | 显示项目名、当前 agent、CCB 版本、日期和常用鼠标/键盘提示。 |
-| Window 分组 | v7 可用 `[windows]` 把 agent 按 main、work、review、research 等窗口分组。 |
-
-Sidebar 相关实现使用并借鉴了 [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) 的思路，在此表示感谢。
-
-## 快速开始
-
-### 1. 安装或更新
-
-新用户优先使用 release 包。到 [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 下载与你的平台匹配的包，解压后安装：
-
-```bash
-tar -xzf ccb-*.tar.gz
-cd ccb-*
-./install.sh install
-```
-
-如果你已经装过 CCB：
-
-```bash
-ccb update
-```
-
-<details>
-<summary><b>源码安装只建议开发或临时兜底使用</b></summary>
-
-```bash
-git clone https://github.com/SeemSeam/claude_codex_bridge.git
-cd claude_codex_bridge
-./install.sh install
-```
-
-源码安装会让全局 `ccb` / `ask` 链接回当前 checkout。普通用户更建议安装或更新到稳定 release。
-
-</details>
-
-### 2. 创建项目配置
-
-在项目根目录创建 `.ccb/ccb.config`。v7 推荐直接从多 window 拓扑理解配置：`[windows]` 定义窗口和 agent 分组，`agent:provider` 定义每个 agent 使用哪家 CLI，`(worktree)` 表示该 agent 使用独立 git worktree。
-
-```toml
-version = 2
-entry_window = "main"
-
-[windows]
-main = "main:codex"
-work = "worker1:codex(worktree), worker2:claude(worktree)"
-review = "reviewer:claude, qa:gemini"
-
-[ui.sidebar]
-mode = "every_window"
-width = "15%"
-bottom_height = 20
-
-[ui.sidebar.view]
-agents_height = "50%"
-comms_height = "15%"
-tips_height = "35%"
-comms_limit = 3
-```
-
-如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以让 `ccb_self` 使用它内置的 `ccb-config` 和你讨论并生成配置方案。空白项目默认包含 `ccb_self`；已有自定义配置可用 `ccb roles add agentroles.ccb_self:codex` 添加。
-
-验证配置：
-
-```bash
-ccb config validate
-```
-
-启动工作台：
-
-```bash
-ccb
-```
-
-### 3. 开始协作
-
-你可以直接在某个 agent pane 里输入，也可以让 agent 之间协作：
-
-```text
-/ask reviewer review the latest parser changes and list blocking issues.
-```
 
 ## 日常操作
 
@@ -284,10 +298,11 @@ ccb roles update agentroles.archi
 role；如果锁已经落后，交互式启动会询问是否就地刷新项目锁，非交互启动只打印
 提醒。
 
-强烈建议 CCB 项目保留 `ccb_self`，因为它负责 CCB 配置维护、运行诊断、受保护
-恢复、工作链修复和单 agent 重启辅助，同时不接管业务任务。空白项目的内置默认配置
-已经包含它；已有项目，或使用用户配置/项目配置替换内置默认的项目，需要该维护
-agent 时应显式把它作为 window leaf 加进去：
+强烈建议 CCB 项目保留 `ccb_self`，因为它是 CCB 内置专家 agent，携带 CCB
+项目配置、命令使用、role 绑定、reload 边界、运行诊断、受保护恢复、工作链修复和
+单 agent 重启辅助等专用知识，同时不接管业务任务。空白项目的内置默认配置已经
+包含它；已有项目，或使用用户配置/项目配置替换内置默认的项目，需要该维护 agent
+时应显式把它作为 window leaf 加进去：
 
 ```bash
 ccb roles add agentroles.ccb_self:codex
@@ -397,6 +412,8 @@ model = "sonnet"
 
 完整的 `ccb-config` skill 属于 `agentroles.ccb_self` 角色，不再作为所有 agent 都继承的公共 skill。CCB 默认会安装或刷新这个 Role Pack，空白项目的内置默认配置也会包含 `ccb_self`。已有项目，或使用用户配置/项目配置替换内置默认的项目，需要维护助手时应显式绑定它。
 
+`ccb_self` 不只是配置助手，它被设计成 CCB 的自理解 agent。使用 CCB 时遇到布局解释、团队拓扑选择、`.ccb/ccb.config` 迁移、运行态诊断、恢复路径或工作流修复问题，都可以先问它。
+
 如果你不想手写 `.ccb/ccb.config`，可以直接询问 `ccb_self`，再用自然语言描述项目目标、并行程度、窗口分组、worktree 隔离、provider/model/API 偏好。`ccb_self` 会使用它内置的 `ccb-config` 和你讨论后提出完整配置方案。
 
 示例：
@@ -466,6 +483,7 @@ CCB 不要求你离开编辑器。常见方式是：编辑器负责写代码，C
 
 ### 环境要求
 
+- 推荐 npm 安装路径需要 Node.js 和 npm
 - Python 3.10+
 - `tmux`
 - 至少一个你要使用的 agent CLI，例如 Codex、Claude、Gemini、OpenCode、Droid 或 Antigravity
@@ -473,15 +491,21 @@ CCB 不要求你离开编辑器。常见方式是：编辑器负责写代码，C
 
 当前 v7 / 新版本不声明原生 Windows 支持。原生 Windows 只支持到 v5 线；如果你在 Windows 上使用新版本，推荐使用 WSL，并让 `ccb` 与 agent CLI 都运行在 WSL 内。
 
-### Release 优先
+### npm 优先
 
-首次安装推荐使用 [GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 的 release 包；已安装用户推荐：
+首次安装推荐使用 npm：
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+后续更新直接使用：
 
 ```bash
 ccb update
 ```
 
-源码 checkout 安装只适合开发、验证修复或 release 包暂不可用时临时使用。
+[GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 仍作为不方便使用 npm 时的备选路径。源码 checkout 安装只适合开发、验证修复或临时兜底。
 
 ### 卸载
 
@@ -549,6 +573,24 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.4.4</b> - Claude end_turn 与 npm 发布面修复</summary>
+
+- Claude pane-backed ask 在 primary assistant response 带
+  `stop_reason=end_turn`、已看到请求 anchor 且回复非空时，会立即产生
+  `TURN_BOUNDARY(reason=assistant_end_turn)` 并正常完成，不再等到 900 秒
+  reliability timeout。
+- 空的 session-boundary terminal event 如果之前没有 assistant 回复证据，会
+  终止为 `incomplete/task_complete_empty_reply`，并带
+  `empty_provider_reply` 诊断。
+- 恢复 `@seemseam/ccb` npm 发布面：补回 package metadata、CLI runner
+  wrappers，以及等待 GitHub release assets 后再发布 npm 包的 Trusted
+  Publishing workflow。
+- 刷新 v7 README 首页：使用 canonical hero assets，默认 npm-first 安装，并
+  更明确说明 `ccb_self` 是 CCB 内置的使用、配置、诊断和恢复专家。
+
+</details>
+
+<details>
 <summary><b>v7.4.3</b> - PR #225 可靠性跟进修复</summary>
 
 - 恢复 Claude launcher contract：inline `--settings` 只反映 materialized

@@ -47,8 +47,13 @@ Date: 2026-05-30
    and `ccb ask` still routes through the daemon.
 2. Record any live tmux/Neovim compatibility issues in the test matrix or manual
    issue log.
-3. Review whether `ccb tools doctor neovim` should surface richer clipboard and
-   first-run LazyVim health diagnostics.
+3. Shape the managed Neovim system-optimization phase from
+   [topics/neovim-system-optimization.md](topics/neovim-system-optimization.md):
+   capability diagnostics first, then folder, Markdown, image, clipboard, and
+   opener profile overlays.
+4. Review whether `ccb tools doctor neovim` should surface richer clipboard,
+   WSL, terminal-image, external-opener, and first-run LazyVim health
+   diagnostics.
 
 ## Deferred
 

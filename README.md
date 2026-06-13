@@ -1,25 +1,152 @@
 <div align="center">
 
-# CCB - Visible, Controllable Multi-Agent CLI Workspace
+# CCB
+
+**Visible, controllable multi-agent CLI workspace for Codex, Claude, Gemini, OpenCode, and more.**
 
 <p>
-  <img src="https://img.shields.io/badge/v7-multi--agent--workspace-0B7285?style=for-the-badge" alt="v7 multi-agent workspace">
-  <img src="https://img.shields.io/badge/terminal-tmux-2F9E44?style=for-the-badge" alt="tmux">
-  <img src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Antigravity-CF1322?style=for-the-badge" alt="providers">
+  <img src="https://img.shields.io/badge/version-7.4.4-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
+  <img src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Antigravity-0B7285.svg" alt="providers">
 </p>
-
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.3-orange.svg)]()
-[![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
 
-[Why Multi Agents](#why-multi-agents) · [Comparison](#which-multi-agent-approach-should-you-use) · [v7 UI](#v7-ui-tour) · [Quick Start](#quick-start) · [tmux Basics](#tmux-basics) · [Configure Agents](#configure-your-agent-team) · [Install](#install-and-update)
+[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Configure Agents](#configure-your-agent-team) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+
+<p align="center">
+  <img src="assets/readme_v7/ccb-hero-en.png" alt="CCB v7 visible multi-agent CLI workspace" width="960">
+</p>
 
 </div>
 
 ---
+
+## What You Get
+
+| See the work | Mix providers | Keep control |
+| :--- | :--- | :--- |
+| Every agent is a real terminal pane, not a hidden background worker. | Run Codex, Claude, Gemini, OpenCode, Antigravity, and related CLIs together. | Start, attach, delegate, review, rebuild, update, and stop the project workspace explicitly. |
+
+Blank projects include `ccb_self`, CCB's built-in self-understanding expert for usage guidance, layout explanation, config design, runtime diagnostics, recovery, and workflow repair.
+
+## Quick Start
+
+### 1. Install or update
+
+New installs should use the npm package:
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+After CCB is installed, use CCB's updater:
+
+```bash
+ccb update
+```
+
+<details>
+<summary><b>GitHub release package and source install fallbacks</b></summary>
+
+If npm is not available in your environment, download the matching package from [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases):
+
+```bash
+tar -xzf ccb-*.tar.gz
+cd ccb-*
+./install.sh install
+```
+
+Source install is for development or temporary fallback use:
+
+```bash
+git clone https://github.com/SeemSeam/claude_codex_bridge.git
+cd claude_codex_bridge
+./install.sh install
+```
+
+Source installs link global `ccb` / `ask` back to the checkout. Regular users should prefer the npm package.
+
+</details>
+
+### 2. Create project config
+
+Create `.ccb/ccb.config` in your project root. For v7, it is better to understand config from multi-window topology first: `[windows]` defines tmux windows and agent groups, `agent:provider` defines which CLI each agent uses, and `(worktree)` gives an agent its own git worktree.
+
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+work = "worker1:codex(worktree), worker2:claude(worktree)"
+review = "reviewer:claude, qa:gemini"
+
+[ui.sidebar]
+mode = "every_window"
+width = "15%"
+bottom_height = 20
+
+[ui.sidebar.view]
+agents_height = "50%"
+comms_height = "15%"
+tips_height = "35%"
+comms_limit = 3
+```
+
+If you are not sure how to group windows, how many workers you need, which agents should use worktrees, or which agents need separate models or API routes, ask `ccb_self`. It is CCB's built-in self-agent: it understands CCB commands, config authority, roles, windows, reload behavior, and common recovery paths, and can design the config with its private `ccb-config` skill. Blank projects include `ccb_self`; existing custom configs can add it with `ccb roles add agentroles.ccb_self:codex`.
+
+Validate the config:
+
+```bash
+ccb config validate
+```
+
+Start the workspace:
+
+```bash
+ccb
+```
+
+### 3. Collaborate
+
+Type directly in an agent pane, or route work between agents:
+
+```text
+/ask reviewer review the latest parser changes and list blocking issues.
+```
+
+## v7 UI Tour
+
+The hero screenshot above is a real dark terminal session from the `ccb_test2` project. The labels explain the regions; you do not need to memorize every shortcut first.
+
+| Region | Purpose |
+| :--- | :--- |
+| Sidebar | Shows the current window, agent list, provider labels, selected agent, and status hints. |
+| Comms | Shows ask/callback communication and collaboration status. |
+| Agent pane | Each pane is a real CLI session, such as Codex or Claude. |
+| Current input target | The status bar and pane border show where your input goes. |
+| Status bar | Shows project name, current agent, CCB version, date, and mouse/keyboard hints. |
+| Window grouping | v7 `[windows]` can group agents into main, work, review, research, or other workflow windows. |
+
+The sidebar implementation uses ideas from [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar). Thanks to that project.
+
+## What Is CCB?
+
+CCB is a project-level agent CLI workspace. It uses tmux to manage multiple real CLI agents and unifies startup, restore, communication, configuration, windows, and runtime state for one project.
+
+- **Real CLI sessions, not fake panels**: every agent pane runs the actual provider CLI.
+- **Visible collaboration**: the sidebar shows windows, agents, status, and communication; users can switch panes by mouse.
+- **Mixed providers**: one project can run Codex, Claude, Gemini, OpenCode, Droid, and Antigravity (`agy`) together.
+- **Project config**: `.ccb/ccb.config` defines the team, layout, windows, worktrees, model, key, and url.
+- **Built-in CCB expert**: blank projects include `ccb_self`, a self-maintenance agent with deep CCB knowledge for usage guidance, config design, diagnostics, recovery, and workflow repair.
+- **Roles**: a new role packaging model that lets specialized agents carrying
+  "heavy weapons" such as independent skills, memory, and tool dependencies
+  instantly land in a target project as hot-loadable, removable agents, while
+  leaving the main environment, user global config, and project runtime state
+  unchanged.
+- **Recoverable runtime**: CCB supervises agent panes and supports attach, restore, and project-scoped cleanup.
+- **Explicit collaboration channel**: agents can delegate through `/ask`, `$ask`, callback, and silence routes.
 
 ## Why Multi Agents
 
@@ -66,119 +193,6 @@ Multi-agent systems are not one fixed shape. Use the short table first; expand t
 CCB also supports complex workflows, but it is not an automatic DAG generator. You design complexity explicitly through `.ccb/ccb.config`, windows, role memory, worktrees, model/API settings, and ask/callback routes.
 
 </details>
-
-## What Is CCB?
-
-CCB is a project-level agent CLI workspace. It uses tmux to manage multiple real CLI agents and unifies startup, restore, communication, configuration, windows, and runtime state for one project.
-
-- **Real CLI sessions, not fake panels**: every agent pane runs the actual provider CLI.
-- **Visible collaboration**: the sidebar shows windows, agents, status, and communication; users can switch panes by mouse.
-- **Mixed providers**: one project can run Codex, Claude, Gemini, OpenCode, Droid, and Antigravity (`agy`) together.
-- **Project config**: `.ccb/ccb.config` defines the team, layout, windows, worktrees, model, key, and url.
-- **Roles**: a new role packaging model that lets specialized agents carrying
-  "heavy weapons" such as independent skills, memory, and tool dependencies
-  instantly land in a target project as hot-loadable, removable agents, while
-  leaving the main environment, user global config, and project runtime state
-  unchanged.
-- **Recoverable runtime**: CCB supervises agent panes and supports attach, restore, and project-scoped cleanup.
-- **Explicit collaboration channel**: agents can delegate through `/ask`, `$ask`, callback, and silence routes.
-
-## v7 UI Tour
-
-This screenshot is a real dark terminal session from the `ccb_test2` project. The labels explain the regions; you do not need to memorize every shortcut first.
-
-<p align="center">
-  <img src="assets/readme_v7/ccb-test2-terminal-annotated-en.png" alt="CCB v7 terminal workspace region guide" width="960">
-</p>
-
-| Region | Purpose |
-| :--- | :--- |
-| Sidebar | Shows the current window, agent list, provider labels, selected agent, and status hints. |
-| Comms | Shows ask/callback communication and collaboration status. |
-| Agent pane | Each pane is a real CLI session, such as Codex or Claude. |
-| Current input target | The status bar and pane border show where your input goes. |
-| Status bar | Shows project name, current agent, CCB version, date, and mouse/keyboard hints. |
-| Window grouping | v7 `[windows]` can group agents into main, work, review, research, or other workflow windows. |
-
-The sidebar implementation uses ideas from [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar). Thanks to that project.
-
-## Quick Start
-
-### 1. Install or update
-
-New users should start from a release package. Download the matching package from [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases), then install it:
-
-```bash
-tar -xzf ccb-*.tar.gz
-cd ccb-*
-./install.sh install
-```
-
-If CCB is already installed:
-
-```bash
-ccb update
-```
-
-<details>
-<summary><b>Source install is for development or fallback use</b></summary>
-
-```bash
-git clone https://github.com/SeemSeam/claude_codex_bridge.git
-cd claude_codex_bridge
-./install.sh install
-```
-
-Source installs link global `ccb` / `ask` back to the checkout. Regular users should prefer a stable release install or update.
-
-</details>
-
-### 2. Create project config
-
-Create `.ccb/ccb.config` in your project root. For v7, it is better to understand config from multi-window topology first: `[windows]` defines tmux windows and agent groups, `agent:provider` defines which CLI each agent uses, and `(worktree)` gives an agent its own git worktree.
-
-```toml
-version = 2
-entry_window = "main"
-
-[windows]
-main = "main:codex"
-work = "worker1:codex(worktree), worker2:claude(worktree)"
-review = "reviewer:claude, qa:gemini"
-
-[ui.sidebar]
-mode = "every_window"
-width = "15%"
-bottom_height = 20
-
-[ui.sidebar.view]
-agents_height = "50%"
-comms_height = "15%"
-tips_height = "35%"
-comms_limit = 3
-```
-
-If you are not sure how to group windows, how many workers you need, which agents should use worktrees, or which agents need separate models or API routes, ask `ccb_self` to design the config with its built-in `ccb-config` skill. Blank projects include `ccb_self`; existing custom configs can add it with `ccb roles add agentroles.ccb_self:codex`.
-
-Validate the config:
-
-```bash
-ccb config validate
-```
-
-Start the workspace:
-
-```bash
-ccb
-```
-
-### 3. Collaborate
-
-Type directly in an agent pane, or route work between agents:
-
-```text
-/ask reviewer review the latest parser changes and list blocking issues.
-```
 
 ## Daily Operation
 
@@ -292,12 +306,13 @@ bound role locks against the current installed roles; interactive starts ask
 whether to refresh stale project locks in place, and non-interactive starts
 print a warning only.
 
-`ccb_self` is strongly recommended for CCB projects because it owns CCB config
-maintenance, runtime diagnostics, guarded recovery, and single-agent restart
-assistance without taking over product work. Blank projects include it in the
-built-in default. Existing projects, and projects with user or project config
-that replace the built-in default, should add it explicitly where they want
-that maintenance agent:
+`ccb_self` is strongly recommended for CCB projects because it is the built-in
+CCB expert agent. It carries CCB-specific knowledge about project config,
+command usage, role binding, reload boundaries, runtime diagnostics, guarded
+recovery, workflow repair, and single-agent restart assistance without taking
+over product work. Blank projects include it in the built-in default. Existing
+projects, and projects with user or project config that replace the built-in
+default, should add it explicitly where they want that maintenance agent:
 
 ```bash
 ccb roles add agentroles.ccb_self:codex
@@ -407,6 +422,8 @@ Do not commit real API keys to a public repository. `key` / `url` are agent-loca
 
 The full `ccb-config` skill belongs to the `agentroles.ccb_self` role. It is not a globally inherited skill for every agent. CCB installs or refreshes this Role Pack by default, and blank projects include `ccb_self` in the built-in default config. Existing projects, or projects with a user/project config that replaces the built-in default, should bind it where they want the maintenance assistant.
 
+`ccb_self` is more than a config helper: it is designed as CCB's self-understanding agent. Use it when you need help using CCB, explaining the active layout, choosing an agent topology, migrating `.ccb/ccb.config`, diagnosing project runtime state, or repairing a CCB workflow.
+
 If you do not want to hand-write `.ccb/ccb.config`, ask `ccb_self` and describe your project goal, parallelism, window grouping, worktree isolation, provider/model/API preferences. `ccb_self` uses its built-in `ccb-config` skill to discuss the shape with you and propose a complete config.
 
 Example:
@@ -478,6 +495,7 @@ CCB does not require leaving your editor. A common setup is: editor for code, CC
 
 ### Requirements
 
+- Node.js and npm for the recommended npm install path
 - Python 3.10+
 - `tmux`
 - At least one agent CLI you plan to use, such as Codex, Claude, Gemini, OpenCode, Droid, or Antigravity
@@ -485,15 +503,21 @@ CCB does not require leaving your editor. A common setup is: editor for code, CC
 
 Current v7 / newer versions do not claim native Windows support. Native Windows support only applies to the v5 line. If you are on Windows and want current versions, use WSL and keep both `ccb` and agent CLIs inside WSL.
 
-### Release first
+### npm first
 
-For first install, prefer a package from [GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases). For existing installs:
+For first install, prefer npm:
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+For later updates:
 
 ```bash
 ccb update
 ```
 
-Source checkout install is for development, fix validation, or temporary fallback when a release package is not available.
+[GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) remain available for environments where npm is unavailable. Source checkout install is for development, fix validation, or temporary fallback.
 
 ### Uninstall
 
@@ -561,6 +585,22 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.4.4</b> - Claude End-Turn And npm Release Surface</summary>
+
+- Completes Claude pane-backed asks promptly when a primary assistant response
+  emits `stop_reason=end_turn` with an observed request anchor and non-empty
+  reply, avoiding the previous 900-second timeout path.
+- Treats empty session-boundary terminal events with no prior assistant reply
+  as `incomplete/task_complete_empty_reply` with empty-provider diagnostics.
+- Restores the `@seemseam/ccb` npm release surface with package metadata, CLI
+  runner wrappers, and tag-triggered Trusted Publishing after GitHub release
+  assets are available.
+- Refreshes the v7 README homepage around canonical hero assets, npm-first
+  install, and clearer `ccb_self` guidance.
+
+</details>
+
+<details>
 <summary><b>v7.4.3</b> - PR #225 Reliability Follow-Up</summary>
 
 - Restores the Claude launcher contract: inline `--settings` now reflects the
