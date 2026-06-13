@@ -34,11 +34,15 @@ def start_submission(
     if not isinstance(prepared, PreparedActiveStart):
         return prepared
 
-    reader = reader_cls(
-        work_dir=Path(prepared.session.work_dir),
-        project_id=prepared.session.opencode_project_id or "global",
-        session_id_filter=prepared.session.opencode_session_id_filter,
-    )
+    reader_kwargs = {
+        "work_dir": Path(prepared.session.work_dir),
+        "project_id": _provider_session_project_id(prepared.session, provider) or "global",
+        "session_id_filter": _provider_session_filter(prepared.session, provider),
+    }
+    storage_root = _provider_storage_root(prepared.session, provider)
+    if storage_root:
+        reader_kwargs["root"] = storage_root
+    reader = reader_cls(**reader_kwargs)
     state = reader.capture_state()
     request_anchor = request_anchor_fn(job.job_id)
     no_wrap = no_wrap_requested(job)
@@ -74,6 +78,23 @@ def state_session_path(state: dict[str, object]) -> str:
     from .helpers import state_session_path as _state_session_path
 
     return _state_session_path(state)
+
+
+def _provider_session_project_id(session, provider: str) -> str:
+    value = getattr(session, f"{provider}_project_id", "")
+    return str(value or "").strip()
+
+
+def _provider_session_filter(session, provider: str) -> str | None:
+    value = getattr(session, f"{provider}_session_id_filter", None)
+    text = str(value or "").strip()
+    return text or None
+
+
+def _provider_storage_root(session, provider: str):
+    value = getattr(session, f"{provider}_storage_root", None)
+    text = str(value or "").strip()
+    return text or None
 
 
 __all__ = ["start_submission"]

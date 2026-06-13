@@ -9,8 +9,9 @@ coding CLIs:
 
 - `kimi`: Moonshot AI Kimi Code CLI, command `kimi`.
 - `deepseek`: DeepSeek-oriented Deep Code CLI, command `deepcode`.
+- `mimo`: Xiaomi MiMo Code CLI, command `mimo`.
 
-The current landing slice makes both providers usable in `.ccb/ccb.config`,
+The current landing slice makes these providers usable in `.ccb/ccb.config`,
 mounts them in managed tmux panes, sends CCB ask prompts, detects replies via
 provider-native session/event logs, and exposes diagnostics consistent with
 existing pane-backed providers.
@@ -43,14 +44,18 @@ override the shipped contracts.
 
 In scope:
 
-- Provider keys `kimi` and `deepseek`.
-- Default executables `kimi` and `deepcode`.
-- `KIMI_START_CMD` and `DEEPSEEK_START_CMD` overrides.
+- Provider keys `kimi`, `deepseek`, and `mimo`.
+- Default executables `kimi`, `deepcode`, and `mimo`.
+- `KIMI_START_CMD`, `DEEPSEEK_START_CMD`, and `MIMO_START_CMD` overrides.
 - Managed tmux pane startup using the existing simple tmux runtime path.
 - Native completion detection using `CCB_REQ_ID` binding plus provider-owned
   Kimi `wire.jsonl` and DeepCode session stores.
 - Provider capability projection for CCB ask usage, including Kimi native
-  skills-dir injection and OpenCode generated instruction injection.
+  skills-dir injection, OpenCode generated instruction injection, and MiMo
+  generated instruction injection.
+- MiMo ask execution through native `mimo run --format json` result events,
+  using `part.text` plus `step_finish` / `part.reason=stop` as completion
+  evidence.
 - AGY completion alignment to Antigravity transcript logs, so AGY no longer
   relies on `CCB_DONE` as its primary completion signal.
 - Empty-reply and timeout diagnostics aligned with existing pane-backed

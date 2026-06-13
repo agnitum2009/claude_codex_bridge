@@ -8,6 +8,7 @@ Date: 2026-06-13
 | :--- | :--- | :--- |
 | `kimi` | `kimi` | `KIMI_START_CMD` |
 | `deepseek` | `deepcode` | `DEEPSEEK_START_CMD` |
+| `mimo` | `mimo` | `MIMO_START_CMD` |
 
 The `deepseek` provider key follows user intent and model family language; the
 actual CLI command remains `deepcode` because that is the DeepSeek documented
@@ -15,19 +16,24 @@ terminal integration.
 
 ## Runtime Model
 
-Both providers enter CCB as optional built-in pane-backed providers:
+These providers enter CCB as optional built-in managed providers:
 
-- `ProviderManifest` uses `SESSION_BOUNDARY`.
+- `kimi` and `deepseek` use `ProviderManifest` `SESSION_BOUNDARY`.
 - `kimi` uses `CompletionSourceKind.SESSION_EVENT_LOG`.
 - `deepseek` uses `CompletionSourceKind.SESSION_SNAPSHOT`.
+- `mimo` uses `CompletionFamily.STRUCTURED_RESULT` and
+  `CompletionSourceKind.STRUCTURED_RESULT_STREAM` for ask execution because
+  terminalization comes from `mimo run --format json` result events.
 - `ProviderRuntimeLauncher` uses `simple_tmux`.
-- `ProviderSessionBinding` uses `.kimi-session` and `.deepseek-session`.
+- `ProviderSessionBinding` uses `.kimi-session`, `.deepseek-session`, and
+  `.mimo-session`.
 - Startup command supports `spec.startup_args`, `spec.env`, caller context env,
   and `provider_command_template`.
 
 ## Completion Strategy
 
-The current strategy uses provider-native session/event stores:
+The current strategy uses provider-native session/event stores or structured
+result streams:
 
 1. Send a wrapped prompt to the managed provider pane.
 2. The prompt contains `CCB_REQ_ID: <job_id>`.
@@ -41,9 +47,13 @@ The current strategy uses provider-native session/event stores:
 6. AGY polls Antigravity transcript logs, binds `USER_INPUT` by `CCB_REQ_ID`,
    emits `ASSISTANT_FINAL` from model response events, and emits
    `TURN_BOUNDARY` when a completed response is observed.
-7. Completed-native-empty replies are `incomplete` with
+7. MiMo asks run as native subprocesses using
+   `mimo run --format json --dir <workdir>`. CCB emits `ASSISTANT_FINAL` from
+   nested `part.text` events and emits `TURN_BOUNDARY` / terminal completed on
+   `step_finish` with `part.reason=stop`.
+8. Completed-native-empty replies are `incomplete` with
    `empty_provider_reply` diagnostics, not `completed`.
-8. Missing anchors and long-running native turns terminalize with explicit
+9. Missing anchors and long-running native turns terminalize with explicit
    provider-native timeout or anchor-missing reasons.
 
 ## Skill And Instruction Injection
@@ -70,6 +80,8 @@ Current behavior:
   CLI help. CCB writes `.ccb/runtime/skills/<agent>/opencode/ask.md` and appends
   that path to generated `opencode.json.instructions` alongside the memory
   bridge.
+- MiMo writes `.ccb/runtime/skills/<agent>/mimo/ask.md` and appends that path
+  to generated `mimocode.json.instructions` alongside the memory bridge.
 - `inherit_skills = false` disables inherited skill projection. For OpenCode,
   `inherit_memory = false` disables only the memory bridge; inherited ask
   instructions continue unless `inherit_skills = false` is also set.
@@ -80,18 +92,22 @@ Supported first-slice config:
 
 ```toml
 [windows]
-main = "kimi_agent:kimi, deep_agent:deepseek"
+main = "kimi_agent:kimi, deep_agent:deepseek, mimo_agent:mimo"
 
 [agents.kimi_agent]
 provider = "kimi"
 
 [agents.deep_agent]
 provider = "deepseek"
+
+[agents.mimo_agent]
+provider = "mimo"
 ```
 
 Not supported in first slice:
 
 - `key` / `url` shortcuts for Kimi or DeepSeek.
+- `key` / `url` shortcuts for MiMo.
 - Automatic writing of `~/.deepcode/settings.json`.
 - Automatic Kimi login.
 
@@ -99,23 +115,28 @@ Not supported in first slice:
 
 Focused unit tests should cover:
 
-- Optional provider registry includes `kimi` and `deepseek`.
-- Runtime specs include `.kimi-session` and `.deepseek-session`.
+- Optional provider registry includes `kimi`, `deepseek`, and `mimo`.
+- Runtime specs include `.kimi-session`, `.deepseek-session`, and
+  `.mimo-session`.
 - Start command env overrides and default executables.
 - Kimi startup includes existing default skill directories and materialized CCB
   skill directories as repeatable `--skills-dir` arguments, while skipping
   missing directories.
 - OpenCode generated config preserves user instructions and appends memory and
   ask-skill instruction entries without duplication.
-- Session binding maps and runtime launcher maps include both providers.
+- MiMo generated config preserves user instructions and appends memory and
+  ask-skill instruction entries without duplication.
+- Session binding maps and runtime launcher maps include the native providers.
 - Native readers parse Kimi `wire.jsonl`, DeepCode sessions, and AGY
   transcripts.
+- MiMo execution parses `mimo run --format json` nested `part.text` and
+  `part.reason=stop`.
 - Provider adapters emit `SESSION_ROTATE`, `ANCHOR_SEEN`, `ASSISTANT_FINAL`,
   and `TURN_BOUNDARY` from native evidence.
 - Provider adapters diagnose completed-native-empty replies and fail on missing
   runtime state.
 - Config loader accepts agents using `provider = "kimi"` and
-  `provider = "deepseek"`.
+  `provider = "deepseek"` and `provider = "mimo"`.
 
 Source-runtime validation should run from `/home/bfly/yunwei/test_ccb2` using
 `/home/bfly/yunwei/ccb_source/ccb_test` and isolated source home. Real CLI

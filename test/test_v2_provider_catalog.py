@@ -31,6 +31,7 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'mimo',
     }
     codex = catalog.resolve_completion_manifest('codex', RuntimeMode.PANE_BACKED)
     assert codex.completion_family is CompletionFamily.PROTOCOL_TURN
@@ -58,6 +59,11 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert deepseek.completion_source_kind is CompletionSourceKind.SESSION_SNAPSHOT
     assert deepseek.supports_observed_completion is True
     assert deepseek.supports_anchor_binding is True
+    mimo = catalog.resolve_completion_manifest('mimo', RuntimeMode.PANE_BACKED)
+    assert mimo.completion_family is CompletionFamily.STRUCTURED_RESULT
+    assert mimo.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
+    assert mimo.supports_observed_completion is True
+    assert mimo.supports_anchor_binding is True
     fake_legacy = catalog.resolve_completion_manifest('fake-legacy', RuntimeMode.PANE_BACKED)
     assert fake_legacy.completion_family is CompletionFamily.TERMINAL_TEXT_QUIET
 
@@ -100,4 +106,4 @@ def test_provider_catalog_can_build_core_only_catalog() -> None:
     catalog = build_default_provider_catalog(include_optional=False, include_test_doubles=False)
     assert set(catalog.providers()) == set(CORE_PROVIDER_NAMES)
     assert set(CORE_PROVIDER_NAMES) == {'codex', 'claude', 'gemini'}
-    assert set(OPTIONAL_PROVIDER_NAMES) == {'opencode', 'droid', 'agy', 'kimi', 'deepseek'}
+    assert set(OPTIONAL_PROVIDER_NAMES) == {'opencode', 'droid', 'agy', 'kimi', 'deepseek', 'mimo'}

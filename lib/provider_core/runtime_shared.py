@@ -13,6 +13,7 @@ _PROVIDER_START_ENV_VARS = {
     'agy': 'AGY_START_CMD',
     'kimi': 'KIMI_START_CMD',
     'deepseek': 'DEEPSEEK_START_CMD',
+    'mimo': 'MIMO_START_CMD',
 }
 
 _PROVIDER_DEFAULT_EXECUTABLES = {
@@ -24,6 +25,7 @@ _PROVIDER_DEFAULT_EXECUTABLES = {
     'agy': 'agy',
     'kimi': 'kimi',
     'deepseek': 'deepcode',
+    'mimo': 'mimo',
 }
 
 PROVIDER_COMMAND_PLACEHOLDER = '{command}'

@@ -15,6 +15,7 @@ def test_shell_ask_skill_templates_use_short_ask_command() -> None:
         'inherit_skills/droid_skills/ask/SKILL.md',
         'inherit_skills/droid_skills/ask.md',
         'inherit_skills/kimi_skills/ask/SKILL.md',
+        'inherit_skills/mimo_skills/ask.md',
         'inherit_skills/opencode_skills/ask.md',
     ):
         text = (REPO_ROOT / relative_path).read_text(encoding='utf-8')

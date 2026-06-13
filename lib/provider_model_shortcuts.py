@@ -5,6 +5,7 @@ _PROVIDER_MODEL_FLAGS = {
     'claude': ('--model',),
     'gemini': ('-m', '--model'),
     'opencode': ('-m', '--model'),
+    'mimo': ('--model',),
 }
 
 _PROVIDER_MODEL_STARTUP_FLAGS = {
@@ -12,6 +13,7 @@ _PROVIDER_MODEL_STARTUP_FLAGS = {
     'claude': '--model',
     'gemini': '-m',
     'opencode': '-m',
+    'mimo': '--model',
 }
 
 

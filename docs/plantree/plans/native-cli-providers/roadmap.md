@@ -5,12 +5,13 @@ Date: 2026-06-13
 ## Status Summary
 
 - Current status: native completion pivot is in the working tree. Kimi,
-  DeepSeek/DeepCode, and AGY no longer use `CCB_DONE` as their primary
-  completion signal. Kimi and OpenCode inherited ask skill injection is also in
-  the working tree.
-- Last verified: focused native completion tests, provider catalog tests, and
-  stub-backed source-runtime asks for Kimi, DeepSeek, and AGY passed.
-- Next target: review/commit.
+  DeepSeek/DeepCode, AGY, and MiMo no longer use `CCB_DONE` as their primary
+  completion signal. Kimi and OpenCode inherited ask skill injection landed in
+  commit `a4395c2`; MiMo inherited ask instruction injection and native
+  `mimo run --format json` execution are in the working tree.
+- Last verified: focused native completion tests, provider catalog tests,
+  Kimi/OpenCode skill projection tests, and a real MiMo CCB ask passed.
+- Next target: commit the MiMo provider integration.
 
 ## Done
 
@@ -109,26 +110,58 @@ Date: 2026-06-13
   test/test_provider_memory_external_matrix.py test/test_storage_classification.py
   test/test_repo_hygiene.py test/test_ask_skill_templates.py`:
   `141 passed, 1 skipped`; `git diff --check` passed.
+- Added MiMo Code as optional provider `mimo`:
+  - Official package `@mimo-ai/cli@0.1.0` exposes binary `mimo`; local install
+    reports `mimo --version` as `0.1.0`.
+  - CCB startup still mounts a managed visible MiMo pane and materializes
+    MiMo `mimocode.json` with memory plus ask instruction paths.
+  - CCB ask execution uses a per-job native subprocess:
+    `mimo run --format json --dir <workdir> <wrapped prompt>`.
+  - Completion is observed from JSON result events: `part.text` supplies the
+    assistant reply and `step_finish` / `part.reason=stop` terminalizes with
+    `completion_reason: mimo_run_stop`.
+  - Completed-native-empty MiMo results terminalize as
+    `mimo_run_empty_reply` instead of waiting for reliability timeout.
+- MiMo verification:
+  - Real installed `mimo run --format json --dir
+    /home/bfly/yunwei/test_ccb2/mimo_real` completed with exact reply
+    `MIMO_CCB_REAL_OK`.
+  - Source-runtime real CCB project
+    `/home/bfly/yunwei/test_ccb2/mimo_ccb_real` accepted `cmd; mimo1:mimo`,
+    launched with `/home/bfly/yunwei/ccb_source/ccb_test -s`, and completed
+    job `job_ae41cad0e98a` with reply `MIMO_CCB_RUN_OK_3` and
+    `completion_reason: mimo_run_stop`.
+  - Focused touched-provider tests:
+    `python -m pytest -q test/test_mimo_provider.py
+    test/test_native_cli_providers.py test/test_v2_provider_catalog.py
+    test/test_v2_provider_core_registry.py test/test_runtime_specs.py
+    test/test_v2_config_loader.py test/test_v2_runtime_launch.py
+    test/test_storage_classification.py test/test_repo_hygiene.py
+    test/test_ask_skill_templates.py test/test_provider_hook_settings.py
+    test/test_project_memory_real_context.py
+    test/test_provider_memory_external_matrix.py test/test_opencode_comm_sqlite.py
+    test/test_opencode_execution_polling.py
+    test/test_provider_execution_service_runtime.py`: `262 passed, 1 skipped`.
+  - `git diff --check`: passed.
 
 ## In Progress
 
+- MiMo provider integration is ready to commit.
 - Broader review/release-gate validation if requested.
-- Optional source-runtime ask smoke for Kimi/OpenCode skill visibility if
-  runtime-level evidence is requested.
 
 ## Next
 
-1. Review the smoke project artifacts under
-   `/home/bfly/yunwei/test_ccb2/native_provider_smoke` and real Kimi project
-   `/home/bfly/yunwei/test_ccb2/kimi_ccb_real`; keep or remove them before
-   final cleanup.
-2. Commit after user approval or review pass.
+1. Commit the MiMo provider integration.
+2. Review reusable smoke projects under `/home/bfly/yunwei/test_ccb2` before
+   final cleanup if the release gate requires a clean test directory.
 
 ## Deferred
 
 - Kimi prompt-mode adapter using `kimi --prompt` and `--output-format`.
 - Provider-specific auth/config diagnostics for Kimi login and Deep Code
   `settings.json`.
+- MiMo provider-specific auth/config diagnostics if users hit
+  `mimo run` account or model setup failures.
 - Support aliases such as `deepcode` if real user configs show that provider
   key is needed.
 - Model/key/url shortcut projection after upstream config semantics are stable

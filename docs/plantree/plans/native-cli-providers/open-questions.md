@@ -10,6 +10,8 @@ Date: 2026-06-13
   pane-backed mode lands and is stable?
 - Should CCB add provider-specific config validation for missing Kimi login or
   missing Deep Code API key, or keep that inside `ccb doctor` only?
+- Should CCB add provider-specific config validation for missing MiMo account,
+  model, or free-client setup, or keep that inside `ccb doctor` only?
 
 ## Resolved
 
@@ -19,3 +21,6 @@ Date: 2026-06-13
   DeepSeek.
 - Completion decision update: replace `CCB_DONE` marker detection for Kimi,
   DeepSeek/DeepCode, and AGY with provider-native session/event log detection.
+- MiMo execution decision: keep a managed visible MiMo pane for runtime
+  maintenance, but run CCB ask jobs through `mimo run --format json` and
+  terminalize from native `step_finish` / `part.reason=stop` result events.

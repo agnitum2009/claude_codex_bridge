@@ -69,6 +69,7 @@ DROID_RUNTIME_SPEC = _provider_runtime_spec("droid")
 AGY_RUNTIME_SPEC = _provider_runtime_spec("agy")
 KIMI_RUNTIME_SPEC = _provider_runtime_spec("kimi")
 DEEPSEEK_RUNTIME_SPEC = _provider_runtime_spec("deepseek")
+MIMO_RUNTIME_SPEC = _provider_runtime_spec("mimo")
 COPILOT_RUNTIME_SPEC = _provider_runtime_spec("copilot")
 CODEBUDDY_RUNTIME_SPEC = _provider_runtime_spec("codebuddy")
 QWEN_RUNTIME_SPEC = _provider_runtime_spec("qwen")
@@ -105,6 +106,10 @@ DEEPSEEK_CLIENT_SPEC = _client_spec(
     provider_key="deepseek",
     session_filename=".deepseek-session",
 )
+MIMO_CLIENT_SPEC = _client_spec(
+    provider_key="mimo",
+    session_filename=".mimo-session",
+)
 COPILOT_CLIENT_SPEC = _client_spec(
     provider_key="copilot",
     session_filename=".copilot-session",
@@ -127,6 +132,7 @@ RUNTIME_SPECS_BY_PROVIDER = {
     "agy": AGY_RUNTIME_SPEC,
     "kimi": KIMI_RUNTIME_SPEC,
     "deepseek": DEEPSEEK_RUNTIME_SPEC,
+    "mimo": MIMO_RUNTIME_SPEC,
     "copilot": COPILOT_RUNTIME_SPEC,
     "codebuddy": CODEBUDDY_RUNTIME_SPEC,
     "qwen": QWEN_RUNTIME_SPEC,
@@ -141,6 +147,7 @@ CLIENT_SPECS_BY_PROVIDER = {
     "agy": AGY_CLIENT_SPEC,
     "kimi": KIMI_CLIENT_SPEC,
     "deepseek": DEEPSEEK_CLIENT_SPEC,
+    "mimo": MIMO_CLIENT_SPEC,
     "copilot": COPILOT_CLIENT_SPEC,
     "codebuddy": CODEBUDDY_CLIENT_SPEC,
     "qwen": QWEN_CLIENT_SPEC,
@@ -184,6 +191,8 @@ __all__ = [
     "GEMINI_RUNTIME_SPEC",
     "KIMI_CLIENT_SPEC",
     "KIMI_RUNTIME_SPEC",
+    "MIMO_CLIENT_SPEC",
+    "MIMO_RUNTIME_SPEC",
     "OPENCODE_CLIENT_SPEC",
     "OPENCODE_RUNTIME_SPEC",
     "ProviderClientSpec",

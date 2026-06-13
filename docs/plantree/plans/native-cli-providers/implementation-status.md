@@ -5,11 +5,11 @@ Date: 2026-06-13
 ## Current Phase
 
 Native completion pivot is implemented in the working tree. Kimi,
-DeepSeek/DeepCode, and AGY now use provider-native session/event logs for
-completion detection instead of asking the model to print `CCB_DONE`. Kimi and
-OpenCode inherited ask skill injection is implemented in the working tree,
-including Kimi default skill discovery preservation when CCB adds explicit
-`--skills-dir` arguments.
+DeepSeek/DeepCode, AGY, and MiMo now use provider-native session/event logs or
+structured result streams for completion detection instead of asking the model
+to print `CCB_DONE`. Kimi and OpenCode inherited ask skill injection landed in
+commit `a4395c2`. MiMo inherited ask instruction injection and `mimo run
+--format json` execution are implemented in the working tree.
 
 ## Last Landed
 
@@ -41,20 +41,30 @@ including Kimi default skill discovery preservation when CCB adds explicit
     `inherit_skills/opencode_skills/ask.md` and is appended to generated
     `opencode.json.instructions` through
     `.ccb/runtime/skills/<agent>/opencode/ask.md`.
+- MiMo provider integration:
+  - Provider key `mimo`, default command `mimo`, override `MIMO_START_CMD`.
+  - Launch prepares `MIMOCODE_HOME`, `MIMOCODE_CONFIG`, memory bridge, and
+    generated ask instruction path in MiMo `mimocode.json`.
+  - CCB ask execution uses `mimo run --format json --dir <workdir>` as a
+    per-job native subprocess. The visible pane remains a managed MiMo session
+    for user/runtime maintenance, but completion no longer depends on TUI pane
+    prompt injection.
+  - Completion parser handles MiMo 0.1.0 JSON events where reply text is in
+    `part.text` and stop reason is in `part.reason` under a
+    `step_finish` event.
 
 ## Active TODO
 
-1. Decide whether to keep the smoke/real test projects as reusable validation
+1. Commit the MiMo provider integration.
+2. Decide whether to keep the smoke/real test projects as reusable validation
    fixtures.
-2. Run optional source-runtime ask smoke for Kimi/OpenCode skill visibility if
-   review requests runtime-level evidence beyond launch/config tests.
-3. Commit after review/approval.
 
 ## Blocked By
 
-None for the first slice. Real provider API execution may require user-owned
-Kimi/DeepSeek credentials; CCB integration can still be validated with
-provider command templates and installed CLI help/version checks.
+None for the current slice. Real provider API execution may require user-owned
+Kimi/DeepSeek/MiMo credentials; CCB integration can still be validated with
+provider command templates, installed CLI help/version checks, and the real
+MiMo run test already recorded below.
 
 ## Last Verified
 
@@ -199,3 +209,44 @@ Ask skill injection verification:
   `/home/bfly/yunwei/ccb_source/ccb_test --diagnose`: passed.
 - From `/home/bfly/yunwei/test_ccb2` with isolated source home,
   `/home/bfly/yunwei/ccb_source/ccb_test config validate`: valid.
+
+MiMo provider verification:
+
+- Real installed MiMo package:
+  - `npm view @mimo-ai/cli` showed latest stable `0.1.0`.
+  - `npm install -g @mimo-ai/cli@0.1.0` installed binary `mimo`.
+  - `mimo --version` returned `0.1.0`.
+- Real native run:
+  - From `/home/bfly/yunwei/test_ccb2/mimo_real` with isolated MiMo home,
+    `mimo run --format json --dir ... 'Reply exactly: MIMO_CCB_REAL_OK'`
+    exited 0 and produced JSON `text` plus `step_finish reason=stop`.
+- Source-runtime real CCB run:
+  - `/home/bfly/yunwei/ccb_source/ccb_test --diagnose` passed from
+    `/home/bfly/yunwei/test_ccb2`.
+  - `/home/bfly/yunwei/test_ccb2/mimo_ccb_real/.ccb/ccb.config` contains
+    `cmd; mimo1:mimo`.
+  - `ccb_test config validate`: valid, agent `mimo1`.
+  - `ccb_test -s`: `start_status: ok`.
+  - First TUI-style attempt proved the old pane prompt injection path did not
+    create MiMo DB messages; this drove the decision to switch CCB execution to
+    `mimo run --format json`.
+  - After implementing nested MiMo JSON parsing and restarting ccbd,
+    `ccb_test ask mimo1 'Reply exactly: MIMO_CCB_RUN_OK_3'` completed job
+    `job_ae41cad0e98a` with reply `MIMO_CCB_RUN_OK_3` and
+    `completion_reason: mimo_run_stop`.
+  - Matching stdout artifact:
+    `.ccb/agents/mimo1/provider-runtime/mimo/completion/job_ae41cad0e98a.mimo-run.jsonl`
+    contained `part.text = MIMO_CCB_RUN_OK_3` and
+    `step_finish` / `part.reason = stop`.
+- Focused final test set:
+  `python -m pytest -q test/test_mimo_provider.py
+  test/test_native_cli_providers.py test/test_v2_provider_catalog.py
+  test/test_v2_provider_core_registry.py test/test_runtime_specs.py
+  test/test_v2_config_loader.py test/test_v2_runtime_launch.py
+  test/test_storage_classification.py test/test_repo_hygiene.py
+  test/test_ask_skill_templates.py test/test_provider_hook_settings.py
+  test/test_project_memory_real_context.py
+  test/test_provider_memory_external_matrix.py test/test_opencode_comm_sqlite.py
+  test/test_opencode_execution_polling.py
+  test/test_provider_execution_service_runtime.py`: `262 passed, 1 skipped`.
+- `git diff --check`: passed.

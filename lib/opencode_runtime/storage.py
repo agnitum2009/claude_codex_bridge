@@ -8,9 +8,17 @@ from typing import Any
 
 
 class OpenCodeStorageAccessor:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        db_env_var: str = "OPENCODE_DB_PATH",
+        db_filenames: tuple[str, ...] = ("opencode.db",),
+    ) -> None:
         self.root = Path(root).expanduser()
         self._db_path_hint: Path | None = None
+        self.db_env_var = str(db_env_var or "").strip()
+        self.db_filenames = tuple(str(item).strip() for item in db_filenames if str(item).strip()) or ("opencode.db",)
 
     def session_dir(self, project_id: str) -> Path:
         return self.root / "session" / project_id
@@ -48,12 +56,13 @@ class OpenCodeStorageAccessor:
 
     def opencode_db_candidates(self) -> list[Path]:
         candidates: list[Path] = []
-        env = (os.environ.get("OPENCODE_DB_PATH") or "").strip()
+        env = (os.environ.get(self.db_env_var) or "").strip() if self.db_env_var else ""
         if env:
             candidates.append(Path(env).expanduser())
 
-        candidates.append(self.root.parent / "opencode.db")
-        candidates.append(self.root / "opencode.db")
+        for filename in self.db_filenames:
+            candidates.append(self.root.parent / filename)
+            candidates.append(self.root / filename)
 
         out: list[Path] = []
         seen: set[str] = set()

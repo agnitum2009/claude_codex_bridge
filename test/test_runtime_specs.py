@@ -10,6 +10,8 @@ from provider_core.runtime_specs import (
     DEEPSEEK_RUNTIME_SPEC,
     KIMI_CLIENT_SPEC,
     KIMI_RUNTIME_SPEC,
+    MIMO_CLIENT_SPEC,
+    MIMO_RUNTIME_SPEC,
     RUNTIME_SPECS_BY_PROVIDER,
     provider_env_name,
     provider_marker_prefix,
@@ -47,5 +49,10 @@ def test_runtime_specs_use_provider_native_names() -> None:
     assert DEEPSEEK_RUNTIME_SPEC.provider_key == "deepseek"
     assert DEEPSEEK_RUNTIME_SPEC.idle_timeout_env == "CCB_DEEPSEEK_RUNTIME_IDLE_TIMEOUT_S"
     assert DEEPSEEK_CLIENT_SPEC.session_filename == ".deepseek-session"
+    assert MIMO_RUNTIME_SPEC.provider_key == "mimo"
+    assert MIMO_RUNTIME_SPEC.idle_timeout_env == "CCB_MIMO_RUNTIME_IDLE_TIMEOUT_S"
+    assert MIMO_CLIENT_SPEC.session_filename == ".mimo-session"
     assert RUNTIME_SPECS_BY_PROVIDER["kimi"] is KIMI_RUNTIME_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["deepseek"] is DEEPSEEK_CLIENT_SPEC
+    assert RUNTIME_SPECS_BY_PROVIDER["mimo"] is MIMO_RUNTIME_SPEC
+    assert CLIENT_SPECS_BY_PROVIDER["mimo"] is MIMO_CLIENT_SPEC

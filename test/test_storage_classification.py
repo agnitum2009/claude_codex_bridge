@@ -58,6 +58,7 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     gemini_home = ccb / 'agents' / 'agent3' / 'provider-state' / 'gemini' / 'home'
     opencode_state = ccb / 'agents' / 'agent4' / 'provider-state' / 'opencode'
     kimi_state = ccb / 'agents' / 'agent5' / 'provider-state' / 'kimi'
+    mimo_state = ccb / 'agents' / 'agent6' / 'provider-state' / 'mimo'
 
     _write(ccb / 'ccb.config', 'agent1:codex\n')
     _write(ccb / 'ccb_memory.md', '# shared memory\n')
@@ -111,6 +112,9 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     _write(gemini_home / '.npm' / '_cacache' / 'content-v2' / 'sha512' / 'aa' / 'blob')
     _write(opencode_state / 'opencode.json', '{}\n')
     _write(kimi_state / 'inherited-skills' / 'ask' / 'SKILL.md', '# ask\n')
+    _write(mimo_state / 'mimocode.json', '{}\n')
+    _write(mimo_state / 'home' / 'data' / 'mimocode.db', 'db\n')
+    _write(mimo_state / 'home' / 'cache' / 'bin' / 'mimo', 'bin\n')
 
     payload = summarize_storage(PathLayout(project_root))
     records = _records_by_suffix(payload)
@@ -184,6 +188,9 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     )
     assert records['agents/agent4/provider-state/opencode/opencode.json']['storage_class'] == 'projected_config'
     assert records['agents/agent5/provider-state/kimi/inherited-skills/ask/SKILL.md']['storage_class'] == 'projected_config'
+    assert records['agents/agent6/provider-state/mimo/mimocode.json']['storage_class'] == 'projected_config'
+    assert records['agents/agent6/provider-state/mimo/home/data/mimocode.db']['storage_class'] == 'session'
+    assert records['agents/agent6/provider-state/mimo/home/cache/bin/mimo']['storage_class'] == 'rebuildable_cache'
 
 
 def test_storage_classification_surfaces_profile_backed_runtime_home(tmp_path: Path) -> None:

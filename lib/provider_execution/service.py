@@ -61,6 +61,10 @@ class ExecutionService(ExecutionServiceStateMixin):
     def cancel(self, job_id: str) -> None:
         submission = self._active.pop(job_id, None)
         if submission is not None:
+            adapter = self._registry.get(submission.provider)
+            provider_cancel = getattr(adapter, "cancel", None) if adapter is not None else None
+            if callable(provider_cancel):
+                provider_cancel(submission)
             interrupt_active_submission(submission)
         self._runtime_contexts.pop(job_id, None)
         self._pending_replays.pop(job_id, None)

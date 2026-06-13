@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import shlex
+import sqlite3
 import sys
 import time
 import uuid
@@ -228,6 +229,8 @@ def _looks_like_exact_turn_prompt(provider: str, line: str, current_lines: list[
         return bool(body_lines)
     if provider in {"agy", "kimi", "deepseek"}:
         return line.strip() == "- Avoid raw logs and background unless explicitly requested."
+    if provider == "mimo":
+        return bool(len(current_lines) >= 3 and line.strip())
     return False
 
 
@@ -404,6 +407,186 @@ def _handle_opencode(req_id: str, delay_s: float, state: dict) -> None:
     _write_opencode_storage(root, project_id, session_id, reply, state["msg_index"])
 
 
+def _mimo_storage_root() -> Path:
+    home = (os.environ.get("MIMOCODE_HOME") or "").strip()
+    if home:
+        return Path(home).expanduser() / "data" / "storage"
+    return Path.home() / ".local" / "share" / "mimocode" / "storage"
+
+
+def _mimo_ids() -> tuple[str, str]:
+    project_id = (os.environ.get("MIMOCODE_PROJECT_ID") or "").strip()
+    if not project_id:
+        project_id = f"proj-{_project_hash(Path.cwd())[:12]}"
+    session_id = (os.environ.get("CCB_SESSION_ID") or "").strip()
+    if not session_id:
+        session_id = f"ses_{project_id}"
+    return project_id, session_id
+
+
+def _ensure_mimo_db(db_path: Path) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS session (
+                id TEXT PRIMARY KEY,
+                directory TEXT NOT NULL,
+                time_updated INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS message (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                time_created INTEGER NOT NULL,
+                time_updated INTEGER NOT NULL,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS part (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                time_created INTEGER NOT NULL,
+                time_updated INTEGER NOT NULL,
+                data TEXT NOT NULL
+            );
+            """
+        )
+
+
+def _write_mimo_storage(root: Path, session_id: str, prompt: str, reply: str, msg_index: int) -> None:
+    root = root.expanduser()
+    root.mkdir(parents=True, exist_ok=True)
+    now = _now_ms()
+    db_path = root.parent / "mimocode.db"
+    _ensure_mimo_db(db_path)
+    user_msg_id = f"msg_user_{msg_index}"
+    assistant_msg_id = f"msg_assistant_{msg_index}"
+    user_part_id = f"prt_user_{msg_index}"
+    assistant_part_id = f"prt_assistant_{msg_index}"
+    user_payload = {
+        "id": user_msg_id,
+        "sessionID": session_id,
+        "role": "user",
+        "time": {"created": now, "completed": now},
+    }
+    assistant_payload = {
+        "id": assistant_msg_id,
+        "sessionID": session_id,
+        "parentID": user_msg_id,
+        "role": "assistant",
+        "time": {"created": now + 1, "completed": now + 2},
+        "finish": "stop",
+    }
+    user_part = {"id": user_part_id, "messageID": user_msg_id, "type": "text", "text": prompt, "time": {"start": now, "end": now}}
+    assistant_part = {
+        "id": assistant_part_id,
+        "messageID": assistant_msg_id,
+        "type": "text",
+        "text": reply,
+        "time": {"start": now + 1, "end": now + 2},
+    }
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO session (id, directory, time_updated) VALUES (?, ?, ?)",
+            (session_id, str(Path.cwd()), now + 2),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)",
+            (user_msg_id, session_id, now, now, json.dumps(user_payload, ensure_ascii=True)),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)",
+            (assistant_msg_id, session_id, now + 1, now + 2, json.dumps(assistant_payload, ensure_ascii=True)),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_part_id, user_msg_id, session_id, now, now, json.dumps(user_part, ensure_ascii=True)),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)",
+            (assistant_part_id, assistant_msg_id, session_id, now + 1, now + 2, json.dumps(assistant_part, ensure_ascii=True)),
+        )
+        conn.commit()
+
+
+def _handle_mimo(req_id: str, prompt: str, delay_s: float, state: dict) -> None:
+    if delay_s:
+        time.sleep(delay_s)
+    reply = f"stub reply for {req_id}"
+    state["msg_index"] += 1
+    _write_mimo_storage(state["storage_root"], state["session_id"], prompt, reply, state["msg_index"])
+
+
+def _mimo_run_prompt(argv: list[str]) -> str | None:
+    if "run" not in argv:
+        return None
+    index = argv.index("run") + 1
+    message_parts: list[str] = []
+    options_with_values = {
+        "--agent",
+        "--dir",
+        "--format",
+        "--model",
+        "--session",
+    }
+    while index < len(argv):
+        token = argv[index]
+        if token in options_with_values:
+            index += 2
+            continue
+        if token.startswith("--"):
+            index += 1
+            continue
+        message_parts.append(token)
+        index += 1
+    return " ".join(message_parts).strip()
+
+
+def _handle_mimo_run_cli(argv: list[str], delay_s: float) -> int:
+    prompt = _mimo_run_prompt(argv) or ""
+    req_match = REQ_ID_RE.search(prompt)
+    req_id = req_match.group(1).strip() if req_match else "job_mimo_run"
+    if delay_s:
+        time.sleep(delay_s)
+    reply = f"stub reply for {req_id}"
+    print(
+        json.dumps(
+            {
+                "type": "text",
+                "sessionID": f"ses_{req_id}",
+                "part": {
+                    "id": f"prt-{req_id}",
+                    "messageID": f"msg-{req_id}",
+                    "sessionID": f"ses_{req_id}",
+                    "type": "text",
+                    "text": reply,
+                },
+            },
+            ensure_ascii=True,
+        ),
+        flush=True,
+    )
+    print(
+        json.dumps(
+            {
+                "type": "step_finish",
+                "sessionID": f"ses_{req_id}",
+                "timestamp": _now_iso(),
+                "part": {
+                    "id": f"step-{req_id}",
+                    "messageID": f"msg-{req_id}",
+                    "sessionID": f"ses_{req_id}",
+                    "type": "step-finish",
+                    "reason": "stop",
+                },
+            },
+            ensure_ascii=True,
+        ),
+        flush=True,
+    )
+    return 0
+
+
 def _droid_sessions_root() -> Path:
     root = (os.environ.get("DROID_SESSIONS_ROOT") or os.environ.get("FACTORY_SESSIONS_ROOT") or "").strip()
     if root:
@@ -567,6 +750,7 @@ def main(argv: list[str]) -> int:
         "agy",
         "kimi",
         "deepseek",
+        "mimo",
         "copilot",
         "codebuddy",
         "qwen",
@@ -576,12 +760,16 @@ def main(argv: list[str]) -> int:
 
     delay_s = _delay(provider)
 
+    if provider == "mimo" and _mimo_run_prompt(argv[1:]) is not None:
+        return _handle_mimo_run_cli(argv[1:], delay_s)
+
     # Provider-specific initialization.
     gemini_messages: list[dict] = []
     gemini_session_id = ""
     gemini_session_path = None
     claude_session_path = None
     opencode_state: dict | None = None
+    mimo_state: dict | None = None
     droid_session_path: Path | None = None
     droid_session_id = ""
     copilot_session_path: Path | None = None
@@ -606,6 +794,13 @@ def main(argv: list[str]) -> int:
         opencode_state = {
             "storage_root": _opencode_storage_root(),
             "project_id": project_id,
+            "session_id": session_id,
+            "msg_index": 0,
+        }
+    elif provider == "mimo":
+        _project_id, session_id = _mimo_ids()
+        mimo_state = {
+            "storage_root": _mimo_storage_root(),
             "session_id": session_id,
             "msg_index": 0,
         }
@@ -671,6 +866,10 @@ def main(argv: list[str]) -> int:
         if provider == "opencode":
             assert opencode_state is not None
             _handle_opencode(req_id, delay_s, opencode_state)
+            return
+        if provider == "mimo":
+            assert mimo_state is not None
+            _handle_mimo(req_id, prompt, delay_s, mimo_state)
             return
         if provider == "droid":
             assert droid_session_path is not None
