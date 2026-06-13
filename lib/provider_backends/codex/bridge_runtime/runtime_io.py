@@ -66,7 +66,34 @@ class PersistentFifoReader:
             )
             return False
         selector = selectors.DefaultSelector()
-        selector.register(read_fd, selectors.EVENT_READ)
+        try:
+            selector.register(read_fd, selectors.EVENT_READ)
+        except PermissionError as exc:
+            selector.close()
+            log_comm_event(
+                _logger,
+                provider='codex',
+                direction='recv',
+                endpoint=str(self._path),
+                event='fifo_default_selector_unsupported',
+                error=exc,
+            )
+            selector = selectors.SelectSelector()
+            try:
+                selector.register(read_fd, selectors.EVENT_READ)
+            except OSError as fallback_exc:
+                selector.close()
+                os.close(read_fd)
+                os.close(keepalive_fd)
+                log_comm_event(
+                    _logger,
+                    provider='codex',
+                    direction='recv',
+                    endpoint=str(self._path),
+                    event='fifo_selector_register_failed',
+                    error=fallback_exc,
+                )
+                return False
         self._read_fd = read_fd
         self._keepalive_fd = keepalive_fd
         self._selector = selector

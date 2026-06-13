@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -333,6 +334,10 @@ def test_install_script_fails_when_sidebar_build_needs_missing_rust(tmp_path: Pa
     crate_dir.mkdir(parents=True)
     out_bin.parent.mkdir(parents=True)
     fake_bin.mkdir()
+    for tool in ('dirname', 'grep', 'mkdir', 'uname'):
+        tool_path = shutil.which(tool)
+        assert tool_path is not None
+        (fake_bin / tool).symlink_to(tool_path)
     (crate_dir / 'Cargo.toml').write_text('[package]\nname = "ccb-agent-sidebar"\nversion = "0.0.0"\n', encoding='utf-8')
     out_bin.write_text('# CCB_AGENT_SIDEBAR_WRAPPER\n', encoding='utf-8')
     out_bin.chmod(0o755)
@@ -353,7 +358,7 @@ build_sidebar_helper_if_possible
 
     proc = subprocess.run(
         ['/bin/bash', str(harness)],
-        env={**os.environ, 'PATH': '/usr/bin:/bin'},
+        env={**os.environ, 'PATH': str(fake_bin)},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
