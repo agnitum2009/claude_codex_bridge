@@ -95,10 +95,16 @@ Date: 2026-06-12
 - Rewrote the top of `README_zh.md` and `README.md` into the stable
   product-first order: hero, three values, npm new install plus `ccb update`,
   UI tour, `CCB 是什么` / `What Is CCB`, then rationale and comparison.
+- Replaced the homepage hero pair with the newer promo-style CCB composition,
+  including Chinese and English variants under `assets/readme_v7/`, and kept
+  `assets/ccb-promo.png` as source/reference material rather than the direct
+  README path.
+- Added a compact first-screen supported-CLI logo/badge strip for Codex,
+  Claude, Gemini, Kimi, OpenCode, Antigravity, and Droid.
 - Follow-up release review blocked npm-first publication until the source tree
   restored the `@seemseam/ccb` npm package surface.
-- Chose `7.4.4` as the next patch version instead of reusing the existing
-  `v7.4.3` tag.
+- Earlier chose `7.4.4` as the next patch version instead of reusing the
+  existing `v7.4.3` tag; the combined release candidate now targets `v7.5.0`.
 - Added the npm package manifest, npm CLI runner wrappers, and tag-triggered
   Trusted Publishing workflow needed to support the README's npm-first install
   guidance.
@@ -110,14 +116,11 @@ Date: 2026-06-12
 - Validate the restored npm package surface with `npm pack --dry-run`, version
   synchronization checks, and release workflow review.
 - Send the updated release candidate back through reviewer/archi review.
-- Decide later whether the canonical hero images should be replaced by a
-  lighter or more promotional regenerated pair; the current assets satisfy the
-  path and bilingual policy.
+- Preserve the promo-style canonical hero pair and supported-CLI strip during
+  release-surface validation edits.
 
 ## Next
 
-- Rewrite only the top portion of `README_zh.md` and `README.md` around hero
-  image, three value points, Quick Start, and then rationale/comparison.
 - Optionally tighten release asset naming after the release packaging path is
   confirmed against the final public assets.
 - Later pass: resume deferred demo/video design.

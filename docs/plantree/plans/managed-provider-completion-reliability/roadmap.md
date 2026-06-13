@@ -5,7 +5,7 @@ Date: 2026-06-12
 ## Status Summary
 
 - Current status: P0 implementation is in the working tree and folded into the
-  pending `7.4.4` release candidate; not committed or pushed.
+  pending `7.5.0` release candidate; not committed or pushed.
 - Last verified: adjacent Claude/provider completion regression suite
   (`114 passed`), `python -m compileall -q lib bin ccb`, `git diff --check`,
   `ccb_test --diagnose`, isolated `ccb_test --version`, isolated
@@ -49,7 +49,7 @@ Date: 2026-06-12
   hardening to the next validation phase.
 - Added public release-note coverage for the Claude `stop_reason=end_turn`
   terminalization and `SessionBoundaryDetector` empty boundary guard under the
-  pending `v7.4.4` release.
+  release candidate line now targeting `v7.5.0`.
 - Captured the Codex prompt-delivery boundary: worker mailbox events can be
   consumed while the managed Codex session log never records the active
   `CCB_REQ_ID`; the current failure terminalizes as

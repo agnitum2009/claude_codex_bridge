@@ -1,5 +1,26 @@
 # Changelog
 
+## v7.5.0 (2026-06-13)
+
+### Native CLI Providers And Homepage Sync
+
+- **Native CLI Provider Expansion**: Kimi and the DeepCode-backed `deepseek`
+  adapter now have managed tmux launchers, runtime specs, provider registry
+  integration, session bindings, command overrides, and cleanup coverage.
+- **Native Completion Detection**: Kimi, DeepCode/DeepSeek, and Antigravity
+  now bind on `CCB_REQ_ID` and complete from provider-owned session, snapshot,
+  or transcript evidence instead of requiring model-printed `CCB_DONE`.
+- **Provider Diagnostics Hardened**: Kimi `TurnEnd` empty replies,
+  DeepCode completed-empty replies, DeepCode `permission_denied`, and AGY
+  missing-anchor/timeout paths now surface explicit incomplete or failed
+  diagnostics.
+- **Kimi Auto-Permission Compatibility**: CCB now injects Kimi's current
+  `--auto-approve` flag for auto-permission while recognizing legacy/alias
+  flags such as `--auto`, `--yes`, `-y`, and `--yolo` as explicit user input.
+- **README Homepage Synchronized**: English and Chinese README homepages now
+  share the same agent-parity positioning, v7 UI tour shape, refreshed hero
+  assets, and seven public CLI-family strip.
+
 ## v7.4.4 (2026-06-12)
 
 ### Claude End-Turn And npm Release Surface

@@ -88,29 +88,31 @@ Target order for both `README_zh.md` and `README.md`:
 3. Three small badges at most: version, platform, providers.
 4. Language switch and 4-5 short navigation links.
 5. Hero image: use canonical language-specific images under
-   `assets/readme_v7/`, generated or optimized from the approved promotional
+   `assets/readme_v7/`, generated or optimized from the newer promo-style CCB
    composition. Do not directly reference `assets/ccb-promo.png` from public
-   READMEs unless a later decision replaces the language-specific asset policy.
+   READMEs.
 6. Three compact value bullets or a three-column table.
-7. User and developer documentation links should remain visible near the top:
+7. Compact supported-CLI logo/badge strip showing Codex, Claude, Gemini, Kimi,
+   OpenCode, Antigravity, and Droid at a glance.
+8. User and developer documentation links should remain visible near the top:
    `docs/manuals/user-guide/` and `docs/manuals/developer-guide/`.
-8. Quick Start within the first visible section after the image.
-9. Move "Why multi agents" and "Which approach" below Quick Start, with detail
+9. Quick Start within the first visible section after the image.
+10. Move "Why multi agents" and "Which approach" below Quick Start, with detail
    folded.
 
 Suggested English positioning:
 
 ```md
 CCB is a visible multi-agent CLI workspace for running Codex, Claude, Gemini,
-OpenCode, and other real provider CLIs side by side in one project-owned tmux
-session.
+Kimi, OpenCode, and other real provider CLIs side by side in one project-owned
+tmux session.
 ```
 
 Suggested Chinese positioning:
 
 ```md
 CCB 是一个可见、可控的多 Agent CLI 工作台，用一个项目级 tmux 会话同时管理
-Codex、Claude、Gemini、OpenCode 等真实 CLI。
+Codex、Claude、Gemini、Kimi、OpenCode 等真实 CLI。
 ```
 
 Suggested visible value bullets:
@@ -118,7 +120,7 @@ Suggested visible value bullets:
 | Value | Short Copy |
 | :--- | :--- |
 | See the work | Every agent is a real terminal pane, not a hidden background worker. |
-| Mix providers | Use Codex, Claude, Gemini, OpenCode, Antigravity, and per-agent models or keys together. |
+| Mix providers | Use Codex, Claude, Gemini, Kimi, OpenCode, Antigravity, and per-agent models or keys together. |
 | Keep control | Start, attach, delegate, review, rebuild, and stop the project workspace explicitly. |
 
 ## Proposed Chinese Top Outline
@@ -132,11 +134,11 @@ Suggested visible value bullets:
 
 <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB 多 Agent CLI 工作台" width="960">
 
-## 三件事
+## 为什么用 CCB？
 
 | 看得见 | 混合 provider | 项目级控制 |
 | :--- | :--- | :--- |
-| 每个 agent 都是真实 CLI pane。 | 同时运行 Codex、Claude、Gemini、OpenCode 等。 | 启动、委派、审查、恢复、停止都在一个项目里完成。 |
+| 每个 agent 都是真实 CLI pane。 | 同时运行 Codex、Claude、Gemini、Kimi、OpenCode 等。 | 启动、委派、审查、恢复、停止都在一个项目里完成。 |
 
 ## 快速开始
 ...
@@ -169,11 +171,11 @@ Use these assets in the next README polish patch:
 
 | Asset | Language | README Section | Status |
 | :--- | :--- | :--- | :--- |
-| `assets/readme_v7/ccb-hero-zh.png` | Chinese | First-screen hero in `README_zh.md` | Generated from the existing Chinese annotated v7 screenshot |
-| `assets/readme_v7/ccb-hero-en.png` | English | First-screen hero in `README.md` | Generated from the existing English annotated v7 screenshot |
+| `assets/readme_v7/ccb-hero-zh.png` | Chinese | First-screen hero in `README_zh.md` | Generated from the newer promo-style CCB composition and optimized for README load |
+| `assets/readme_v7/ccb-hero-en.png` | English | First-screen hero in `README.md` | English version generated from the same promo-style CCB composition and optimized for README load |
 | `assets/readme_v7/ccb-test2-terminal-annotated.png` | Chinese | UI Tour detail image if the hero uses a cleaner promotional crop | Existing fallback/detail asset |
 | `assets/readme_v7/ccb-test2-terminal-annotated-en.png` | English | UI Tour detail image if the hero uses a cleaner promotional crop | Existing fallback/detail asset |
-| `assets/ccb-promo.png` | Language-specific current draft | Social/share/reference asset, not the canonical README hero | Existing; keep out of README unless replaced by a later decision |
+| `assets/ccb-promo.png` | Chinese/source reference | Social/share/reference asset and promo composition source, not the direct README hero path | Existing; keep out of public README references |
 
 Hero asset requirements:
 
@@ -182,6 +184,8 @@ Hero asset requirements:
   `<300KB` when image quality remains acceptable.
 - Keep Chinese and English embedded annotations language-specific, or keep the
   hero annotation-free and move all labels into README text.
+- Preserve the `ccb_self` callout in both hero languages when using the
+  promo-style composition.
 - Avoid duplicating the same visual twice before Quick Start. If the hero is
   annotated enough, the UI Tour can use a table directly below it instead of a
   second image.
@@ -243,6 +247,8 @@ Reviewer1 agreed with deferring this skill until after the homepage patch lands.
 - The first screen feels like a product homepage, while deeper sections still
   preserve the existing rigorous comparison and configuration guidance.
 - Chinese and English README files remain structurally parallel.
+- Supported CLIs are visible near the first screen as a compact logo/badge
+  strip, without expanding the header badge count.
 - Reviewer feedback from `reviewer1` is recorded or converted into follow-up
   edits before implementation.
 - The README header badge count is reduced to no more than four total badges.

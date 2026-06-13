@@ -6,9 +6,14 @@ Date: 2026-06-12
 
 The homepage polish pass introduced `assets/ccb-promo.png`, a generated
 annotated promotional screenshot. Reviewer1 identified this as a blocking
-pre-implementation choice because the current asset is larger than the existing
-README screenshots, contains embedded annotations, and does not fit cleanly
-with the existing language-specific README media pattern.
+pre-implementation choice because the current asset was larger than the
+existing README screenshots, contained embedded annotations, and did not fit
+cleanly with the existing language-specific README media pattern.
+
+Maintainer follow-up on 2026-06-13 changed the visual direction: the public
+README should use the newer generated promo composition, not the older
+`ccb-test2-terminal-annotated*.png` copy. The language-specific canonical asset
+policy still applies.
 
 Relevant files:
 
@@ -28,19 +33,25 @@ Planned names:
 - `assets/readme_v7/ccb-hero-zh.png` for `README_zh.md`
 - `assets/readme_v7/ccb-hero-en.png` for `README.md`
 
-`assets/ccb-promo.png` remains a promotional/reference/social asset and should
-not be directly referenced as the public README hero unless a later decision
-replaces this policy.
+The current canonical pair should be derived from the newer generated promo
+composition:
+
+- `assets/readme_v7/ccb-hero-zh.png`: Chinese promo-style hero
+- `assets/readme_v7/ccb-hero-en.png`: English promo-style hero
+
+`assets/ccb-promo.png` remains the source/reference/social asset. Public
+READMEs should continue to reference the language-specific canonical assets
+under `assets/readme_v7/`, not `assets/ccb-promo.png` directly.
 
 ## Consequences
 
-- The next README implementation patch must generate or optimize the canonical
-  hero images before changing README references.
+- README implementation patches must generate or optimize the canonical hero
+  images before changing README references.
 - The first-screen hero may reuse the `assets/ccb-promo.png` composition, but
   final assets must live under `assets/readme_v7/` and handle Chinese/English
   parity explicitly.
-- Existing `ccb-test2-terminal-annotated*.png` assets remain useful fallback or
-  UI Tour detail images.
+- Existing `ccb-test2-terminal-annotated*.png` assets remain fallback/history
+  assets, not the homepage hero default.
 - README headers should reduce the current badge set to at most four visible
   badges, preferably version, platform, and providers.
 - If the hero is strongly annotated, the UI Tour should avoid repeating another

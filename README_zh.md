@@ -2,12 +2,13 @@
 
 # CCB
 
-**可见、可控的多 Agent CLI 工作台，用一个项目级 tmux 会话同时管理真实 CLI。**
+**基于agent平权思想设计**
+**可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.4.4-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.5.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
-  <img src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Antigravity-0B7285.svg" alt="providers">
+  <img src="https://img.shields.io/badge/providers-7%20CLI%20families-0B7285.svg" alt="providers">
 </p>
 
 **中文** | [English](README.md)
@@ -22,13 +23,27 @@
 
 ---
 
-## 三件事
+## 为什么用 CCB？
 
 | 看得见 | 混合 provider | 项目级控制 |
 | :--- | :--- | :--- |
-| 每个 agent 都是真实终端 pane，不是隐藏后台 worker。 | 同时运行 Codex、Claude、Gemini、OpenCode、Antigravity 等真实 CLI。 | 显式启动、attach、委派、审查、重建、更新和停止项目工作台。 |
+| 每个 agent 都是真实终端，支持界面排布设计。 | 一个命令同时并发运行多 CLI。 | 稳定后台通信，支持多线并发任务编排。 |
 
-空白项目默认包含 `ccb_self`，它是 CCB 内置自理解专家，可帮助使用 CCB、解释当前布局、设计配置、诊断运行态、恢复和修复工作流。
+## 支持的 CLI
+
+<p>
+  <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
+  <img src="https://img.shields.io/badge/Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
+  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Antigravity-6D5EF6?style=flat-square&logo=google&logoColor=white" alt="Antigravity">
+  <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
+  <img src="https://img.shields.io/badge/Kimi-111111?style=flat-square&logo=moonshotai&logoColor=white" alt="Kimi">
+</p>
+
+可在 `.ccb/ccb.config` 中按 agent 混用不同 CLI。常用 provider id 包括 `codex`、`claude`、`gemini`、`kimi`、`opencode`、`agy`、`droid`；实际可用性取决于本机 CLI 安装和账号权限。
+
+**全新角色规范**：可把 skills、记忆和工具依赖封装进自封闭 Role Pack，快速生成可热加载、可卸载的专业 agent。
 
 ## 快速开始
 
@@ -69,6 +84,13 @@ cd claude_codex_bridge
 
 </details>
 
+开箱即用：在项目目录执行 `ccb` 即可使用。
+如果启动时提示无法自动创建 `.ccb` 或找不到项目锚点，需要手动创建 `.ccb` 作为项目锚点：
+
+```bash
+mkdir -p .ccb
+```
+
 ### 2. 创建项目配置
 
 在项目根目录创建 `.ccb/ccb.config`。v7 推荐直接从多 window 拓扑理解配置：`[windows]` 定义窗口和 agent 分组，`agent:provider` 定义每个 agent 使用哪家 CLI，`(worktree)` 表示该 agent 使用独立 git worktree。
@@ -94,7 +116,7 @@ tips_height = "35%"
 comms_limit = 3
 ```
 
-如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以直接问 `ccb_self`。它是 CCB 内置的 self-agent，理解 CCB 命令、配置权威层、roles、windows、reload 边界和常见恢复路径，并能用私有 `ccb-config` skill 和你讨论后生成配置方案。空白项目默认包含 `ccb_self`；已有自定义配置可用 `ccb roles add agentroles.ccb_self:codex` 添加。
+如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以直接问当前工作台里的 `ccb_self`。它是 CCB 内置的 self-agent，理解 CCB 命令、配置权威层、roles、windows、reload 边界和常见恢复路径，并能用私有 `ccb-config` skill 和你讨论后生成配置方案。空白项目默认包含 `ccb_self`。
 
 验证配置：
 
@@ -116,20 +138,22 @@ ccb
 /ask reviewer review the latest parser changes and list blocking issues.
 ```
 
+也可以在工作编排中让 agent 自动调用 `/ask` 完成委派和交接。
+
 ## v7 界面速览
 
-上方 hero 图来自 `ccb_test2` 项目的真实深色终端会话。图片上的标注只解释区域，不代表必须记住所有快捷键。
-
-| 区域 | 作用 |
+| 区域 | 说明 |
 | :--- | :--- |
-| Sidebar | 显示当前 window、agent 列表、provider 标签、当前选中 agent 和状态提示。 |
-| Comms | 显示 ask/callback 等协作消息和通信状态。 |
-| Agent pane | 每个 pane 是一个真实 CLI 会话，例如 Codex 或 Claude。 |
-| 当前输入目标 | 状态栏和 pane 边框会提示当前输入会发给哪个 agent。 |
-| 状态栏 | 显示项目名、当前 agent、CCB 版本、日期和常用鼠标/键盘提示。 |
-| Window 分组 | v7 可用 `[windows]` 把 agent 按 main、work、review、research 等窗口分组。 |
+| Sidebar | 显示刷新/关闭 CCB 控件、window 和 agent 列表、内部通信状态，以及可在配置文件中修改并热加载的 tips。 |
+| 鼠标操作 | 支持点击切换 window、agent 和 pane，也可在通信区刷新、kill 或删除条目。 |
+| 工作区 | 每个 pane 都是真实 CLI；可以鼠标点击切换，也可以用 tmux 快捷键切换。 |
+| 常用技巧 | `Ctrl-b h/j/k/l` 切换相邻 pane，`Ctrl-b z` 放大或还原当前 CLI pane。 |
 
 Sidebar 相关实现使用并借鉴了 [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) 的思路，在此表示感谢。
+
+## 更多阅读
+
+初次使用可以先从快速开始进入；下面内容补充 CCB 的设计边界、方案对比、日常操作和配置方式。
 
 ## CCB 是什么
 
@@ -137,7 +161,7 @@ CCB 是一个项目级 agent CLI 工作台。它用 tmux 管理多个真实 CLI 
 
 - **真实 CLI，不是模拟面板**：每个 agent pane 都运行对应 provider 的真实 CLI。
 - **可见协作**：sidebar 展示窗口、agent 状态和通信区；用户可以用鼠标直接切 pane。
-- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid 和 Antigravity（`agy`）。
+- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid、Antigravity（`agy`）和 Kimi（`kimi`）。
 - **项目级配置**：`.ccb/ccb.config` 决定团队、布局、窗口、worktree、model、key、url。
 - **内置 CCB 专家**：空白项目默认包含 `ccb_self`，它是具备 CCB 自理解能力的自维护 agent，可帮助使用 CCB、设计配置、诊断运行态、恢复工作流。
 - **Roles**：全新的角色封装概念；它让携带“重武器”（独立 skills、记忆和
@@ -175,14 +199,14 @@ CCB 是一个项目级 agent CLI 工作台。它用 tmux 管理多个真实 CLI 
 | :--- | :--- | :--- |
 | [Claude Code 原生 subagents](https://code.claude.com/docs/en/sub-agents) / [agent teams](https://code.claude.com/docs/en/agent-teams) | Claude Code 内部的原生分工。 | 你主要留在 Claude Code，并接受更多协调由 Claude lead 处理。 |
 | [Hive / OpenHive](https://github.com/aden-hive/hive) | 面向生产工作流的多 agent harness。 | 你要状态、恢复、观测、成本控制和图式工作流。 |
-| CCB | 可见、可控、混合 provider 的本地 CLI agent 工作台。 | 你要把 Codex、Claude、Gemini、OpenCode、Antigravity 等真实 CLI 放到一个项目终端里操作。 |
+| CCB | 可见、可控、混合 provider 的本地 CLI agent 工作台。 | 你要把 Codex、Claude、Gemini、Kimi、OpenCode、Antigravity 等真实 CLI 放到一个项目终端里操作。 |
 
 <details>
 <summary><b>展开：模型、可控性、上下文和复杂工作流怎么区别？</b></summary>
 
 | 关键问题 | Claude Code 原生 | Hive / OpenHive | CCB |
 | :--- | :--- | :--- | :--- |
-| 能否使用不同家的模型 | 可给 teammate / subagent 指定 Claude 模型；整体仍在 Claude Code 体系内。 | 通过 LiteLLM 路线支持大量 hosted / local provider。 | 按 agent 选择 Codex、Claude、Gemini、OpenCode、Droid、Antigravity 等，并可设置独立 model / key / url。 |
+| 能否使用不同家的模型 | 可给 teammate / subagent 指定 Claude 模型；整体仍在 Claude Code 体系内。 | 通过 LiteLLM 路线支持大量 hosted / local provider。 | 按 agent 选择 Codex、Claude、Gemini、Kimi、OpenCode、Droid、Antigravity 等，并可设置独立 model / key / url。 |
 | 过程是否可见 | in-process 或 split panes，取决于模式和终端。 | 强调 runtime observability 和控制台视角。 | 默认就是 tmux 可见 pane，用户能直接点击、输入、复制、观察每个 CLI。 |
 | 拓扑是否可控 | 可自然语言指定队友，但运行时协调较多交给 lead。 | 由目标生成图式拓扑，偏 harness。 | 配置文件显式定义 agent、窗口、pane、worktree 和 sidebar。 |
 | 上下文是否可管理 | subagent / teammate 有独立上下文；team 有任务和消息状态。 | 角色记忆、状态持久化、恢复能力是核心卖点。 | 每个 CLI 保留自己的 provider 会话；项目共享记忆和 per-agent 记忆可选。 |
@@ -486,7 +510,7 @@ CCB 不要求你离开编辑器。常见方式是：编辑器负责写代码，C
 - 推荐 npm 安装路径需要 Node.js 和 npm
 - Python 3.10+
 - `tmux`
-- 至少一个你要使用的 agent CLI，例如 Codex、Claude、Gemini、OpenCode、Droid 或 Antigravity
+- 至少一个你要使用的 agent CLI，例如 Codex、Claude、Gemini、Kimi、OpenCode、Droid 或 Antigravity
 - Linux、macOS 或 WSL
 
 当前 v7 / 新版本不声明原生 Windows 支持。原生 Windows 只支持到 v5 线；如果你在 Windows 上使用新版本，推荐使用 WSL，并让 `ccb` 与 agent CLI 都运行在 WSL 内。
@@ -573,6 +597,20 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.5.0</b> - 原生 CLI Provider 与首页同步</summary>
+
+- 新增 Kimi managed native CLI provider 支持，并补齐更通用的 native CLI
+  runtime 基础能力，覆盖 runtime spec、session binding、启动命令覆盖和清理路径。
+- Kimi 和 Antigravity 的完成判定改为读取 provider 自有 session 或
+  transcript 证据，不再要求模型打印 `CCB_DONE`。
+- CCB auto-permission 对 Kimi 默认注入当前版本支持的 `--auto-approve`，
+  同时识别 `--auto`、`--yes`、`-y`、`--yolo` 等旧版或别名标识，避免重复注入。
+- 同步英文和中文 README 首页，刷新 hero assets，并统一为 7 个公开 CLI
+  family 的定位。
+
+</details>
+
+<details>
 <summary><b>v7.4.4</b> - Claude end_turn 与 npm 发布面修复</summary>
 
 - Claude pane-backed ask 在 primary assistant response 带

@@ -28,20 +28,25 @@ The public README first-read path must stay product-first:
 1. Product name and one-line positioning.
 2. Quiet badges, preferably three and never more than four visible badges.
 3. Language switch plus short navigation, including user and developer docs.
-4. One dominant canonical hero image from `assets/readme_v7/`.
+4. One dominant canonical hero image from `assets/readme_v7/`, using the newer
+   promo-style CCB composition.
 5. Three compact value points.
-6. npm-first Quick Start.
-7. Interface tour.
-8. Multi-agent rationale and solution comparison.
-9. Daily operation, tmux basics, configuration, collaboration, install details,
+6. A compact supported-CLI logo/badge strip.
+7. npm-first Quick Start.
+8. Interface tour.
+9. Multi-agent rationale and solution comparison.
+10. Daily operation, tmux basics, configuration, collaboration, install details,
    FAQ, credits, and release notes.
 
 Stable homepage claims:
 
 - CCB is a visible, controllable multi-agent CLI workspace.
 - CCB shows real provider CLIs in real terminal panes.
-- CCB can mix Codex, Claude, Gemini, OpenCode, Antigravity, and related
+- CCB can mix Codex, Claude, Gemini, Kimi, OpenCode, Antigravity, and related
   providers in one project-owned tmux workspace.
+- The first-screen CLI support strip should make Codex, Claude, Gemini, Kimi,
+  OpenCode, Antigravity, and Droid visible at a glance when the README claims
+  that breadth.
 - `ccb_self` is CCB's built-in self-understanding expert for usage guidance,
   active layout explanation, config design, runtime diagnostics, recovery, and
   workflow repair.
@@ -55,9 +60,13 @@ Stable homepage claims:
   section order, asset roles, install path, and `ccb_self` positioning.
 - Canonical hero assets: public README hero references should use
   `assets/readme_v7/ccb-hero-zh.png` and
-  `assets/readme_v7/ccb-hero-en.png` once generated.
-- `assets/ccb-promo.png` remains promotional/reference material unless a later
-  decision replaces the canonical hero policy.
+  `assets/readme_v7/ccb-hero-en.png`; these should be derived from the newer
+  promo-style CCB image, not the older annotated screenshot copies.
+- `assets/ccb-promo.png` remains source/reference material for the promo-style
+  composition; public READMEs still use the canonical `assets/readme_v7/`
+  language-specific files.
+- The supported-CLI strip must stay near the top and remain structurally
+  parallel in `README.md` and `README_zh.md`.
 - User and developer manual links must remain discoverable near the top:
   `docs/manuals/user-guide/` and `docs/manuals/developer-guide/`.
 - The first screen should show CCB before asking readers to process long
@@ -79,7 +88,12 @@ Stable homepage claims:
   `npm install -g @seemseam/ccb@latest`; after installation, the update command
   is `ccb update`.
 - Do not directly use `assets/ccb-promo.png` as the public README hero without
-  a replacement decision.
+  generating/updating the language-specific canonical hero pair.
+- Do not replace the promo-style hero with the older
+  `ccb-test2-terminal-annotated*.png` screenshots unless a new decision says
+  why the visual direction changed.
+- Do not drop the supported-CLI logo/badge strip when editing the first-read
+  path.
 - Do not duplicate multiple large screenshots before Quick Start.
 - Do not let release notes, detailed config examples, or tmux reference tables
   dominate the homepage.
@@ -92,6 +106,7 @@ or add a replacement decision in the same patch:
 - first-screen section order;
 - recommended install/update path;
 - hero image policy or canonical asset names;
+- supported-CLI first-screen strip;
 - top navigation/manual links;
 - `ccb_self` positioning;
 - visible/folded split for rationale, comparison, config, tmux, or release

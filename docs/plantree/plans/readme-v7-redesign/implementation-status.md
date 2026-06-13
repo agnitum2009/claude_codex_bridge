@@ -1,6 +1,6 @@
 # Implementation Status
 
-Date: 2026-06-12
+Date: 2026-06-13
 
 ## Current Phase
 
@@ -8,10 +8,12 @@ Homepage polish implementation patch prepared, with release-surface follow-up
 in progress. The first v7 README implementation existed, but maintainer
 feedback said the GitHub first screen was too text-heavy, visually plain, and
 unfocused. Reviewer1 endorsed the product-first order, the hero strategy was
-resolved, canonical hero assets have been generated, and the top of both public
-README files now follows the stable non-drift contract. Archi then blocked the
-commit because npm-first README wording requires the `@seemseam/ccb` package
-surface to exist in source before release.
+resolved, and maintainer follow-up selected the newer promo-style CCB image as
+the canonical hero composition. The top of both public README files now follows
+the stable non-drift contract, including language-specific promo-style heroes
+and a supported-CLI badge strip. Archi then blocked the commit because
+npm-first README wording requires the `@seemseam/ccb` package surface to exist
+in source before release.
 
 ## Active TODO
 
@@ -22,8 +24,8 @@ surface to exist in source before release.
   npm runner wrappers, and npm publishing workflow.
 - Send the updated dirty tree back through review after validation.
 - Keep bilingual section order in sync during any follow-up wording changes.
-- Consider a later visual pass if the current canonical hero images should be
-  replaced by a more polished regenerated pair.
+- Preserve the newer promo-style hero pair and supported-CLI strip during any
+  follow-up README or release-surface edits.
 
 ## Done This Phase
 
@@ -136,14 +138,21 @@ surface to exist in source before release.
   product title, quiet badges, manual links, canonical hero, three value points,
   npm new install plus `ccb update`, v7 UI tour, product definition,
   multi-agent rationale, and approach comparison.
+- Replaced the older screenshot-derived canonical hero pair with the newer
+  promo-style image and matching English version under `assets/readme_v7/`, with
+  `ccb_self` callouts preserved in both languages.
+- Added a compact supported-CLI logo/badge strip near the README first screen,
+  showing Codex, Claude, Gemini, Kimi, OpenCode, Antigravity, and Droid.
 - Received reviewer2 README/release-surface review with PASS_WITH_NITS and no
   blocking defects.
 - Received archi release review with blocking findings: do not reuse existing
   `v7.4.3`, restore source-controlled npm package surface before npm-first
   README publication, and add public release notes for the Claude
   `stop_reason=end_turn` repair.
-- Chose the safer patch path for the next release: bump to `7.4.4` instead of
-  moving or recreating the existing `v7.4.3` tag.
+- Earlier chose the safer patch path for the next release: bump to `7.4.4`
+  instead of moving or recreating the existing `v7.4.3` tag. The current
+  combined release candidate now targets `v7.5.0` after the native CLI provider
+  scope was added.
 - Restored the source npm surface using the previously published package shape:
   `package.json`, Node CLI wrappers, postinstall artifact downloader, and a
   tag-triggered npm Trusted Publishing workflow that waits for GitHub release
@@ -195,6 +204,7 @@ follow-up review.
 - `npm pack --dry-run`
 - `npm view @seemseam/ccb version dist-tags --json`
 - `git ls-remote --tags origin refs/tags/v7.4.4`
+- `git tag --list 'v7.5.0'`
 - `python -m pytest -q test/test_claude_assistant_events.py test/test_v2_completion_detectors.py test/test_v2_completion_tracker.py test/test_v2_completion_orchestration.py test/test_v2_execution_service.py test/test_provider_hook_transcript.py test/test_provider_finish_hook_script.py test/test_claude_hook_results.py test/test_claude_execution_polling.py`
 - `python -m compileall -q lib bin ccb`
 - `git diff --check`
@@ -204,6 +214,11 @@ follow-up review.
 - `HOME=/home/bfly/yunwei/test_ccb2/source_home CCB_SOURCE_HOME=/home/bfly/yunwei/test_ccb2/source_home /home/bfly/yunwei/ccb_source/ccb_test --version`
 - `HOME=/home/bfly/yunwei/test_ccb2/source_home CCB_SOURCE_HOME=/home/bfly/yunwei/test_ccb2/source_home /home/bfly/yunwei/ccb_source/ccb_test config validate`
 - `python - <<'PY' ... license_metadata_ok AGPL-3.0-only ... PY`
+- `file assets/readme_v7/ccb-hero-zh.png assets/readme_v7/ccb-hero-en.png`
+- `rg -n "release-first|Release first|Release 优先|seemseam@ccb|@seemseam/ccb@latest|New users should start from a release package|首次安装推荐使用 \\[GitHub Releases\\]" README.md README_zh.md docs/plantree/plans/readme-v7-redesign/README.md docs/plantree/plans/readme-v7-redesign/roadmap.md docs/plantree/plans/readme-v7-redesign/topics`
+- `rg -n "Supported CLIs|支持的 CLI|docs/manuals/user-guide|docs/manuals/developer-guide|ccb_self|assets/readme_v7/ccb-hero" README.md README_zh.md docs/plantree/plans/readme-v7-redesign/decisions docs/plantree/plans/readme-v7-redesign/topics docs/plantree/plans/readme-v7-redesign/roadmap.md docs/plantree/plans/readme-v7-redesign/implementation-status.md`
+- `git diff --check -- README.md README_zh.md assets/readme_v7/ccb-hero-en.png assets/readme_v7/ccb-hero-zh.png docs/plantree/plans/readme-v7-redesign`
+- Shields badge URL smoke check with `curl -L -s -o /dev/null -w '%{http_code}'`.
 
 ## Handoff Notes
 
