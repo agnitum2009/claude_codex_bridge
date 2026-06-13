@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.5.1 (2026-06-13)
+
+### MiMo Provider Release Surface
+
+- **MiMo Public Provider Surface**: English and Chinese README provider strips
+  now include MiMo with a Xiaomi-branded badge, and the public positioning is
+  updated from seven to eight CLI families.
+- **MiMo Run-Mode Hardened**: CCB now runs MiMo ask jobs through
+  `mimo run --pure --format json`, avoiding external plugin/tool-call
+  intermediate steps that can consume simple CCB ask jobs before final text.
+- **MiMo Completion Parsing Fixed**: MiMo `tool-calls` step-finish events are
+  treated as intermediate evidence until final assistant text or process exit,
+  while normal `step_finish` / `part.reason=stop` still completes as
+  `mimo_run_stop`.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and native
+  provider plan-tree evidence are aligned for the 7.5.1 patch release.
+
 ## v7.5.0 (2026-06-13)
 
 ### Native CLI Providers And Homepage Sync
