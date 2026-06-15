@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.5.3-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -308,7 +308,7 @@ CCB 配置有三层，优先级从低到高：
 3. 项目配置 `.ccb/ccb.config`。
 
 更高层会整体替换低层，不做局部合并。当前项目的权威配置文件是 `.ccb/ccb.config`；旧路径 `.ccb_config/ccb.config` 只应作为迁移参考。
-内置默认配置是 v2 `[windows]` 拓扑，包含 `agent1`、`agent2`、`agent3`、`ccb_self`，以及一个使用 `ccb-nvim` 的托管 `neovim` 工具 window。默认 `ccb_self` 使用 `codex` 并绑定 `agentroles.ccb_self`。
+内置默认配置是 v2 `[windows]` 拓扑，包含 `agent1`、`agent2`、`agent3` 和 `ccb_self`。默认 `ccb_self` 使用 `codex` 并绑定 `agentroles.ccb_self`。
 
 `.ccb/ccb.config` 主要配置这些内容：
 
@@ -431,10 +431,10 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
-`ccb tools install neovim` 会准备隔离的 `ccb-nvim` wrapper 和 LazyVim profile，路径在 CCB 自己的 XDG 目录下。`install.sh install` 和 `ccb update` 默认都会尝试安装或刷新该工具，并把默认 provisioning 失败保留为 warning。设置 `CCB_INSTALL_NEOVIM=1` 可强制 provisioning，设置 `CCB_INSTALL_NEOVIM=0` 可跳过。
-如果 `PATH` 里没有 `nvim`，provisioning 会尝试下载 Linux/macOS 官方 Neovim release tarball，并校验 release sha256 后再启用；不会写入 `~/.config/nvim`。
-托管 profile 默认使用 ASCII 图标，避免没有 Nerd Font 的终端出现方块/乱码。确认终端字体支持 Nerd Font 时，可用 `CCB_LAZYVIM_ICON_STYLE=glyph ccb-nvim` 恢复 LazyVim 图标。
-用 `ccb tools doctor neovim` 验证托管 profile。LazyVim 真正可用时会显示 `neovim_status: ok` 和 `lazyvim_health_status: ok`；插件目录损坏或半下载会显示 `degraded`，重新运行 `ccb tools install neovim` 会尝试修复。
+Rich workbench 工具（包括托管 Neovim profile）现在通过 `ccb update rich` 显式安装和更新。普通 `install.sh install`、`ccb update` 和 `ccb tools ... neovim` 不再 provision standalone Neovim；公开 Neovim 工具路由会提示使用 `ccb update rich`。
+如果 `PATH` 里没有 `nvim`，rich provisioning 可能下载 Linux/macOS 官方 Neovim release tarball，并校验 release sha256 后再启用；不会写入 `~/.config/nvim`。
+托管 profile 默认使用 ASCII 图标，避免没有 Nerd Font 的终端出现方块/乱码。确认终端字体支持 Nerd Font 时，可用 `CCB_LAZYVIM_ICON_STYLE=glyph ccb rich` 恢复 LazyVim 图标。
+用 `ccb tools doctor workbench --profile rich` 验证已安装的 rich bundle。`ccb rich` 只启动已经安装并启用的 rich bundle；如果 bundle 缺失或禁用，请先运行 `ccb update rich`。
 
 #### 给 agent 单独配置模型、API key 或 base URL
 
@@ -620,6 +620,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.0</b> - Rich Workbench 生命周期</summary>
+
+- Rich workbench 变为显式可选 bundle，统一通过 `ccb update rich` 安装和更新。
+- 普通 `install.sh install` 和 `ccb update` 只处理 CCB 本体，不再自动
+  provision standalone Neovim。
+- 公开 `ccb tools ... neovim` 路由会拒绝 standalone provisioning 并提示
+  `ccb update rich`；`ccb rich` 只启动已经安装并启用的 rich bundle。
+- CCB tmux 状态栏恢复为单行，移除旧的第二行复制提示。
+
+</details>
+
+<details>
 <summary><b>v7.5.3</b> - Kimi 运行可靠性与 Hindsight 兼容性</summary>
 
 - 增强 Kimi 运行路径，但不改变其他 provider 的执行路径：当 native turn

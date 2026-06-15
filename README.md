@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.5.3-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -312,7 +312,7 @@ CCB resolves config in three layers, from lowest to highest priority:
 3. Project config at `.ccb/ccb.config`.
 
 Higher layers replace lower layers as a whole; they are not merged. The project authority file is `.ccb/ccb.config`. The old `.ccb_config/ccb.config` path is legacy migration evidence only.
-The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3`, `ccb_self`, and a managed `neovim` tool window using `ccb-nvim`. The default `ccb_self` agent uses `codex` and is bound to `agentroles.ccb_self`.
+The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3`, and `ccb_self`. The default `ccb_self` agent uses `codex` and is bound to `agentroles.ccb_self`.
 
 `.ccb/ccb.config` mainly controls:
 
@@ -440,10 +440,10 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
-`ccb tools install neovim` prepares an isolated `ccb-nvim` wrapper and LazyVim profile under CCB-owned XDG paths. `install.sh install` and `ccb update` automatically attempt this provisioning by default and keep failures non-blocking. Set `CCB_INSTALL_NEOVIM=1` to make install provisioning required or `CCB_INSTALL_NEOVIM=0` to skip it.
-If `nvim` is not already on `PATH`, provisioning attempts to download the official Neovim release tarball for Linux/macOS and verifies the release sha256 before activating it. It does not write `~/.config/nvim`.
-The managed profile defaults to ASCII icons so terminals without Nerd Font support do not show unreadable boxes. To opt back into LazyVim glyph icons, launch with `CCB_LAZYVIM_ICON_STYLE=glyph ccb-nvim`.
-Use `ccb tools doctor neovim` to verify the managed profile. A working LazyVim setup reports `neovim_status: ok` and `lazyvim_health_status: ok`; damaged or partially downloaded plugin trees report `degraded` and can be repaired by rerunning `ccb tools install neovim`.
+Rich workbench tools, including the managed Neovim profile, are installed and updated explicitly with `ccb update rich`. Ordinary `install.sh install`, `ccb update`, and `ccb tools ... neovim` do not provision standalone Neovim; the public Neovim tool route now directs users to `ccb update rich`.
+If `nvim` is not already on `PATH`, rich provisioning may download the official Neovim release tarball for Linux/macOS and verifies the release sha256 before activating it. It does not write `~/.config/nvim`.
+The managed profile defaults to ASCII icons so terminals without Nerd Font support do not show unreadable boxes. To opt back into LazyVim glyph icons, launch the rich workbench with `CCB_LAZYVIM_ICON_STYLE=glyph ccb rich`.
+Use `ccb tools doctor workbench --profile rich` to verify the installed rich bundle. `ccb rich` launches only an already installed and enabled rich bundle; run `ccb update rich` first if the bundle is missing or disabled.
 
 #### Per-agent model, API key, or base URL
 
@@ -631,6 +631,21 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.0</b> - Rich Workbench Lifecycle</summary>
+
+- Makes rich workbench an explicit optional bundle installed with
+  `ccb update rich`.
+- Keeps ordinary `install.sh install` and `ccb update` focused on CCB itself;
+  they no longer auto-provision standalone Neovim.
+- Public `ccb tools ... neovim` routes now refuse standalone provisioning and
+  point users to `ccb update rich`; `ccb rich` launches only an installed and
+  enabled rich bundle.
+- Restores the CCB tmux status bar to one line by removing the old second-line
+  copy hint.
+
+</details>
+
+<details>
 <summary><b>v7.5.3</b> - Kimi Runtime Reliability And Hindsight Compatibility</summary>
 
 - Adds Kimi runtime hardening without changing other provider execution paths:

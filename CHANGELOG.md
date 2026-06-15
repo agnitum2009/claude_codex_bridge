@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.6.0 (2026-06-15)
+
+### Rich Workbench Lifecycle
+
+- **Rich Workbench Bundle Added**: rich workbench components now install and
+  update through the explicit `ccb update rich` entrypoint instead of ordinary
+  CCB install/update paths.
+- **Standalone Neovim Provisioning Removed**: normal `install.sh install`,
+  `ccb update`, and public `ccb tools ... neovim` routes no longer provision a
+  standalone Neovim tool. They now direct users to `ccb update rich`.
+- **Rich Launch Tightened**: `ccb rich` launches only an installed and enabled
+  rich bundle, preventing implicit provisioning from the launch path.
+- **tmux Status Simplified**: CCB returns to a single-line tmux status bar and
+  removes the old second-line copy hint.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and rich
+  workbench documentation are aligned for 7.6.0.
+
 ## v7.5.3 (2026-06-14)
 
 ### Kimi Runtime Reliability And Hindsight Compatibility
