@@ -94,6 +94,8 @@ def run_iteration(
         return state.with_state('stopped', occurred_at=now), True, cleanup_transient
     checked = state.with_check(now)
     next_state = app._reconcile_once(state=checked, start_timeout_s=start_timeout_s)
+    if next_state.state != 'running':
+        return next_state, True, cleanup_transient
     return next_state, False, cleanup_transient
 
 

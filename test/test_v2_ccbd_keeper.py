@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from types import SimpleNamespace
 
 from agents.config_identity import project_config_identity_payload
 from agents.config_loader import load_project_config
 from ccbd.keeper import KeeperState, KeeperStateStore, ProjectKeeper, ShutdownIntent, ShutdownIntentStore
+from ccbd.keeper_runtime.failure_policy import (
+    KEEPER_RESTART_SUPPRESSED_PREFIX,
+    KEEPER_START_FAILURE_SUPPRESS_AFTER,
+)
 from ccbd.models import CcbdLease, LeaseHealth, LeaseInspection, MountState
 from ccbd.reload_handoff import ReloadHandoff, ReloadHandoffStore, reload_handoff_allows_signature_mismatch
 from ccbd.services.lifecycle import CcbdLifecycleStore, build_lifecycle
@@ -240,6 +245,220 @@ def test_project_keeper_restarts_stale_unreachable_daemon(tmp_path: Path, monkey
     assert len(spawn_calls) == 1
     assert next_state.restart_count == 1
     assert next_state.last_failure_reason is None
+
+
+def test_project_keeper_suppresses_restart_on_resource_exhaustion(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-resource-exhausted'
+    ctx = _context(project_root, 'agent1:codex\n')
+    keeper = ProjectKeeper(
+        project_root,
+        pid=890,
+        spawn_ccbd_process_fn=lambda **kwargs: (_ for _ in ()).throw(
+            OSError(errno.EAGAIN, 'Resource temporarily unavailable')
+        ),
+    )
+    keeper._ownership_guard = SimpleNamespace(
+        inspect=lambda: _inspection(
+            ctx,
+            health=LeaseHealth.MISSING,
+            socket_connectable=False,
+            pid_alive=False,
+            heartbeat_fresh=False,
+            reason='lease_missing',
+        )
+    )
+    CcbdLifecycleStore(keeper.paths).save(
+        build_lifecycle(
+            project_id=ctx.project.project_id,
+            occurred_at='2026-04-02T00:00:00Z',
+            desired_state='running',
+            phase='unmounted',
+            generation=0,
+            keeper_pid=890,
+            socket_path=ctx.paths.ccbd_socket_path,
+        )
+    )
+    state = KeeperState(
+        project_id=ctx.project.project_id,
+        keeper_pid=890,
+        started_at='2026-04-02T00:00:00Z',
+        last_check_at='2026-04-02T00:00:00Z',
+        state='running',
+    )
+
+    next_state = keeper._reconcile_once(state=state, start_timeout_s=0.1)
+    lifecycle = CcbdLifecycleStore(keeper.paths).load()
+
+    assert next_state.state == 'failed'
+    assert next_state.restart_count == 1
+    assert next_state.last_failure_reason is not None
+    assert next_state.last_failure_reason.startswith(
+        f'{KEEPER_RESTART_SUPPRESSED_PREFIX}:resource_exhausted:'
+    )
+    assert lifecycle is not None
+    assert lifecycle.phase == 'failed'
+    assert lifecycle.desired_state == 'stopped'
+    assert lifecycle.last_failure_reason == next_state.last_failure_reason
+
+
+def test_project_keeper_suppresses_restart_after_repeated_start_failures(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-start-crash-loop'
+    ctx = _context(project_root, 'agent1:codex\n')
+    keeper = ProjectKeeper(
+        project_root,
+        pid=891,
+        spawn_ccbd_process_fn=lambda **kwargs: (_ for _ in ()).throw(RuntimeError('boot loop')),
+    )
+    keeper._ownership_guard = SimpleNamespace(
+        inspect=lambda: _inspection(
+            ctx,
+            health=LeaseHealth.MISSING,
+            socket_connectable=False,
+            pid_alive=False,
+            heartbeat_fresh=False,
+            reason='lease_missing',
+        )
+    )
+    CcbdLifecycleStore(keeper.paths).save(
+        build_lifecycle(
+            project_id=ctx.project.project_id,
+            occurred_at='2026-04-02T00:00:00Z',
+            desired_state='running',
+            phase='unmounted',
+            generation=0,
+            keeper_pid=891,
+            socket_path=ctx.paths.ccbd_socket_path,
+        )
+    )
+    state = KeeperState(
+        project_id=ctx.project.project_id,
+        keeper_pid=891,
+        started_at='2026-04-02T00:00:00Z',
+        last_check_at='2026-04-02T00:00:00Z',
+        state='running',
+        restart_count=KEEPER_START_FAILURE_SUPPRESS_AFTER - 1,
+    )
+
+    next_state = keeper._reconcile_once(state=state, start_timeout_s=0.1)
+    lifecycle = CcbdLifecycleStore(keeper.paths).load()
+
+    assert next_state.state == 'failed'
+    assert next_state.restart_count == KEEPER_START_FAILURE_SUPPRESS_AFTER
+    assert next_state.last_failure_reason is not None
+    assert next_state.last_failure_reason.startswith(
+        f'{KEEPER_RESTART_SUPPRESSED_PREFIX}:max_start_failures:'
+    )
+    assert lifecycle is not None
+    assert lifecycle.phase == 'failed'
+    assert lifecycle.desired_state == 'stopped'
+    assert lifecycle.last_failure_reason == next_state.last_failure_reason
+
+
+def test_project_keeper_suppression_records_lifecycle_before_starting_stage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo-config-crash-loop'
+    ctx = _context(project_root, 'agent1:codex\n')
+    keeper = ProjectKeeper(
+        project_root,
+        pid=892,
+        spawn_ccbd_process_fn=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError('spawn should not run')
+        ),
+    )
+    keeper._ownership_guard = SimpleNamespace(
+        inspect=lambda: _inspection(
+            ctx,
+            health=LeaseHealth.MISSING,
+            socket_connectable=False,
+            pid_alive=False,
+            heartbeat_fresh=False,
+            reason='lease_missing',
+        )
+    )
+    CcbdLifecycleStore(keeper.paths).save(
+        build_lifecycle(
+            project_id=ctx.project.project_id,
+            occurred_at='2026-04-02T00:00:00Z',
+            desired_state='running',
+            phase='unmounted',
+            generation=0,
+            keeper_pid=892,
+            socket_path=ctx.paths.ccbd_socket_path,
+        )
+    )
+    monkeypatch.setattr(
+        keeper_module,
+        'load_project_config',
+        lambda _root: (_ for _ in ()).throw(RuntimeError('config boom')),
+    )
+    state = KeeperState(
+        project_id=ctx.project.project_id,
+        keeper_pid=892,
+        started_at='2026-04-02T00:00:00Z',
+        last_check_at='2026-04-02T00:00:00Z',
+        state='running',
+        restart_count=KEEPER_START_FAILURE_SUPPRESS_AFTER - 1,
+    )
+
+    next_state = keeper._reconcile_once(state=state, start_timeout_s=0.1)
+    lifecycle = CcbdLifecycleStore(keeper.paths).load()
+
+    assert next_state.state == 'failed'
+    assert next_state.last_failure_reason is not None
+    assert next_state.last_failure_reason.startswith(
+        f'{KEEPER_RESTART_SUPPRESSED_PREFIX}:max_start_failures:'
+    )
+    assert lifecycle is not None
+    assert lifecycle.phase == 'failed'
+    assert lifecycle.desired_state == 'stopped'
+    assert lifecycle.last_failure_reason == next_state.last_failure_reason
+
+
+def test_project_keeper_run_forever_exits_after_restart_suppression(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-resource-exhausted-loop'
+    ctx = _context(project_root, 'agent1:codex\n')
+    keeper = ProjectKeeper(
+        project_root,
+        pid=892,
+        sleep_fn=lambda _seconds: (_ for _ in ()).throw(AssertionError('keeper should exit')),
+        spawn_ccbd_process_fn=lambda **kwargs: (_ for _ in ()).throw(
+            OSError(errno.EAGAIN, 'Resource temporarily unavailable')
+        ),
+    )
+    keeper._ownership_guard = SimpleNamespace(
+        inspect=lambda: _inspection(
+            ctx,
+            health=LeaseHealth.MISSING,
+            socket_connectable=False,
+            pid_alive=False,
+            heartbeat_fresh=False,
+            reason='lease_missing',
+        )
+    )
+    CcbdLifecycleStore(keeper.paths).save(
+        build_lifecycle(
+            project_id=ctx.project.project_id,
+            occurred_at='2026-04-02T00:00:00Z',
+            desired_state='running',
+            phase='unmounted',
+            generation=0,
+            keeper_pid=892,
+            socket_path=ctx.paths.ccbd_socket_path,
+        )
+    )
+
+    code = keeper.run_forever(poll_interval=0.1, start_timeout_s=0.1)
+    state = KeeperStateStore(keeper.paths).load()
+
+    assert code == 0
+    assert state is not None
+    assert state.state == 'failed'
+    assert state.last_failure_reason is not None
+    assert state.last_failure_reason.startswith(
+        f'{KEEPER_RESTART_SUPPRESSED_PREFIX}:resource_exhausted:'
+    )
 
 
 def test_project_keeper_preserves_namespace_epoch_when_confirming_mounted_daemon(tmp_path: Path, monkeypatch) -> None:

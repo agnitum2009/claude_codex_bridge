@@ -11,6 +11,7 @@ from agents.config_loader import load_project_config
 from ccbd.daemon_process import spawn_ccbd_process
 from ccbd.keeper_runtime.app_state import KeeperAppState, KeeperAppStateMixin
 from ccbd.keeper_runtime import KeeperState, KeeperStateStore, ShutdownIntent, ShutdownIntentStore, keeper_state_is_running
+from ccbd.keeper_runtime.failure_policy import exception_summary, keeper_start_failure_suppression_reason
 from ccbd.keeper_runtime.loop import cleanup_transient_keeper_files, daemon_matches_project_config, reconcile_once, request_shutdown, run_forever
 from ccbd.keeper_runtime.state import compute_project_id
 from ccbd.keeper_runtime.support import reap_child_processes, try_acquire_keeper_lock
@@ -141,21 +142,30 @@ def _spawn_daemon(app: ProjectKeeper, *, state: KeeperState, start_timeout_s: fl
         )
         return state.with_success(occurred_at=now)
     except Exception as exc:
-        if 'starting' in locals():
+        reason = exception_summary(exc)
+        suppression_reason = keeper_start_failure_suppression_reason(state, exc)
+        failure_reason = suppression_reason or reason
+        desired_state = 'stopped' if suppression_reason is not None else 'running'
+        failure_base = starting if 'starting' in locals() else lifecycle
+        if failure_base is not None:
             app._lifecycle_store.save(
-                starting.with_phase(
+                failure_base.with_phase(
                     'failed',
                     occurred_at=app.clock(),
+                    desired_state=desired_state,
                     owner_pid=None,
                     owner_daemon_instance_id=None,
                     socket_inode=None,
                     startup_stage='spawn_failed',
                     last_progress_at=app.clock(),
                     startup_deadline_at=None,
-                    last_failure_reason=str(exc),
+                    last_failure_reason=failure_reason,
                 )
             )
-        return state.with_failure(occurred_at=now, reason=str(exc))
+        failed_state = state.with_failure(occurred_at=now, reason=failure_reason)
+        if suppression_reason is not None:
+            failed_state = failed_state.with_state('failed', occurred_at=now)
+        return failed_state
 
 
 def _project_definition_missing(app: ProjectKeeper) -> bool:

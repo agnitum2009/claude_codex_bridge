@@ -625,6 +625,12 @@ Target architecture:
 - config-check or live-ping timeout against a nominally mounted daemon is degraded observation only unless lifecycle state or ownership proof explicitly marks the generation failed
 - keeper config-check and graceful-shutdown probes must use the shared short `rpc_probe_timeout_s`; they must not use private shorter literals that make mounted generations look failed during normal startup load
 - if takeover does occur, any superseded daemon that wakes up again must fail its next lease refresh and exit rather than continuing to serve against stale authority
+- keeper restart is a keepalive mechanism, not an unbounded crash-loop generator:
+  - resource-pressure startup failures such as fork/process exhaustion, memory exhaustion, or file-descriptor exhaustion must suppress automatic restart immediately
+  - repeated `ccbd` startup transaction failures must suppress automatic restart after a bounded attempt count
+  - suppression must record lifecycle `phase=failed`, `desired_state=stopped`, and a `last_failure_reason` prefixed with `keeper_restart_suppressed`
+  - the keeper process must then exit instead of polling forever; a later explicit user `ccb` command may clear shutdown intent, express `desired_state=running`, and start a fresh keeper
+  - suppression must not apply to normal mounted-daemon observation failures where the generation is still live and heartbeat-fresh; those remain degraded observations, not replacement authority
 
 If keeper is absent, the system can only provide "restart on next `ccb` command", which is weaker than the target contract.
 
@@ -864,6 +870,11 @@ Minimum content:
 - `restart_count`
 - optional `last_restart_at`
 - optional `last_failure_reason`
+
+When automatic daemon restart is suppressed, `state` must become `failed` and
+`last_failure_reason` must use the `keeper_restart_suppressed:*` prefix. This is
+keeper keepalive state only; backend authority remains in lifecycle and lease
+records.
 
 ### 7.7 Shutdown Intent
 
