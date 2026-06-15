@@ -31,6 +31,9 @@ authority for the feature.
   second-phase plan for making the managed Neovim profile useful and
   diagnosable across Linux, macOS, and WSL, including folders, Markdown,
   images, clipboard, and opener behavior.
+- [topics/rich-terminal-workbench-profile.md](topics/rich-terminal-workbench-profile.md):
+  optional recommended WezTerm/Yazi/LazyVim workbench profile with safe and
+  rich media tiers for Markdown, PDF, image, and video preview.
 - [history/neovim-local-plugin-lab-2026-06-13.md](history/neovim-local-plugin-lab-2026-06-13.md):
   isolated local Linux/tmux plugin lab for folder, Markdown, image, parser,
   browser-preview, opener, and clipboard capability checks.
@@ -38,6 +41,19 @@ authority for the feature.
   landed Linux/tmux implementation slice for parser runtimepath preservation,
   read-only doctor capabilities, Snacks folder defaults, guarded Markdown, and
   Treesitter no-auto-install policy.
+- [history/neovim-open-fallback-slice-2026-06-14.md](history/neovim-open-fallback-slice-2026-06-14.md):
+  landed conservative OS-integration slice for external open/reveal commands,
+  WSL mounted-drive diagnostics, and Linux/tmux source-wrapper validation.
+- [history/workbench-bundle-slice-2026-06-15.md](history/workbench-bundle-slice-2026-06-15.md):
+  landed first CCB-owned workbench bundle slice for WezTerm/Yazi/LazyVim and
+  Markdown/PDF/video helpers, with isolated profiles, manifest, lifecycle
+  commands, and Linux/tmux source-wrapper validation.
+- [history/rich-layout-alias-slice-2026-06-15.md](history/rich-layout-alias-slice-2026-06-15.md):
+  landed `rich` as a reserved layout alias that can be mounted in `[windows]`
+  like provider panes while remaining outside agent communication/runtime.
+- [history/rich-update-entry-slice-2026-06-15.md](history/rich-update-entry-slice-2026-06-15.md):
+  landed `ccb update rich` as the single rich install/update entry, removed
+  the `rich-install` alias, and removed standalone public Neovim tool routes.
 - [topics/test-matrix.md](topics/test-matrix.md): automatic and manual tests,
   including `test_ccb2` validation.
 - [decisions/001-tool-windows-are-not-agents.md](decisions/001-tool-windows-are-not-agents.md):
@@ -47,6 +63,12 @@ authority for the feature.
 - [decisions/003-neovim-enhancement-defaults.md](decisions/003-neovim-enhancement-defaults.md):
   decision record for capability-gated Neovim folder, Markdown, image,
   browser-preview, clipboard, and plugin-pinning defaults.
+- [decisions/004-optional-rich-terminal-workbench.md](decisions/004-optional-rich-terminal-workbench.md):
+  decision record for treating the rich terminal workbench as an optional
+  recommended profile rather than a hard CCB dependency.
+- [decisions/005-rich-owns-neovim.md](decisions/005-rich-owns-neovim.md):
+  decision record for moving Neovim/LazyVim out of the normal CCB tool surface
+  and into the optional rich bundle.
 
 ## Related Sources
 
@@ -68,9 +90,10 @@ In scope:
 - Project view and sidebar rendering as one window row with no child agent row.
 - Explicit `ccb reload` add/remove behavior for idle managed tool windows.
 - Project/session-scoped tmux identity and UI settings.
-- `ccb update` / `install.sh install` interactive provisioning for
-  CCB-managed Neovim and LazyVim, with non-interactive skip,
-  `CCB_INSTALL_NEOVIM=0` opt-out, and `CCB_INSTALL_NEOVIM=1` fail-hard mode.
+- A single optional rich workbench lifecycle. Normal `ccb install` and
+  `ccb update` must not install or refresh Neovim/LazyVim; rich provisioning is
+  requested explicitly through the rich command surface such as
+  `ccb update rich`.
 - tmux compatibility settings applied at CCB session/window scope, not through
   user-global tmux config edits.
 - Tests proving tool windows do not become agents or provider runtime records.

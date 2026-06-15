@@ -11,7 +11,7 @@ import tarfile
 
 from release_artifacts import release_artifact_name
 from cli.roles_runtime.commands import cmd_roles
-from cli.tools_runtime.neovim import provision_neovim
+from cli.tools_runtime.workbench import print_workbench_status, update_rich_workbench
 from rolepacks.sources import role_catalog_status
 
 from ..install import (
@@ -43,6 +43,8 @@ def cmd_update(args, *, script_root: Path) -> int:
     if not supported:
         print(reason)
         return 1
+    if _update_target_is_rich(args):
+        return _update_rich_bundle()
     source_repo_install = is_source_repo_root(script_root)
     install_dir = resolve_managed_install_dir(script_root=script_root)
 
@@ -158,7 +160,6 @@ def _update_via_tarball(tmp_base: Path, *, install_dir: Path, target_version: st
             extra_env={
                 "CODEX_INSTALL_PREFIX": str(install_dir),
                 "CCB_CLEAN_INSTALL": "1",
-                "CCB_INSTALL_NEOVIM": "0",
                 "CCB_INSTALL_ROLES": "0",
             },
         )
@@ -212,7 +213,7 @@ def _run_post_update_with_new_entrypoint(
             print(f"❌ Required post-update provisioning timed out after {_post_update_timeout_seconds():g}s.")
             return False
         print(f"⚠️  Post-update provisioning timed out after {_post_update_timeout_seconds():g}s.")
-        print("   Core update completed; retry optional provisioning with `ccb roles list` or `ccb tools install neovim`.")
+        print("   Core update completed; retry optional provisioning with `ccb roles list`.")
         return True
     except Exception as exc:
         if _post_update_failure_is_required():
@@ -225,7 +226,7 @@ def _run_post_update_with_new_entrypoint(
             print(f"❌ Required post-update provisioning exited with code {result.returncode}.")
             return False
         print(f"⚠️  Post-update provisioning exited with code {result.returncode}.")
-        print("   Core update completed; retry optional provisioning with `ccb roles list` or `ccb tools install neovim`.")
+        print("   Core update completed; retry optional provisioning with `ccb roles list`.")
     return True
 
 
@@ -320,7 +321,6 @@ def _post_update_failure_is_required() -> bool:
     return (
         _truthy_env("CCB_POST_UPDATE_REQUIRED")
         or _truthy_env("CCB_INSTALL_ROLES")
-        or _truthy_env("CCB_INSTALL_NEOVIM")
     )
 
 
@@ -340,11 +340,6 @@ def _run_post_update_provisioning(*, install_dir: Path) -> int:
     except Exception as exc:
         failures += 1
         print(f"⚠️  Role Pack post-update provisioning failed: {type(exc).__name__}: {exc}")
-    try:
-        _provision_neovim_after_update()
-    except Exception as exc:
-        failures += 1
-        print(f"⚠️  Neovim post-update provisioning failed: {type(exc).__name__}: {exc}")
     return 1 if failures else 0
 
 
@@ -355,28 +350,6 @@ def _print_update_outcome(old_info: dict[str, object], new_info: dict[str, objec
         print(f"✅ Updated: {old_str} → {new_str}")
     else:
         print(f"✅ Already up to date: {new_str}")
-
-
-def _provision_neovim_after_update() -> None:
-    choice = _neovim_install_choice()
-    if choice == 'env-skip':
-        print('ℹ️  Neovim tool provisioning skipped by CCB_INSTALL_NEOVIM=0')
-        return
-    required = choice == 'required'
-    try:
-        result = provision_neovim(required=required)
-    except Exception as exc:
-        if required:
-            raise
-        print(f"⚠️  Neovim tool not ready: {type(exc).__name__}: {exc}")
-        return
-    status = str(result.get('status') or '')
-    if status == 'ok':
-        print(f"✅ Neovim tool ready: {result.get('wrapper')}")
-    elif required:
-        raise RuntimeError(str(result.get('reason') or 'Neovim tool provisioning failed'))
-    else:
-        print(f"⚠️  Neovim tool not ready: {result.get('reason') or status}")
 
 
 def _update_builtin_roles_after_update(*, install_dir: Path) -> int:
@@ -514,17 +487,6 @@ def _roles_update_choice() -> str:
     return 'accepted'
 
 
-def _neovim_install_choice() -> str:
-    requested = str(os.environ.get('CCB_INSTALL_NEOVIM') or '').strip().lower()
-    if requested in {'0', 'false', 'off', 'no'}:
-        return 'env-skip'
-    if _truthy_env("CCB_POST_UPDATE_REQUIRED"):
-        return 'required'
-    if requested in {'1', 'true', 'on', 'yes'}:
-        return 'required'
-    return 'optional'
-
-
 def _release_artifact_url(version: str, *, artifact_name: str) -> str:
     return f"{REPO_URL}/releases/download/v{version}/{artifact_name}"
 
@@ -540,6 +502,17 @@ def _release_extract_dir_name(artifact_name: str) -> str:
     if text.endswith(".tgz"):
         return text[:-4]
     return Path(text).stem
+
+
+def _update_target_is_rich(args) -> bool:
+    return str(getattr(args, "target", "") or "").strip().lower() == "rich"
+
+
+def _update_rich_bundle() -> int:
+    print("🔧 Installing/updating rich workbench bundle...")
+    result = update_rich_workbench()
+    print_workbench_status(result)
+    return 0 if result.get("status") in {"ok", "degraded"} else 1
 
 
 __all__ = ['POST_UPDATE_COMMAND', 'cmd_update', 'maybe_handle_post_update_command']

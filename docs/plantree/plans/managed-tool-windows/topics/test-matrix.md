@@ -52,8 +52,9 @@ Neovim provisioning:
   headless health check passes;
 - fake downloader verifies checksum before activation;
 - partial download keeps the previous binary active;
-- `CCB_INSTALL_NEOVIM=0` skips install/update provisioning;
-- `CCB_INSTALL_NEOVIM=1` fails install/update on provisioning failure;
+- ordinary install/update skips Neovim/LazyVim provisioning;
+- `ccb update rich` installs/updates the rich bundle and its internal
+  LazyVim/Neovim component;
 - `auto` mode warns and continues when the network is unavailable;
 - `ccb-nvim` wrapper sets isolated XDG paths and does not touch
   `~/.config/nvim`;
@@ -89,7 +90,7 @@ tmux compatibility:
    ```
 
 3. Run `ccb tools doctor neovim`; record binary/profile/tmux readiness.
-4. Run `ccb tools install neovim` if doctor reports missing.
+4. Run `ccb update rich` if the rich bundle reports missing.
 5. Run `ccb reload --dry-run`; verify `add_tool_window`.
 6. Run `ccb reload`; verify:
    - a new tmux window appears;

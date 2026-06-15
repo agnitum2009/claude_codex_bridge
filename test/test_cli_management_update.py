@@ -26,7 +26,6 @@ class _PipeOutput(StringIO):
 def _clear_post_update_env(monkeypatch) -> None:
     for name in (
         "CCB_INSTALL_ROLES",
-        "CCB_INSTALL_NEOVIM",
         "CCB_POST_UPDATE_REQUIRED",
         "CCB_POST_UPDATE_TIMEOUT_SECONDS",
         "CCB_ENTRYPOINT_SMOKE_TIMEOUT_SECONDS",
@@ -195,11 +194,6 @@ def test_update_via_tarball_uses_staged_unix_installer(monkeypatch, tmp_path: Pa
     )
     monkeypatch.setattr(
         update_runtime,
-        "_provision_neovim_after_update",
-        lambda: (_ for _ in ()).throw(AssertionError("old updater must not provision neovim directly")),
-    )
-    monkeypatch.setattr(
-        update_runtime,
         "_run_post_update_with_new_entrypoint",
         lambda **kwargs: post_update_calls.append(dict(kwargs)) or True,
     )
@@ -218,7 +212,6 @@ def test_update_via_tarball_uses_staged_unix_installer(monkeypatch, tmp_path: Pa
     assert calls["extra_env"] == {
         "CODEX_INSTALL_PREFIX": str(install_dir),
         "CCB_CLEAN_INSTALL": "1",
-        "CCB_INSTALL_NEOVIM": "0",
         "CCB_INSTALL_ROLES": "0",
     }
     assert post_update_calls == [
@@ -385,7 +378,7 @@ def test_post_update_delegation_timeout_warns_without_failing_core_update(monkey
 def test_post_update_required_failure_fails_update(monkeypatch, tmp_path: Path, capsys) -> None:
     _clear_post_update_env(monkeypatch)
     monkeypatch.delenv("CODEX_BIN_DIR", raising=False)
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "1")
+    monkeypatch.setenv("CCB_POST_UPDATE_REQUIRED", "1")
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     ccb_entry = install_dir / "ccb"
@@ -423,7 +416,6 @@ def test_post_update_required_roles_catalog_unavailable_returns_failure(
         "role_catalog_status",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("catalog down")),
     )
-    monkeypatch.setattr(update_runtime, "_provision_neovim_after_update", lambda: None)
     monkeypatch.setattr(update_runtime, "set_tmux_ui_active", lambda active: None)
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
@@ -437,7 +429,6 @@ def test_post_update_refreshes_tmux_ui_without_affecting_provisioning(monkeypatc
     _clear_post_update_env(monkeypatch)
     calls: list[bool] = []
     monkeypatch.setenv("CCB_INSTALL_ROLES", "0")
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "0")
     monkeypatch.setattr(update_runtime, "set_tmux_ui_active", lambda active: calls.append(active))
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
@@ -451,7 +442,6 @@ def test_post_update_refreshes_tmux_ui_without_affecting_provisioning(monkeypatc
 def test_post_update_tmux_ui_refresh_failure_is_non_blocking(monkeypatch, tmp_path: Path, capsys) -> None:
     _clear_post_update_env(monkeypatch)
     monkeypatch.setenv("CCB_INSTALL_ROLES", "0")
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "0")
     monkeypatch.setattr(
         update_runtime,
         "set_tmux_ui_active",
@@ -478,7 +468,6 @@ def test_post_update_required_installed_role_update_failure_returns_failure(monk
     )
     monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
     monkeypatch.setattr(update_runtime, "cmd_roles", lambda *_args, **_kwargs: 42)
-    monkeypatch.setattr(update_runtime, "_provision_neovim_after_update", lambda: None)
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
 
@@ -530,7 +519,6 @@ def test_post_update_does_not_prompt_for_new_non_default_role_install(
         return 0
 
     monkeypatch.setattr(update_runtime, "cmd_roles", _fake_cmd_roles)
-    monkeypatch.setattr(update_runtime, "_provision_neovim_after_update", lambda: None)
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
 
@@ -561,7 +549,6 @@ def test_post_update_required_default_role_install_failure_returns_failure(
     )
     monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
     monkeypatch.setattr(update_runtime, "cmd_roles", lambda *_args, **_kwargs: 42)
-    monkeypatch.setattr(update_runtime, "_provision_neovim_after_update", lambda: None)
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
 
@@ -580,11 +567,6 @@ def test_post_update_internal_command_runs_new_process_provisioning(monkeypatch,
         "_update_builtin_roles_after_update",
         lambda **kwargs: calls.append({"roles": dict(kwargs)}),
     )
-    monkeypatch.setattr(
-        update_runtime,
-        "_provision_neovim_after_update",
-        lambda: calls.append({"neovim": True}),
-    )
 
     code = update_runtime.maybe_handle_post_update_command(
         [update_runtime.POST_UPDATE_COMMAND, "--from-version", "6.0.7", "--to-version", "6.0.8"],
@@ -592,7 +574,7 @@ def test_post_update_internal_command_runs_new_process_provisioning(monkeypatch,
     )
 
     assert code == 0
-    assert calls == [{"roles": {"install_dir": install_dir}}, {"neovim": True}]
+    assert calls == [{"roles": {"install_dir": install_dir}}]
 
 
 def test_entrypoint_routes_internal_post_update_command(monkeypatch, tmp_path: Path) -> None:
@@ -832,158 +814,47 @@ def test_update_roles_noninteractive_defaults_without_prompt(monkeypatch, tmp_pa
     assert "agentroles.new v0.1.0" in stdout.getvalue()
 
 
-def test_update_neovim_defaults_without_prompt(monkeypatch, capsys) -> None:
-    calls: list[dict[str, object]] = []
+def test_cmd_update_rich_updates_workbench_without_release_lookup(monkeypatch, tmp_path: Path, capsys) -> None:
+    calls: list[str] = []
+    status = {"status": "ok", "enabled": True, "rich_update_status": "ok"}
 
-    class _TtyInput:
-        def isatty(self) -> bool:
-            return True
-
-        def readline(self) -> str:
-            raise AssertionError("post-update neovim provisioning should not prompt")
-
-    monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
-    monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
-    stdout = _TtyOutput()
-    monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
+    monkeypatch.setattr(update_runtime.platform, "system", lambda: "Linux")
     monkeypatch.setattr(
         update_runtime,
-        "provision_neovim",
-        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
+        "get_available_versions",
+        lambda: (_ for _ in ()).throw(AssertionError("rich update must not resolve CCB releases")),
     )
+    monkeypatch.setattr(update_runtime, "update_rich_workbench", lambda: calls.append("update") or status)
+    printed: list[dict[str, object]] = []
+    monkeypatch.setattr(update_runtime, "print_workbench_status", lambda result: printed.append(dict(result)))
 
-    update_runtime._provision_neovim_after_update()
+    code = update_runtime.cmd_update(SimpleNamespace(target="rich"), script_root=tmp_path / "script-root")
 
-    assert calls == [{"required": False}]
-    assert "Install/refresh the default Neovim + LazyVim tool window now?" not in stdout.getvalue()
-    assert "Neovim tool ready" in stdout.getvalue()
-
-
-def test_post_update_required_env_makes_neovim_required_without_prompt(monkeypatch) -> None:
-    _clear_post_update_env(monkeypatch)
-    monkeypatch.setenv("CCB_POST_UPDATE_REQUIRED", "1")
-
-    class _TtyInput:
-        def isatty(self) -> bool:
-            return True
-
-        def readline(self) -> str:
-            raise AssertionError("required post-update neovim should not prompt")
-
-    monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
-    monkeypatch.setattr(update_runtime.sys, "stdout", _TtyOutput())
-
-    assert update_runtime._neovim_install_choice() == "required"
+    captured = capsys.readouterr()
+    assert code == 0
+    assert calls == ["update"]
+    assert printed == [status]
+    assert "Installing/updating rich workbench bundle" in captured.out
 
 
-def test_update_neovim_blank_input_still_provisions(monkeypatch, capsys) -> None:
-    calls: list[dict[str, object]] = []
+def test_cmd_update_rich_allows_degraded_workbench_status(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(update_runtime.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(update_runtime, "update_rich_workbench", lambda: {"status": "degraded", "enabled": True})
+    monkeypatch.setattr(update_runtime, "print_workbench_status", lambda result: None)
 
-    class _TtyInput:
-        def isatty(self) -> bool:
-            return True
+    code = update_runtime.cmd_update(SimpleNamespace(target="rich"), script_root=tmp_path / "script-root")
 
-        def readline(self) -> str:
-            raise AssertionError("post-update neovim provisioning should not prompt")
-
-    monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
-    monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
-    stdout = _TtyOutput()
-    monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
-    )
-
-    update_runtime._provision_neovim_after_update()
-
-    assert calls == [{"required": False}]
-    assert "Run `ccb tools install neovim` later" not in stdout.getvalue()
+    assert code == 0
 
 
-def test_update_neovim_noninteractive_defaults_without_prompt(monkeypatch, capsys) -> None:
-    calls: list[dict[str, object]] = []
+def test_cmd_update_rich_fails_on_failed_workbench_status(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(update_runtime.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(update_runtime, "update_rich_workbench", lambda: {"status": "failed"})
+    monkeypatch.setattr(update_runtime, "print_workbench_status", lambda result: None)
 
-    class _PipeInput:
-        def isatty(self) -> bool:
-            return False
+    code = update_runtime.cmd_update(SimpleNamespace(target="rich"), script_root=tmp_path / "script-root")
 
-    monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
-    monkeypatch.setattr(update_runtime.sys, "stdin", _PipeInput())
-    stdout = _PipeOutput()
-    monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
-    )
-
-    update_runtime._provision_neovim_after_update()
-
-    assert calls == [{"required": False}]
-    assert "non-interactive update" not in stdout.getvalue()
-
-
-def test_update_neovim_env_forces_required_install(monkeypatch) -> None:
-    calls: list[dict[str, object]] = []
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "1")
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
-    )
-
-    update_runtime._provision_neovim_after_update()
-
-    assert calls == [{"required": True}]
-
-
-def test_update_neovim_env_skip_does_not_provision(monkeypatch) -> None:
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "0")
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not provision")),
-    )
-
-    update_runtime._provision_neovim_after_update()
-
-
-def test_update_neovim_optional_failure_is_soft(monkeypatch) -> None:
-    class _TtyInput:
-        def isatty(self) -> bool:
-            return True
-
-        def readline(self) -> str:
-            return "yes\n"
-
-    monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
-    monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
-    stdout = _TtyOutput()
-    monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("network unavailable")),
-    )
-
-    update_runtime._provision_neovim_after_update()
-
-    assert "Neovim tool not ready" in stdout.getvalue()
-    assert "network unavailable" in stdout.getvalue()
-
-
-def test_update_neovim_required_failure_is_hard(monkeypatch) -> None:
-    monkeypatch.setenv("CCB_INSTALL_NEOVIM", "1")
-    monkeypatch.setattr(
-        update_runtime,
-        "provision_neovim",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("checksum mismatch")),
-    )
-
-    with pytest.raises(RuntimeError, match="checksum mismatch"):
-        update_runtime._provision_neovim_after_update()
+    assert code == 1
 
 
 def test_update_via_tarball_uses_macos_release_artifact(monkeypatch, tmp_path: Path) -> None:

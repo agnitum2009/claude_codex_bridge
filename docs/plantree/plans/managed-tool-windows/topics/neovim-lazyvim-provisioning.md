@@ -2,6 +2,20 @@
 
 Date: 2026-05-30
 
+## Status
+
+Superseded for the normal CCB product surface. Neovim/LazyVim is now owned by
+the optional rich bundle. See
+[../decisions/005-rich-owns-neovim.md](../decisions/005-rich-owns-neovim.md).
+
+This file remains as historical implementation context for the internal rich
+LazyVim component.
+
+The provisioning contract below is superseded for public CLI behavior. Do not
+restore `ccb tools doctor/install/update neovim`, `CCB_INSTALL_NEOVIM`, or
+install/update hooks for ordinary CCB. Current public provisioning is
+`ccb update rich`; rich may continue to reuse the internal Neovim component.
+
 ## Goal
 
 `ccb update` and `install.sh install` should be able to prepare a CCB-managed

@@ -2,6 +2,13 @@
 
 Date: 2026-06-12
 
+## Status
+
+Superseded as a standalone normal CCB workstream. Neovim/LazyVim behavior is now
+implemented and planned as an internal component of the optional rich bundle.
+See [../decisions/005-rich-owns-neovim.md](../decisions/005-rich-owns-neovim.md)
+and [rich-terminal-workbench-profile.md](rich-terminal-workbench-profile.md).
+
 Related:
 
 - [../roadmap.md](../roadmap.md)
@@ -421,6 +428,35 @@ Landed in the first implementation slice:
   and PNG opening degrade cleanly without parser errors or parser download
   output.
 
+## Landed Slice: 2026-06-14
+
+Evidence:
+
+- [../history/neovim-open-fallback-slice-2026-06-14.md](../history/neovim-open-fallback-slice-2026-06-14.md)
+
+Landed in the open/fallback implementation slice:
+
+- generated `ccb-open.lua` as a CCB-owned managed profile overlay;
+- registered `CCBOpenCurrent`, `CCBOpenUnderCursor`, `CCBOpenImage`, and
+  `CCBRevealCurrent`;
+- added default keymaps `<leader>co`, `<leader>cO`, `<leader>ci`, and
+  `<leader>cr`;
+- used conservative opener selection for macOS, WSL, and Linux without
+  launching external programs during doctor;
+- added an interactive image-file fallback that tries the system opener when
+  inline terminal image rendering is unavailable;
+- disabled Snacks direct image-file interception on terminals that are not
+  likely to support Kitty/WezTerm/Ghostty graphics, unless
+  `CCB_LAZYVIM_IMAGE_INLINE=1` explicitly opts in;
+- added `wsl_status` / `wsl_reason` doctor output, including mounted-drive
+  performance risk reporting for WSL projects under `/mnt/<drive>`;
+- added a narrow `string.buffer` fallback for Neovim runtimes where Snacks
+  picker expects the module but the runtime does not provide it;
+- Linux/tmux source-wrapper validation confirms the overlay is generated,
+  doctor reports expected capabilities, Markdown opens with render support,
+  PNG opens with CCB opener commands present, and directories open through
+  Snacks picker without the previous Snacks history exit error.
+
 ## Acceptance Criteria
 
 - `ccb tools doctor neovim` explains which advanced surfaces are available,
@@ -463,5 +499,6 @@ Not ready to enable every rich media surface by default. Remaining gates are:
 
 - WSL opener and clipboard fallback order;
 - macOS and WSL manual validation;
+- clipboard policy for Neovim's `clipboard` option versus command-only helpers;
 - final policy for automatic inline image attempts versus explicit commands;
 - Markview fallback behavior when parser readiness is unavailable.

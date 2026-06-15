@@ -31,25 +31,7 @@ def cmd_tools(argv: list[str], *, script_root: Path | None = None, stdout: TextI
     if not argv or argv[0] in {'-h', '--help', 'help'}:
         _print_help(stdout)
         return 0
-    if len(argv) < 2:
-        _print_help(stdout)
-        return 2
-    action, tool = argv[0], argv[1]
-    if tool != 'neovim':
-        print(f'ERROR: unsupported tool: {tool}', file=stderr)
-        return 2
-    if action == 'doctor':
-        status = neovim_status()
-        _print_status(status, stdout)
-        return 0 if status['status'] in {'ok', 'missing'} else 1
-    if action in {'install', 'update'}:
-        required = _install_required()
-        result = provision_neovim(required=required)
-        _print_status(result, stdout)
-        if result['status'] == 'ok':
-            return 0
-        return 1
-    print(f'ERROR: unsupported tools action: {action}', file=stderr)
+    print('ERROR: standalone Neovim tools are no longer supported; use `ccb update rich`.', file=stderr)
     return 2
 
 
@@ -402,6 +384,9 @@ def _write_lazyvim_profile(paths: dict[str, Path]) -> None:
     markdown = plugins / 'ccb-markdown.lua'
     if not markdown.exists() or _is_managed_lazyvim_init(markdown):
         markdown.write_text(_managed_lazyvim_markdown_text(), encoding='utf-8')
+    open_helpers = plugins / 'ccb-open.lua'
+    if not open_helpers.exists() or _is_managed_lazyvim_init(open_helpers):
+        open_helpers.write_text(_managed_lazyvim_open_text(), encoding='utf-8')
     keep = plugins / '.keep'
     if not keep.exists():
         keep.write_text('', encoding='utf-8')
@@ -512,6 +497,62 @@ def _managed_lazyvim_terminal_compat_text() -> str:
         '  end\n'
         'end\n'
         '\n'
+        'local function ccb_terminal_image_candidate()\n'
+        '  if vim.env.CCB_LAZYVIM_IMAGE_INLINE == "1" then return true end\n'
+        '  if vim.env.KITTY_WINDOW_ID then return true end\n'
+        '  local term_program = (vim.env.TERM_PROGRAM or ""):lower()\n'
+        '  if term_program:find("kitty", 1, true) or term_program:find("wezterm", 1, true) or term_program:find("ghostty", 1, true) then\n'
+        '    return vim.env.TMUX == nil\n'
+        '  end\n'
+        '  return false\n'
+        'end\n'
+        '\n'
+        'local function ccb_install_string_buffer_fallback()\n'
+        '  local ok = pcall(require, "string.buffer")\n'
+        '  if ok then return end\n'
+        '  if package.preload["string.buffer"] then return end\n'
+        '  package.preload["string.buffer"] = function()\n'
+        '    local Buffer = {}\n'
+        '    Buffer.__index = Buffer\n'
+        '    Buffer.__len = function(self)\n'
+        '      return #table.concat(self._chunks)\n'
+        '    end\n'
+        '    function Buffer:put(value)\n'
+        '      table.insert(self._chunks, tostring(value or ""))\n'
+        '      return self\n'
+        '    end\n'
+        '    function Buffer:putf(fmt, ...)\n'
+        '      table.insert(self._chunks, string.format(fmt, ...))\n'
+        '      return self\n'
+        '    end\n'
+        '    function Buffer:get()\n'
+        '      return table.concat(self._chunks)\n'
+        '    end\n'
+        '    local function encode(value)\n'
+        '      local payload = value or {}\n'
+        '      if vim.json and vim.json.encode then\n'
+        '        local json_ok, json = pcall(vim.json.encode, payload)\n'
+        '        if json_ok then return json end\n'
+        '      end\n'
+        '      return vim.fn.json_encode(payload)\n'
+        '    end\n'
+        '    local function decode(text)\n'
+        '      if vim.json and vim.json.decode then\n'
+        '        local json_ok, decoded = pcall(vim.json.decode, text or "{}")\n'
+        '        if json_ok and type(decoded) == "table" then return decoded end\n'
+        '      end\n'
+        '      local fn_ok, decoded = pcall(vim.fn.json_decode, text or "{}")\n'
+        '      return fn_ok and type(decoded) == "table" and decoded or {}\n'
+        '    end\n'
+        '    return {\n'
+        '      new = function() return setmetatable({ _chunks = {} }, Buffer) end,\n'
+        '      encode = encode,\n'
+        '      decode = decode,\n'
+        '    }\n'
+        '  end\n'
+        'end\n'
+        'ccb_install_string_buffer_fallback()\n'
+        '\n'
         'return {\n'
         '  {\n'
         '    "LazyVim/LazyVim",\n'
@@ -536,6 +577,14 @@ def _managed_lazyvim_terminal_compat_text() -> str:
         '        force = false,\n'
         '        doc = { enabled = true, inline = true, float = true },\n'
         '      })\n'
+        '      if not ccb_terminal_image_candidate() then\n'
+        '        opts.image.formats = {}\n'
+        '        opts.image.doc = vim.tbl_deep_extend("force", opts.image.doc or {}, {\n'
+        '          enabled = false,\n'
+        '          inline = false,\n'
+        '          float = false,\n'
+        '        })\n'
+        '      end\n'
         '      if icon_style == "glyph" then return opts end\n'
         '      opts.dashboard = opts.dashboard or {}\n'
         '      opts.dashboard.preset = opts.dashboard.preset or {}\n'
@@ -619,6 +668,181 @@ def _managed_lazyvim_markdown_text() -> str:
         '    end,\n'
         '  },\n'
         '}\n'
+    )
+
+
+def _managed_lazyvim_open_text() -> str:
+    return (
+        '-- Managed by CCB. External open and reveal helpers for the isolated LazyVim profile.\n'
+        'local function ccb_is_wsl()\n'
+        '  return vim.env.WSL_DISTRO_NAME ~= nil or vim.env.WSL_INTEROP ~= nil\n'
+        'end\n'
+        '\n'
+        'local function ccb_executable(name)\n'
+        '  return vim.fn.executable(name) == 1\n'
+        'end\n'
+        '\n'
+        'local function ccb_opener()\n'
+        '  if vim.fn.has("mac") == 1 and ccb_executable("open") then\n'
+        '    return { "open" }\n'
+        '  end\n'
+        '  if ccb_is_wsl() then\n'
+        '    for _, candidate in ipairs({ "wslview", "explorer.exe", "xdg-open" }) do\n'
+        '      if ccb_executable(candidate) then return { candidate } end\n'
+        '    end\n'
+        '  end\n'
+        '  for _, candidate in ipairs({ "xdg-open", "gio", "kde-open", "gnome-open" }) do\n'
+        '    if ccb_executable(candidate) then\n'
+        '      if candidate == "gio" then return { "gio", "open" } end\n'
+        '      return { candidate }\n'
+        '    end\n'
+        '  end\n'
+        '  return nil\n'
+        'end\n'
+        '\n'
+        'local function ccb_open(target)\n'
+        '  target = vim.fn.expand(target or "")\n'
+        '  if target == "" then\n'
+        '    vim.notify("No path or URL to open", vim.log.levels.WARN)\n'
+        '    return\n'
+        '  end\n'
+        '  if vim.ui and vim.ui.open then\n'
+        '    local ok = pcall(vim.ui.open, target)\n'
+        '    if ok then return end\n'
+        '  end\n'
+        '  local opener = ccb_opener()\n'
+        '  if not opener then\n'
+        '    vim.notify("No external opener available for " .. target, vim.log.levels.WARN)\n'
+        '    return\n'
+        '  end\n'
+        '  local command = vim.list_extend(vim.deepcopy(opener), { target })\n'
+        '  if vim.system then\n'
+        '    vim.system(command, { detach = true })\n'
+        '  else\n'
+        '    vim.fn.jobstart(command, { detach = true })\n'
+        '  end\n'
+        'end\n'
+        '\n'
+        'local function ccb_current_file()\n'
+        '  local name = vim.api.nvim_buf_get_name(0)\n'
+        '  if name == "" then return "" end\n'
+        '  return vim.fn.fnamemodify(name, ":p")\n'
+        'end\n'
+        '\n'
+        'local image_extensions = {\n'
+        '  png = true,\n'
+        '  jpg = true,\n'
+        '  jpeg = true,\n'
+        '  gif = true,\n'
+        '  webp = true,\n'
+        '  bmp = true,\n'
+        '  tif = true,\n'
+        '  tiff = true,\n'
+        '  avif = true,\n'
+        '  heic = true,\n'
+        '  svg = true,\n'
+        '}\n'
+        '\n'
+        'local function ccb_is_image_file(path)\n'
+        '  local ext = vim.fn.fnamemodify(path or "", ":e"):lower()\n'
+        '  return image_extensions[ext] == true\n'
+        'end\n'
+        '\n'
+        'local function ccb_inline_image_supported()\n'
+        '  local ok_image, image = pcall(require, "snacks.image")\n'
+        '  if not ok_image or type(image) ~= "table" or type(image.supports_terminal) ~= "function" then\n'
+        '    return false\n'
+        '  end\n'
+        '  local ok_supported, supported = pcall(image.supports_terminal)\n'
+        '  return ok_supported and supported == true\n'
+        'end\n'
+        '\n'
+        'local function ccb_open_current_file()\n'
+        '  ccb_open(ccb_current_file())\n'
+        'end\n'
+        '\n'
+        'local function ccb_open_current_image()\n'
+        '  local current = ccb_current_file()\n'
+        '  if current == "" then\n'
+        '    vim.notify("No current image to open", vim.log.levels.WARN)\n'
+        '    return\n'
+        '  end\n'
+        '  ccb_open(current)\n'
+        'end\n'
+        '\n'
+        'local function ccb_open_under_cursor()\n'
+        '  local target = vim.fn.expand("<cfile>")\n'
+        '  if target == "" then target = vim.fn.expand("<cWORD>") end\n'
+        '  ccb_open(target)\n'
+        'end\n'
+        '\n'
+        'local function ccb_reveal_current_file()\n'
+        '  local current = ccb_current_file()\n'
+        '  if current == "" then\n'
+        '    vim.notify("No current file to reveal", vim.log.levels.WARN)\n'
+        '    return\n'
+        '  end\n'
+        '  local dir = vim.fn.fnamemodify(current, ":h")\n'
+        '  local ok_snacks, snacks = pcall(require, "snacks")\n'
+        '  if ok_snacks and snacks.picker and snacks.picker.explorer then\n'
+        '    snacks.picker.explorer({ cwd = dir })\n'
+        '    return\n'
+        '  end\n'
+        '  ccb_open(dir)\n'
+        'end\n'
+        '\n'
+        'local function ccb_prepare_image_buffer(path)\n'
+        '  if not ccb_is_image_file(path) then return end\n'
+        '  vim.bo.modifiable = true\n'
+        '  vim.bo.readonly = false\n'
+        '  vim.api.nvim_buf_set_lines(0, 0, -1, false, {\n'
+        '    "CCB image file",\n'
+        '    "",\n'
+        '    path,\n'
+        '    "",\n'
+        '    "Inline image rendering is not available in this terminal session.",\n'
+        '    "CCB tried to open the file with the system image viewer.",\n'
+        '    "",\n'
+        '    "Commands:",\n'
+        '    "  :CCBOpenImage      open this image externally",\n'
+        '    "  :CCBRevealCurrent  reveal it in the file explorer",\n'
+        '  })\n'
+        '  vim.bo.filetype = "ccbimage"\n'
+        '  vim.bo.buftype = "nofile"\n'
+        '  vim.bo.bufhidden = "wipe"\n'
+        '  vim.bo.swapfile = false\n'
+        '  vim.bo.modified = false\n'
+        '  vim.bo.readonly = true\n'
+        '  vim.bo.modifiable = false\n'
+        'end\n'
+        '\n'
+        'local function ccb_maybe_open_image_buffer(args)\n'
+        '  if #vim.api.nvim_list_uis() == 0 then return end\n'
+        '  local path = vim.api.nvim_buf_get_name(args.buf)\n'
+        '  if path == "" or not ccb_is_image_file(path) then return end\n'
+        '  if ccb_inline_image_supported() then return end\n'
+        '  vim.schedule(function()\n'
+        '    if not vim.api.nvim_buf_is_valid(args.buf) then return end\n'
+        '    vim.api.nvim_set_current_buf(args.buf)\n'
+        '    ccb_prepare_image_buffer(path)\n'
+        '    ccb_open(path)\n'
+        '  end)\n'
+        'end\n'
+        '\n'
+        'vim.api.nvim_create_user_command("CCBOpenCurrent", ccb_open_current_file, {})\n'
+        'vim.api.nvim_create_user_command("CCBOpenUnderCursor", ccb_open_under_cursor, {})\n'
+        'vim.api.nvim_create_user_command("CCBOpenImage", ccb_open_current_image, {})\n'
+        'vim.api.nvim_create_user_command("CCBRevealCurrent", ccb_reveal_current_file, {})\n'
+        'vim.api.nvim_create_autocmd("BufReadPost", {\n'
+        '  group = vim.api.nvim_create_augroup("ccb_image_external_open", { clear = true }),\n'
+        '  callback = ccb_maybe_open_image_buffer,\n'
+        '})\n'
+        'vim.keymap.set("n", "<leader>co", ccb_open_current_file, { desc = "CCB open current file externally" })\n'
+        'vim.keymap.set("n", "<leader>cO", ccb_open_under_cursor, { desc = "CCB open path or URL under cursor" })\n'
+        'vim.keymap.set("n", "<leader>ci", ccb_open_current_image, { desc = "CCB open image externally" })\n'
+        'vim.keymap.set("n", "<leader>cr", ccb_reveal_current_file, { desc = "CCB reveal current file" })\n'
+        '\n'
+        'return {}\n'
     )
 
 
@@ -944,6 +1168,7 @@ def _check_neovim_capabilities(paths: dict[str, Path]) -> dict[str, object]:
 
 def _check_platform_capabilities() -> dict[str, object]:
     return {
+        **_check_wsl_status(),
         **_check_opener_status(),
         **_check_clipboard_status(),
         **_check_image_status(),
@@ -1071,6 +1296,18 @@ def _check_image_status() -> dict[str, object]:
     return result
 
 
+def _check_wsl_status() -> dict[str, object]:
+    if not _is_wsl():
+        return {'wsl_status': 'not_wsl'}
+    cwd = str(Path.cwd())
+    if cwd.startswith('/mnt/'):
+        return {
+            'wsl_status': 'mounted_drive',
+            'wsl_reason': 'current project is under /mnt; Neovim plugin IO may be slower than WSL home storage',
+        }
+    return {'wsl_status': 'ok'}
+
+
 def _tool_status(prefix: str, names: tuple[str, ...]) -> dict[str, object]:
     name, path = _which_first(names)
     if path:
@@ -1168,6 +1405,8 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'clipboard_status',
         'clipboard_tool',
         'clipboard_reason',
+        'wsl_status',
+        'wsl_reason',
         'image_status',
         'image_terminal',
         'image_reason',
@@ -1185,11 +1424,8 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
 
 
 def _print_help(stdout: TextIO) -> None:
-    print('usage: ccb tools <doctor|install|update> neovim', file=stdout)
-
-
-def _install_required() -> bool:
-    return str(os.environ.get('CCB_INSTALL_NEOVIM') or '').strip() == '1'
+    print('Standalone Neovim tools have moved under the rich workbench bundle.', file=stdout)
+    print('usage: ccb update rich', file=stdout)
 
 
 def _lazyvim_profile_enabled() -> bool:

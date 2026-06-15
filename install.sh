@@ -386,7 +386,6 @@ Optional environment variables:
                            auto = enabled for macOS release installs, disabled for source/dev installs
   CCB_INSTALL_TOMLI        Auto-install tomli on Python versions without tomllib (default: 1; set 0 to skip)
   CCB_INSTALL_WATCHDOG     Auto-install optional watchdog dependency (default: 1; set 0 to skip)
-  CCB_INSTALL_NEOVIM       Install default Neovim/LazyVim tool: auto soft (default), 1 required, 0 skip
   CCB_INSTALL_ROLES        Install catalog Role Packs and dependencies: auto soft (default), 1 required, 0 skip
   CCB_ALLOW_ROOT_INSTALL   Set to 1 to explicitly allow a root-owned install
   CCB_ALLOW_TEMP_INSTALL_GLOBAL_BIN Set to 1 to allow a temporary install prefix to write outside its isolated bin/home
@@ -2956,7 +2955,6 @@ install_all() {
   install_settings_permissions
   install_tmux_config
   provision_role_packs
-  provision_neovim_tool
   echo "OK: Installation complete"
   echo "   Executable dir : $BIN_DIR"
   if install_uses_live_source; then
@@ -3042,41 +3040,6 @@ provision_default_role_pack() {
   sed 's/^/   /' "$log_file" 2>/dev/null || true
   rm -f "$log_file"
   return 1
-}
-
-provision_neovim_tool() {
-  local requested="${CCB_INSTALL_NEOVIM:-auto}"
-  if env_value_is_false "$requested"; then
-    echo "INFO: Neovim tool provisioning skipped by CCB_INSTALL_NEOVIM=0"
-    return 0
-  fi
-  local required=0
-  if env_value_is_true "$requested"; then
-    required=1
-  else
-    echo "INFO: Neovim/LazyVim provisioning enabled by default; set CCB_INSTALL_NEOVIM=0 to skip."
-  fi
-  local ccb_entry
-  if install_uses_live_source; then
-    ccb_entry="$(resolve_live_source_root)/ccb"
-  else
-    ccb_entry="$INSTALL_PREFIX/ccb"
-  fi
-  if [[ ! -x "$ccb_entry" ]]; then
-    echo "WARN: Neovim tool provisioning skipped; ccb entrypoint not executable: $ccb_entry"
-    [[ "$required" == "1" ]] && return 1 || return 0
-  fi
-  local log_file
-  log_file="$(mktemp "${TMPDIR:-/tmp}/ccb-neovim-install.XXXXXX")"
-  if CODEX_BIN_DIR="$BIN_DIR" "$ccb_entry" tools install neovim >"$log_file" 2>&1; then
-    rm -f "$log_file"
-    echo "OK: Neovim tool provisioning checked"
-    return 0
-  fi
-  echo "WARN: Neovim tool provisioning failed"
-  sed 's/^/   /' "$log_file" 2>/dev/null || true
-  rm -f "$log_file"
-  [[ "$required" == "1" ]] && return 1 || return 0
 }
 
 uninstall_claude_md_config() {

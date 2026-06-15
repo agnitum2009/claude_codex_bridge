@@ -115,28 +115,28 @@ def test_install_role_pack_provisioning_runs_by_default_without_prompt(tmp_path:
     assert "roles update agentroles.ccb_self" in completed.stdout
 
 
-def test_install_neovim_provisioning_runs_by_default_without_prompt(tmp_path: Path) -> None:
+def test_install_neovim_provisioning_function_is_removed() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "provision_neovim_tool" not in text
+    assert "CCB_INSTALL_NEOVIM" not in text
+    assert "tools install neovim" not in text
+
+
+def test_sourced_install_script_has_no_neovim_provisioning_function(tmp_path: Path) -> None:
     completed = _run_install_snippet(
         tmp_path,
         """
-        CCB_SOURCE_KIND=release
-        mkdir -p "$CODEX_INSTALL_PREFIX"
-        cat > "$CODEX_INSTALL_PREFIX/ccb" <<'SH'
-        #!/usr/bin/env bash
-        printf '%s\\n' "$*" >> "$CODEX_INSTALL_PREFIX/ccb-argv.txt"
-        exit 0
-        SH
-        chmod +x "$CODEX_INSTALL_PREFIX/ccb"
-        provision_neovim_tool
-        cat "$CODEX_INSTALL_PREFIX/ccb-argv.txt"
+        if declare -F provision_neovim_tool >/dev/null; then
+          echo unexpected-neovim-function
+          exit 9
+        fi
+        echo no-neovim-function
         """,
     )
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
-    assert "Neovim/LazyVim provisioning enabled by default" in completed.stdout
-    assert "Install the default Neovim + LazyVim tool window now?" not in completed.stdout
-    assert "Neovim/LazyVim provisioning skipped in non-interactive install" not in completed.stdout
-    assert "tools install neovim" in completed.stdout
+    assert "no-neovim-function" in completed.stdout
 
 
 def test_install_requirements_defers_tomli_to_managed_venv(tmp_path: Path) -> None:

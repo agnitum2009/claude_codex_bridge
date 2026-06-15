@@ -19,6 +19,7 @@ from cli.roles_runtime import cmd_roles
 from cli.sidebar_click import maybe_handle_sidebar_click_command
 from cli.sidebar_resize_sync import maybe_handle_sidebar_resize_sync_command
 from cli.tools_runtime import cmd_tools
+from cli.tools_runtime.workbench import cmd_rich
 
 
 def _should_print_version(tokens: list[str]) -> bool:
@@ -41,7 +42,7 @@ def _is_start_help(tokens: list[str]) -> bool:
         return False
     if tokens[0] in {"-h", "--help", "help"}:
         return True
-    if tokens[0] in SUBCOMMANDS or tokens[0] in {"version", "update", "uninstall", "reinstall", "droid", "tools", "roles", "mail", "provider", "up"}:
+    if tokens[0] in SUBCOMMANDS or tokens[0] in {"version", "update", "uninstall", "reinstall", "droid", "tools", "roles", "mail", "provider", "up", "rich", "rich-install"}:
         return False
     return any(token in {"-h", "--help", "help"} for token in tokens)
 
@@ -123,6 +124,12 @@ def _handle_removed_commands(tokens: list[str], *, stderr: TextIO) -> int | None
             command=tokens[0],
             guidance="💡 Use `ccb ask` for task submission/results, `ccb doctor` for diagnostics, and `ccb trace` for lineage details.",
         )
+    if tokens and tokens[0] == "rich-install":
+        return _write_removed_command_error(
+            stderr,
+            command="rich-install",
+            guidance="💡 Use: ccb update rich",
+        )
     return None
 
 
@@ -150,6 +157,15 @@ def _dispatch_tools(tokens: list[str], *, script_root: Path, stdout: TextIO, std
     if not (tokens and tokens[0] == 'tools'):
         return None
     return cmd_tools(tokens[1:], script_root=script_root, stdout=stdout, stderr=stderr)
+
+
+def _dispatch_rich(tokens: list[str], *, script_root: Path, cwd: Path, stdout: TextIO, stderr: TextIO) -> int | None:
+    if not (tokens and tokens[0] == 'rich'):
+        return None
+    if len(tokens) > 1:
+        print('usage: ccb rich', file=stdout)
+        return 0 if tokens[1] in {'-h', '--help', 'help'} else 2
+    return cmd_rich(script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
 
 
 def _dispatch_roles(tokens: list[str], *, script_root: Path, cwd: Path, stdout: TextIO, stderr: TextIO) -> int | None:
@@ -201,6 +217,10 @@ def run_cli_entrypoint(
     management_result = _dispatch_management(tokens, script_root=script_root)
     if management_result is not None:
         return management_result
+
+    rich_result = _dispatch_rich(tokens, script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
+    if rich_result is not None:
+        return rich_result
 
     tools_result = _dispatch_tools(tokens, script_root=script_root, stdout=stdout, stderr=stderr)
     if tools_result is not None:

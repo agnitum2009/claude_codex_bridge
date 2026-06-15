@@ -95,11 +95,20 @@ def test_neovim_provisioning_writes_isolated_wrapper(tmp_path: Path, monkeypatch
     assert terminal_compat.exists()
     terminal_text = terminal_compat.read_text(encoding='utf-8')
     assert 'local icon_style = vim.env.CCB_LAZYVIM_ICON_STYLE or "ascii"' in terminal_text
+    assert 'local function ccb_terminal_image_candidate()' in terminal_text
+    assert 'vim.env.CCB_LAZYVIM_IMAGE_INLINE == "1"' in terminal_text
+    assert 'local function ccb_install_string_buffer_fallback()' in terminal_text
+    assert 'package.preload["string.buffer"] = function()' in terminal_text
+    assert 'new = function() return setmetatable({ _chunks = {} }, Buffer) end' in terminal_text
     assert '"folke/snacks.nvim"' in terminal_text
     assert 'opts.explorer.replace_netrw = true' in terminal_text
     assert 'opts.picker.sources.explorer = vim.tbl_deep_extend("force", opts.picker.sources.explorer or {}, {' in terminal_text
     assert 'watch = false' in terminal_text
     assert 'opts.image = vim.tbl_deep_extend("force", opts.image or {}, {' in terminal_text
+    assert 'opts.image.formats = {}' in terminal_text
+    assert 'enabled = false' in terminal_text
+    assert 'inline = false' in terminal_text
+    assert 'float = false' in terminal_text
     assert 'item.icon = ""' in terminal_text
     assert 'opts.style = icon_style' in terminal_text
     assert 'diagnostics = { Error = "E ", Warn = "W ", Hint = "H ", Info = "I " }' in terminal_text
@@ -116,6 +125,22 @@ def test_neovim_provisioning_writes_isolated_wrapper(tmp_path: Path, monkeypatch
     assert 'enabled = ccb_markdown_parser_ready' in markdown_text
     assert 'vim.g.ccb_markdown_parser_ready == true' in markdown_text
     assert 'parser/" .. lang .. ".so"' in markdown_text
+    open_helpers = terminal_compat.with_name('ccb-open.lua')
+    assert open_helpers.exists()
+    open_text = open_helpers.read_text(encoding='utf-8')
+    assert 'vim.api.nvim_create_user_command("CCBOpenCurrent", ccb_open_current_file, {})' in open_text
+    assert 'vim.api.nvim_create_user_command("CCBOpenUnderCursor", ccb_open_under_cursor, {})' in open_text
+    assert 'vim.api.nvim_create_user_command("CCBOpenImage", ccb_open_current_image, {})' in open_text
+    assert 'vim.api.nvim_create_user_command("CCBRevealCurrent", ccb_reveal_current_file, {})' in open_text
+    assert 'vim.api.nvim_create_augroup("ccb_image_external_open", { clear = true })' in open_text
+    assert 'local function ccb_inline_image_supported()' in open_text
+    assert 'Inline image rendering is not available in this terminal session.' in open_text
+    assert 'vim.keymap.set("n", "<leader>co", ccb_open_current_file' in open_text
+    assert 'vim.keymap.set("n", "<leader>cO", ccb_open_under_cursor' in open_text
+    assert 'vim.keymap.set("n", "<leader>ci", ccb_open_current_image' in open_text
+    assert 'vim.keymap.set("n", "<leader>cr", ccb_reveal_current_file' in open_text
+    assert 'snacks.picker.explorer({ cwd = dir })' in open_text
+    assert 'wslview", "explorer.exe", "xdg-open"' in open_text
     assert not (home / '.config' / 'nvim').exists()
     assert sync_calls
     assert any(call['command'][:2] == ['git', 'clone'] for call in sync_calls)
@@ -291,25 +316,21 @@ def test_neovim_lazy_nvim_tarball_tries_next_candidate(tmp_path: Path, monkeypat
     assert len(urls) == 2
 
 
-def test_cli_tools_install_returns_nonzero_when_lazyvim_is_degraded(monkeypatch) -> None:
+def test_neovim_cmd_tools_rejects_standalone_public_surface(monkeypatch) -> None:
     monkeypatch.setattr(
         neovim_tools,
         'provision_neovim',
-        lambda *, required=False: {
-            'status': 'degraded',
-            'reason': 'LazyVim sync failed',
-            'lazyvim_health_status': 'failed',
-        },
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("standalone cmd_tools must not provision Neovim")),
     )
     stdout = StringIO()
     stderr = StringIO()
 
     code = neovim_tools.cmd_tools(['install', 'neovim'], stdout=stdout, stderr=stderr)
 
-    assert code == 1
-    assert 'neovim_status: degraded' in stdout.getvalue()
-    assert 'LazyVim sync failed' in stdout.getvalue()
-    assert stderr.getvalue() == ''
+    assert code == 2
+    assert stdout.getvalue() == ''
+    assert 'standalone Neovim tools are no longer supported' in stderr.getvalue()
+    assert 'ccb update rich' in stderr.getvalue()
 
 
 def test_neovim_provisioning_cleans_partial_lazy_nvim_when_bootstrap_fails(
@@ -517,6 +538,22 @@ def test_neovim_doctor_keeps_optional_parser_degradation_out_of_top_level_status
     assert status['markdown_parser_detail'] == 'markdown:missing:0,markdown_inline:missing:0'
 
 
+def test_neovim_doctor_reports_wsl_mount_status(monkeypatch) -> None:
+    monkeypatch.setattr(neovim_tools, '_is_wsl', lambda: True)
+    monkeypatch.setattr(neovim_tools.Path, 'cwd', classmethod(lambda cls: Path('/mnt/c/work/repo')))
+
+    status = neovim_tools._check_wsl_status()
+
+    assert status['wsl_status'] == 'mounted_drive'
+    assert '/mnt' in status['wsl_reason']
+
+
+def test_neovim_doctor_reports_non_wsl_status(monkeypatch) -> None:
+    monkeypatch.setattr(neovim_tools, '_is_wsl', lambda: False)
+
+    assert neovim_tools._check_wsl_status() == {'wsl_status': 'not_wsl'}
+
+
 def test_neovim_provisioning_soft_missing_without_nvim(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
@@ -665,7 +702,7 @@ def test_neovim_provisioning_keeps_missing_on_checksum_mismatch(
     assert not (tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'neovim' / 'bin' / 'nvim').exists()
 
 
-def test_cli_tools_doctor_routes_before_phase2(tmp_path: Path, monkeypatch) -> None:
+def test_entrypoint_rejects_public_neovim_tool_route(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
     monkeypatch.setenv('PATH', str(tmp_path / 'empty'))
@@ -681,9 +718,10 @@ def test_cli_tools_doctor_routes_before_phase2(tmp_path: Path, monkeypatch) -> N
         stderr=stderr,
     )
 
-    assert code == 0
-    assert 'neovim_status: missing' in stdout.getvalue()
-    assert stderr.getvalue() == ''
+    assert code == 2
+    assert stdout.getvalue() == ''
+    assert 'standalone Neovim tools are no longer supported' in stderr.getvalue()
+    assert 'ccb update rich' in stderr.getvalue()
 
 
 def _nvim_archive() -> bytes:

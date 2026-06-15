@@ -93,11 +93,11 @@ def print_start_help(*, file=None) -> None:
               ccb repair <ack|retry|resubmit> ...
 
             Management:
-              ccb version | ccb update | ccb uninstall | ccb reinstall
+              ccb version | ccb update [rich|VERSION] | ccb uninstall | ccb reinstall
 
             Tools:
-              ccb tools doctor neovim
-              ccb tools install neovim
+              ccb rich
+              ccb update rich
 
             Roles:
               ccb roles list
@@ -381,12 +381,18 @@ _COMMAND_HELP = {
           - Non-dry-run output includes stage, plan_class, graph version, diagnostics, and any residue.
     """,
     "tools": """
-        usage: ccb tools <doctor|install|update> neovim
+        usage: ccb tools <doctor|install|update|enable|disable|launch|uninstall> workbench [--profile rich]
 
         Managed tool provisioning:
-          ccb tools doctor neovim   Inspect the CCB-managed Neovim/LazyVim profile.
-          ccb tools install neovim  Prepare isolated ccb-nvim wrapper/profile.
-          ccb tools update neovim   Refresh the managed profile wrapper.
+          ccb update rich                               Install/update and enable the rich workbench bundle.
+          ccb rich                                      Launch the installed rich workbench.
+          ccb tools doctor workbench --profile rich     Inspect the CCB-owned rich workbench bundle.
+          ccb tools install workbench --profile rich    Generate isolated WezTerm/Yazi/LazyVim/Markdown config.
+          ccb tools enable workbench --profile rich     Mark the bundle enabled for CCB-owned tool usage.
+          ccb tools launch workbench --profile rich     Launch the generated workbench wrapper.
+          ccb tools launch workbench --dry-run          Print launch commands without starting a terminal.
+          ccb tools disable workbench                  Disable and close recorded CCB-owned workbench surfaces.
+          ccb tools uninstall workbench                Remove generated workbench config and wrappers.
     """,
     "roles": """
         usage: ccb roles <list|show|install|update|sync|add|doctor> ...
@@ -411,8 +417,8 @@ def _build_management_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ccb", description="Claude AI unified launcher", add_help=True)
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
-    update_parser = subparsers.add_parser("update", help="Update to latest or specified version")
-    update_parser.add_argument("target", nargs="?", help="version like '4', '4.1', '4.1.3'")
+    update_parser = subparsers.add_parser("update", help="Update CCB or the optional rich bundle")
+    update_parser.add_argument("target", nargs="?", help="version like '4', '4.1', '4.1.3', or 'rich'")
 
     subparsers.add_parser("version", help="Show version and check for updates")
     subparsers.add_parser("uninstall", help="Uninstall ccb and clean configs")

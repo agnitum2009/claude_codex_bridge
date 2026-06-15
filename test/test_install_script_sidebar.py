@@ -18,15 +18,14 @@ def test_install_script_links_sidebar_helper() -> None:
     assert 'ERROR: ccb-agent-sidebar binary not available' in text
 
 
-def test_install_script_provisions_neovim_tool_softly() -> None:
+def test_install_script_does_not_provision_standalone_neovim_tool() -> None:
     text = Path('install.sh').read_text(encoding='utf-8')
 
-    assert 'provision_neovim_tool' in text
-    assert 'CCB_INSTALL_NEOVIM=0' in text
-    assert 'Neovim/LazyVim provisioning enabled by default' in text
+    assert 'provision_neovim_tool' not in text
+    assert 'CCB_INSTALL_NEOVIM' not in text
+    assert 'Neovim/LazyVim provisioning enabled by default' not in text
     assert 'Install the default Neovim + LazyVim tool window now?' not in text
-    assert 'tools install neovim' in text
-    assert '[[ "$required" == "1" ]] && return 1 || return 0' in text
+    assert 'tools install neovim' not in text
 
 
 def test_install_script_provisions_role_packs_softly() -> None:
