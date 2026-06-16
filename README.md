@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.5-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.6-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -641,6 +641,19 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.6</b> - Role Store Home Pinning</summary>
+
+- Pins role store lookup outside managed provider homes so provider session
+  `HOME` rewrites no longer make role checks search provider-local `.roles`
+  directories.
+- Preserves `AGENT_ROLES_STORE` through CCB launch boundaries and falls back to
+  the real source/account home role store when no explicit store is set.
+- Missing role diagnostics now print the resolved role store path, making
+  provider-home drift easier to identify.
+
+</details>
+
+<details>
 <summary><b>v7.6.5</b> - Rich WezTerm IME</summary>
 
 - Enables IME support in the generated rich WezTerm config and maps

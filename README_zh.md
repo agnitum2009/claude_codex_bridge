@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.5-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.6-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -630,6 +630,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.6</b> - Role Store Home Pinning</summary>
+
+- role store lookup 现在会固定在 managed provider home 之外，provider session
+  改写 `HOME` 时不再误查 provider-local `.roles` 目录。
+- CCB 启动边界会保留 `AGENT_ROLES_STORE`；未显式设置时回退到真实
+  source/account home 下的 role store。
+- 缺失 role 的诊断会打印解析后的 role store 路径，便于定位 provider-home
+  漂移问题。
+
+</details>
+
+<details>
 <summary><b>v7.6.5</b> - Rich WezTerm 输入法</summary>
 
 - 生成的 rich WezTerm 配置现在会启用 IME，并把 `XMODIFIERS=@im=...`
