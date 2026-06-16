@@ -180,6 +180,7 @@ jobs:
           CCB_BUILD_CHANNEL=stable \
           CCB_BUILD_VERSION='0.0.0-ci-"quoted"' \
           CCB_BUILD_TIME=2026-05-04T00:00:00Z \
+          CCB_ALLOW_TEMP_INSTALL_GLOBAL_BIN=1 \
             bash -lc 'bash ./install.sh install'
 
           python - "$smoke_root/install/BUILD_INFO.json" <<'PY'

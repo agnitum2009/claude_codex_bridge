@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.3-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.4-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -630,6 +630,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.4</b> - macOS Release Install Smoke</summary>
+
+- 保留 7.6.3 的 macOS temporary-root 加固，同时让 CI release install smoke
+  对隔离的 sibling `CODEX_BIN_DIR` 显式设置临时 bin override。
+- 不放宽用户侧 installer 安全规则，但允许 release workflow 从临时 smoke root
+  验证 macOS 包安装。
+- 保留 v7.6.2 已发布的 rich workbench 与 tmux 单行 status 修复，供用户安装
+  实测。
+
+</details>
+
+<details>
 <summary><b>v7.6.3</b> - macOS CI 绿灯补丁</summary>
 
 - install guard 现在会识别 GitHub Actions macOS runner 使用的

@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.3-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.4-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -641,6 +641,19 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.4</b> - macOS Release Install Smoke</summary>
+
+- Keeps the 7.6.3 macOS temporary-root hardening and updates the CI release
+  install smoke to use the explicit temporary-bin override for its isolated
+  sibling `CODEX_BIN_DIR`.
+- Leaves user-facing installer safety intact while allowing the release
+  workflow to validate macOS package installation from a temporary smoke root.
+- Keeps the v7.6.2 rich workbench and tmux single-status-row fixes intact for
+  user install testing.
+
+</details>
+
+<details>
 <summary><b>v7.6.3</b> - macOS CI Green Patch</summary>
 
 - Fixes macOS temporary-root detection for install guards by recognizing the

@@ -1,5 +1,17 @@
 # Changelog
 
+## v7.6.4 (2026-06-16)
+
+### macOS Release Install Smoke
+
+- **macOS Install Smoke Fixed**: CI release-install smoke now explicitly opts
+  into installing a temporary release prefix with a temporary sibling
+  `CODEX_BIN_DIR`, matching the hardened temporary install guard introduced in
+  7.6.3 without weakening user-facing installer safety.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and the macOS
+  install smoke workflow are aligned for 7.6.4.
+
 ## v7.6.3 (2026-06-16)
 
 ### macOS CI Green Patch
