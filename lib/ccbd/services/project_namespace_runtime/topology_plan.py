@@ -29,6 +29,7 @@ class NamespaceWindowPlan:
     kind: str = 'agents'
     label: str | None = None
     command: str | None = None
+    tool_names: tuple[str, ...] = ()
     sidebar: SidebarPanePlan | None = None
 
     def to_record(self) -> dict[str, object]:
@@ -38,6 +39,7 @@ class NamespaceWindowPlan:
             'kind': self.kind,
             'label': self.label,
             'command': self.command,
+            'tool_names': list(self.tool_names),
             'user_layout': self.user_layout,
             'realized_layout': self.realized_layout,
             'agent_names': list(self.agent_names),
@@ -109,6 +111,7 @@ def _window_plan(window, *, sidebar, ccbd_socket_path: str | None, project_root:
         user_layout=window.layout_spec,
         realized_layout=_realized_layout(window.layout_spec, sidebar_enabled=sidebar_plan is not None),
         agent_names=window.agent_names,
+        tool_names=tuple(getattr(window, 'tool_names', ()) or ()),
         sidebar=sidebar_plan,
     )
 

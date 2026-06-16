@@ -6,7 +6,7 @@ from agents.models_runtime.enums import WorkspaceMode
 from ..names import AgentValidationError, normalize_agent_name
 
 
-def normalize_agent_specs(agents: dict) -> dict:
+def normalize_agent_specs(agents: dict, *, allow_empty: bool = False) -> dict:
     normalized_agents: dict[str, object] = {}
     for key, spec in dict(agents).items():
         normalized_key = normalize_agent_name(key)
@@ -17,14 +17,14 @@ def normalize_agent_specs(agents: dict) -> dict:
                 f'agent key {normalized_key!r} does not match spec name {spec.name!r}'
             )
         normalized_agents[normalized_key] = spec
-    if not normalized_agents:
+    if not normalized_agents and not allow_empty:
         raise AgentValidationError('at least one agent must be configured')
     return normalized_agents
 
 
-def normalize_default_agents(default_agents: tuple[str, ...], *, normalized_agents: dict) -> tuple[str, ...]:
+def normalize_default_agents(default_agents: tuple[str, ...], *, normalized_agents: dict, allow_empty: bool = False) -> tuple[str, ...]:
     defaults = tuple(normalize_agent_name(item) for item in default_agents)
-    if not defaults:
+    if not defaults and not allow_empty:
         raise AgentValidationError('default_agents cannot be empty')
     if len(set(defaults)) != len(defaults):
         raise AgentValidationError('default_agents cannot contain duplicates')

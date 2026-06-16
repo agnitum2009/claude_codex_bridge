@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.1-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.2-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -88,6 +88,8 @@ Install or refresh the optional rich media workbench; it bundles verified binari
 ```bash
 ccb update rich
 ```
+
+After rich is enabled, plain `ccb` opens the rich WezTerm launcher when needed; use `ccb uninstall rich` to return to the normal terminal startup.
 
 <details>
 <summary><b>GitHub release package and source install fallbacks</b></summary>
@@ -180,7 +182,7 @@ Agents can also call `/ask` from workflow orchestration to delegate and hand off
 
 ### Rich Mode (NEW!)
 
-Run `ccb update rich` to install the optional rich workbench; it bundles Yazi where possible, uses WezTerm for the rich terminal surface, and opens WezTerm + Yazi + LazyVim with Markdown rendering and image/PDF/video previews via `ccb rich`.
+Run `ccb update rich` to install the optional rich workbench; it bundles Yazi where possible, uses WezTerm for the rich terminal surface, and gives Markdown rendering plus image/PDF/video previews. After installation, plain `ccb` automatically opens this rich launcher outside WezTerm; `ccb rich` remains available as an explicit launcher.
 
 <p align="center">
   <img src="assets/readme_v7/rich-workbench.png" alt="CCB rich workbench with Yazi PDF preview in WezTerm" width="860">
@@ -270,6 +272,9 @@ CCB also supports complex workflows, but it is not an automatic DAG generator. Y
 | Stop this project's background runtime | `ccb kill` |
 | Force cleanup before rebuilding | `ccb kill -f` then `ccb -n` |
 | Update to the latest stable release | `ccb update` |
+| Install or refresh the optional rich workbench | `ccb update rich` |
+| Remove rich mode and return normal startup | `ccb uninstall rich` |
+| Open the rich workbench | `ccb rich` |
 | Inspect the active config layer | `ccb config validate` |
 | Preview a config reload plan without changing tmux | `ccb reload --dry-run` |
 | Apply supported config changes without restarting other agents | `ccb reload` |
@@ -328,7 +333,7 @@ CCB resolves config in three layers, from lowest to highest priority:
 3. Project config at `.ccb/ccb.config`.
 
 Higher layers replace lower layers as a whole; they are not merged. The project authority file is `.ccb/ccb.config`. The old `.ccb_config/ccb.config` path is legacy migration evidence only.
-The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3`, and `ccb_self`. The default `ccb_self` agent uses `codex` and is bound to `agentroles.ccb_self`.
+The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3`, and `ccb_self`. The optional rich workbench can be installed with `ccb update rich`; once enabled, normal `ccb` startup uses the rich launcher unless you run `ccb uninstall rich`. The default `ccb_self` agent uses `codex` and is bound to `agentroles.ccb_self`.
 
 `.ccb/ccb.config` mainly controls:
 
@@ -338,7 +343,7 @@ The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3
 | Agent name and provider | `main:codex`, `reviewer:claude` | Names are used by the UI, ask routing, and memory files; provider decides which CLI starts. |
 | Workspace isolation | `worker1:codex(worktree)` | Gives implementation agents isolated git worktrees to reduce accidental overlap. |
 | Sidebar behavior | `[ui.sidebar]` | Controls whether the sidebar appears in every window, plus width and Comms height. |
-| Tool windows | `[tool_windows.<name>]` | Add managed non-agent windows such as Neovim; they appear as one sidebar row and are not `ask` targets. |
+| Tool windows | `[tool_windows.<name>]` | Add managed non-agent windows such as the rich workbench; they appear as one sidebar row and are not `ask` targets. |
 | Per-agent model/API | `[agents.<name>]` | Configure `model`, `key`, `url`, and related agent-local overrides. |
 | Role Pack binding | `agentroles.archi:codex` | Bind a reusable role package through a window leaf; role assets are installed once and projected into the derived agent. |
 | Role description | `[agents.<name>] description = "..."` | Give an agent a short responsibility note; longer workflow rules belong in memory. |
@@ -440,7 +445,7 @@ comms_limit = 3
 
 Note: `cmd` belongs to compact/hybrid single-window layouts. Do not put `cmd` inside `[windows]`.
 
-#### Managed Neovim tool window
+#### Rich workbench tool window
 
 Tool windows are tmux windows managed by CCB, but they are not agents. They do not appear in `ccb ask` targets and do not create provider runtime records.
 
@@ -451,17 +456,12 @@ entry_window = "main"
 [windows]
 main = "main:codex"
 
-[tool_windows.neovim]
-command = "ccb-nvim"
-label = "neovim"
+[tool_windows.rich]
+command = "CCB_WORKBENCH_PROFILE=rich CCB_WORKBENCH_FORCE_RICH=1 ccb-workbench files"
+label = "rich"
 ```
 
-`ccb update rich` prepares the optional workbench bundle under CCB-owned XDG paths, downloads and validates bundled binaries where available, and uses the platform package manager only for required rich dependencies such as WezTerm, Markdown/PDF/image/video helpers, and recommended fonts. Under WSL, CCB can launch Windows-native `wezterm.exe` while running the rich tools inside the current Linux distro. Normal `ccb update` keeps this bundle untouched; rerun `ccb update rich` to install, repair, or refresh it, then use `ccb rich` or mount the tool window above. Set `CCB_RICH_DOWNLOAD_BINARIES=0` to skip bundled binary downloads, or `CCB_RICH_INSTALL_DEPS=0` to skip system package installation.
-
-Rich workbench tools, including the managed Neovim profile, are installed and updated explicitly with `ccb update rich`. Ordinary `install.sh install`, `ccb update`, and `ccb tools ... neovim` do not provision standalone Neovim; the public Neovim tool route now directs users to `ccb update rich`.
-If `nvim` is not already on `PATH`, rich provisioning may download the official Neovim release tarball for Linux/macOS and verifies the release sha256 before activating it. It does not write `~/.config/nvim`.
-The managed profile defaults to ASCII icons so terminals without Nerd Font support do not show unreadable boxes. To opt back into LazyVim glyph icons, launch the rich workbench with `CCB_LAZYVIM_ICON_STYLE=glyph ccb rich`.
-Use `ccb tools doctor workbench --profile rich` to verify the installed rich bundle. `ccb rich` launches only an already installed and enabled rich bundle; run `ccb update rich` first if the bundle is missing or disabled.
+`ccb update rich` prepares the optional workbench bundle under CCB-owned XDG paths, downloads and validates bundled binaries where available, and uses the platform package manager only for required rich dependencies such as WezTerm, Markdown/PDF/image/video helpers, and recommended fonts. Under WSL, CCB can launch Windows-native `wezterm.exe` while running the rich tools inside the current Linux distro. Normal `ccb update` keeps this bundle untouched; rerun `ccb update rich` to install, repair, or refresh it. Run `ccb uninstall rich` to remove the bundle and return plain `ccb` to normal terminal startup. Set `CCB_RICH_DOWNLOAD_BINARIES=0` to skip bundled binary downloads, or `CCB_RICH_INSTALL_DEPS=0` to skip system package installation.
 
 #### Per-agent model, API key, or base URL
 
@@ -641,6 +641,23 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.2</b> - Rich Workbench Hotfix</summary>
+
+- Allows `rich` in `.ccb/ccb.config` as a tool/layout alias without requiring
+  a provider runtime; it materializes as a managed tool pane/window and is not
+  an `ask` target.
+- After `ccb update rich` enables the bundle, plain `ccb` can use the rich
+  launcher outside an existing rich/WezTerm session while avoiding recursive
+  WezTerm launches.
+- Adds `ccb uninstall rich`, `ccb rich uninstall`, and `ccb rich disable` for
+  returning to normal CCB startup without changing full `ccb uninstall`
+  behavior.
+- Rich updates clean only CCB-owned legacy editor roots and links, leaving
+  user-owned editor installs and personal config untouched.
+
+</details>
+
+<details>
 <summary><b>v7.6.1</b> - Rich Workbench Binary Packaging</summary>
 
 - `ccb update rich` now bundles verified Yazi/ya binaries where possible before
@@ -1024,7 +1041,7 @@ v7 highlights:
 - Adds the Role Pack surface with the built-in `ccb.archi` architecture role, role memory, Codex/Claude skill projection, and project role locks.
 - Makes `ccb roles add ccb.archi:codex` the primary role onboarding command; config stores the shorthand while runtime resolves it to the local `archi` agent.
 - Makes `ccb roles install/update ccb.archi` refresh role assets and dependencies by default; install/update prompts interactive users and gives non-interactive users the follow-up command.
-- Adds managed tool windows such as `[tool_windows.neovim]`, plus `ccb tools install/doctor neovim`, sidebar rows, and safe reload add/remove behavior for non-agent tools.
+- Adds managed tool windows, sidebar rows, and safe reload add/remove behavior for non-agent tools.
 - Includes the new `agy` / Google Antigravity provider support from `main`.
 
 </details>

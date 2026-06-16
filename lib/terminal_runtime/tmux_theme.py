@@ -53,12 +53,12 @@ _THEME_PROFILES: dict[str, TmuxThemeProfile] = {
 _CONTRAST_TERMINAL_FAMILIES = {'apple_terminal'}
 
 _STATUS_STYLE = 'bg=#1e1e2e fg=#cdd6f4'
-_STATUS_FORMAT_1 = '#[align=centre,bg=#1e1e2e,fg=#6c7086]Copy: MouseDrag  Paste: Shift-Ctrl-v  Focus: Ctrl-b o'
-_STATUS_FORMAT_0 = '#[align=left bg=#1e1e2e]#{T:status-left}#[align=centre fg=#6c7086]#{b:pane_current_path}#[align=right]#{T:status-right}'
+_STATUS_FORMAT_0 = '#[align=left,bg=#1e1e2e]#{T:status-left}#[align=centre,fg=#6c7086]#{b:pane_current_path}#[align=right]#{T:status-right}'
 _WINDOW_STATUS_FORMAT = ''
 _WINDOW_STATUS_CURRENT_FORMAT = ''
 _WINDOW_STATUS_SEPARATOR = ''
 _PANE_BORDER_STATUS = 'top'
+_PANE_BORDER_LINES = 'heavy'
 
 
 def _visual(*, bg: str, border: str | None = None, active: str | None = None, fg: str = '#16161e') -> TmuxPaneVisual:
@@ -202,10 +202,9 @@ def render_tmux_session_theme(
         'status-position': 'bottom',
         'status-interval': tmux_status_interval(environ),
         'status-style': _STATUS_STYLE,
-        'status': '2',
+        'status': 'on',
         'status-left-length': '80',
         'status-right-length': '120',
-        'status-format[1]': _STATUS_FORMAT_1,
         'status-format[0]': _STATUS_FORMAT_0,
         'status-left': (
             f'#[fg=#1e1e2e,bg={accent},bold] {label} '
@@ -224,6 +223,7 @@ def render_tmux_session_theme(
     }
     window_options = {
         'pane-border-status': _PANE_BORDER_STATUS,
+        'pane-border-lines': _PANE_BORDER_LINES,
         'pane-border-style': profile.pane_border_style,
         'pane-active-border-style': profile.pane_active_border_style,
         'pane-border-format': pane_border_format(profile.name),
@@ -307,7 +307,6 @@ def shell_exports(
         'CCB_TMUX_RENDERED_STATUS_LEFT_LENGTH': rendered.session_options['status-left-length'],
         'CCB_TMUX_RENDERED_STATUS_RIGHT_LENGTH': rendered.session_options['status-right-length'],
         'CCB_TMUX_RENDERED_STATUS_FORMAT_0': rendered.session_options['status-format[0]'],
-        'CCB_TMUX_RENDERED_STATUS_FORMAT_1': rendered.session_options['status-format[1]'],
         'CCB_TMUX_RENDERED_STATUS_LEFT': rendered.session_options['status-left'],
         'CCB_TMUX_RENDERED_STATUS_RIGHT': rendered.session_options['status-right'],
         'CCB_TMUX_RENDERED_WINDOW_STATUS_FORMAT': rendered.session_options['window-status-format'],

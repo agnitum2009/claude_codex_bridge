@@ -95,3 +95,23 @@ def test_build_project_layout_plan_can_select_agent_from_explicit_later_window()
     assert plan.target_agent_names == ('agent2',)
     assert plan.visible_leaf_names == ('agent2',)
     assert plan.signature == 'agent2:claude'
+
+
+def test_build_project_layout_plan_keeps_rich_only_tool_window_visible() -> None:
+    config = ProjectConfig(
+        version=2,
+        default_agents=(),
+        agents={},
+        cmd_enabled=False,
+        layout_spec='rich',
+        windows=(
+            WindowSpec(name='main', order=0, layout_spec='rich', agent_names=(), tool_names=('rich',)),
+        ),
+        entry_window='main',
+    )
+
+    plan = build_project_layout_plan(config)
+
+    assert plan.target_agent_names == ()
+    assert plan.visible_leaf_names == ('rich',)
+    assert plan.signature == 'rich'

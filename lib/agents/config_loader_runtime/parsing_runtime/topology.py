@@ -4,7 +4,17 @@ from typing import Any
 
 from agents.config_loader_runtime.parsing_runtime.agent_specs import build_agent_spec
 from agents.config_loader_runtime.parsing_runtime.expectations import expect_bool, expect_mapping, expect_string, expect_string_list
-from agents.models import AgentValidationError, SidebarSpec, SidebarViewSpec, ToolWindowSpec, WindowSpec, normalize_agent_name, parse_layout_spec
+from agents.models import (
+    AgentValidationError,
+    SidebarSpec,
+    SidebarViewSpec,
+    ToolWindowSpec,
+    WindowSpec,
+    is_layout_tool_alias,
+    normalize_agent_name,
+    normalize_layout_tool_alias,
+    parse_layout_spec,
+)
 
 from ..common import ConfigValidationError
 
@@ -82,9 +92,25 @@ def parse_topology_windows(raw_windows: Any) -> tuple[WindowSpec, ...] | None:
             layout = parse_layout_spec(layout_text)
             leaves = layout.iter_leaves()
             agent_names: list[str] = []
+            tool_names: list[str] = []
             for leaf in leaves:
                 if leaf.name.strip().lower() == 'cmd':
                     raise ConfigValidationError('cmd is not supported in windows topology')
+                if is_layout_tool_alias(leaf.name):
+                    if leaf.provider is not None:
+                        raise ConfigValidationError(
+                            f'windows.{raw_name}: tool alias {leaf.name!r} must not declare a provider'
+                        )
+                    try:
+                        normalized_tool = normalize_layout_tool_alias(leaf.name)
+                    except AgentValidationError as exc:
+                        raise ConfigValidationError(str(exc)) from exc
+                    if normalized_tool in tool_names:
+                        raise ConfigValidationError(
+                            f'duplicate tool alias in windows.{raw_name}: {normalized_tool}'
+                        )
+                    tool_names.append(normalized_tool)
+                    continue
                 if leaf.provider is None:
                     raise ConfigValidationError(
                         f'windows.{raw_name}: agent leaf {leaf.name!r} must declare a provider'
@@ -105,6 +131,7 @@ def parse_topology_windows(raw_windows: Any) -> tuple[WindowSpec, ...] | None:
                     order=index,
                     layout_spec=layout.render(),
                     agent_names=tuple(agent_names),
+                    tool_names=tuple(tool_names),
                 )
             )
         except ConfigValidationError:
@@ -169,6 +196,8 @@ def agents_from_topology_windows(
     for window in windows:
         layout = parse_layout_spec(window.layout_spec)
         for leaf in layout.iter_leaves():
+            if is_layout_tool_alias(leaf.name):
+                continue
             name = normalize_agent_name(leaf.name)
             raw_spec = _merge_topology_agent_overlay(
                 _topology_leaf_agent_defaults(leaf),

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import shlex
 from typing import Any
 
-from agents.models import parse_layout_spec
+from agents.models import layout_tool_alias_command, layout_tool_alias_label, parse_layout_spec
 from terminal_runtime.placeholders import pane_placeholder_cmd
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
 
@@ -73,6 +73,7 @@ def _create_single_window(
             user_root=user_root,
             namespace_epoch=current.namespace_epoch,
             created_panes=result.created_panes,
+            result=result,
             timeout_s=timeout_s,
         )
     )
@@ -141,17 +142,35 @@ def _materialize_new_window_agents(
     user_root: str,
     namespace_epoch: int,
     created_panes: list[str],
+    result: WindowPatchResult,
     timeout_s: float | None,
 ) -> dict[str, str]:
     if str(getattr(window, 'kind', '') or '') == 'tool':
         return {}
     layout = parse_layout_spec(window.user_layout)
     agent_names = tuple(str(name) for name in getattr(window, 'agent_names', ()) or ())
+    tool_names = set(str(name) for name in tuple(getattr(window, 'tool_names', ()) or ()))
     style_index_by_agent = {name: index for index, name in enumerate(agent_names)}
     agent_panes: dict[str, str] = {}
 
     def assign_leaf(item: str, pane_id: str) -> None:
         if item == 'cmd':
+            return
+        item_tool = str(item or '').strip().lower()
+        if item_tool in tool_names:
+            _materialize_new_tool_pane(
+                controller,
+                backend,
+                pane_id=pane_id,
+                tool_name=item_tool,
+                command=layout_tool_alias_command(item_tool),
+                label=layout_tool_alias_label(item_tool),
+                window_name=str(window.name),
+                namespace_epoch=namespace_epoch,
+                order_index=int(getattr(window, 'order', 0) or 0),
+                created_panes=created_panes,
+                result=result,
+            )
             return
         _append_unique(created_panes, pane_id)
         agent_panes[item] = pane_id
@@ -194,28 +213,59 @@ def _materialize_new_tool_window(
     if str(getattr(window, 'kind', '') or '') != 'tool':
         return
     command = str(getattr(window, 'command', '') or '').strip() or pane_placeholder_cmd()
+    _materialize_new_tool_pane(
+        controller,
+        backend,
+        pane_id=user_root,
+        tool_name=str(window.name),
+        command=command,
+        label=str(getattr(window, 'label', None) or window.name),
+        window_name=str(window.name),
+        namespace_epoch=namespace_epoch,
+        order_index=int(getattr(window, 'order', 0) or 0),
+        created_panes=created_panes,
+        result=result,
+    )
+
+
+def _materialize_new_tool_pane(
+    controller,
+    backend,
+    *,
+    pane_id: str,
+    tool_name: str,
+    command: str,
+    label: str,
+    window_name: str,
+    namespace_epoch: int,
+    order_index: int,
+    created_panes: list[str],
+    result: WindowPatchResult | None,
+) -> None:
+    command = str(command or '').strip() or pane_placeholder_cmd()
     respawn = getattr(backend, 'respawn_pane', None)
     if callable(respawn):
-        respawn(user_root, cmd=command, cwd=str(controller._layout.project_root), remain_on_exit=True)
+        respawn(pane_id, cmd=command, cwd=str(controller._layout.project_root), remain_on_exit=True)
     else:
         runner = getattr(backend, '_tmux_run', None)
         if callable(runner):
-            runner(['respawn-pane', '-k', '-t', user_root, 'sh', '-lc', command], check=False)
-    _append_unique(created_panes, user_root)
+            runner(['respawn-pane', '-k', '-t', pane_id, 'sh', '-lc', command], check=False)
+    _append_unique(created_panes, pane_id)
     apply_ccb_pane_identity(
         backend,
-        user_root,
-        title=str(getattr(window, 'label', None) or window.name),
-        agent_label=str(getattr(window, 'label', None) or window.name),
+        pane_id,
+        title=label,
+        agent_label=label,
         project_id=controller._project_id,
-        order_index=int(getattr(window, 'order', 0) or 0),
+        order_index=order_index,
         role='tool',
-        slot_key=f'tool:{window.name}',
-        window_name=str(window.name),
+        slot_key=f'tool:{tool_name}',
+        window_name=window_name,
         namespace_epoch=namespace_epoch,
         managed_by='ccbd',
     )
-    result.tool_panes[str(window.name)] = user_root
+    if result is not None:
+        result.tool_panes[str(tool_name)] = pane_id
 
 
 def _materialize_layout(

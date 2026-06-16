@@ -1,5 +1,26 @@
 # Changelog
 
+## v7.6.2 (2026-06-16)
+
+### Rich Workbench Hotfix
+
+- **Rich Layout Alias Fixed**: `.ccb/ccb.config` can now use `rich` as a
+  tool/layout alias without requiring a provider runtime. The alias is
+  materialized as a managed tool pane/window and remains outside `ask`
+  routing.
+- **Rich Auto-Start Added**: after `ccb update rich` installs and enables the
+  bundle, plain `ccb` can launch the rich workbench by default outside an
+  existing rich/WezTerm session while avoiding recursive WezTerm launches.
+- **Rich Disable/Uninstall Added**: `ccb uninstall rich`, `ccb rich uninstall`,
+  and `ccb rich disable` remove or disable rich mode without changing the
+  normal full `ccb uninstall` path.
+- **Legacy Editor Cleanup Hardened**: rich updates clean CCB-owned legacy
+  standalone editor roots and links while leaving user-owned editor
+  installations and personal config untouched.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and focused
+  rich workbench tests are aligned for 7.6.2.
+
 ## v7.6.1 (2026-06-16)
 
 ### Rich Workbench Binary Packaging

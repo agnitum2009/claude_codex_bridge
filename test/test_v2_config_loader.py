@@ -1310,6 +1310,49 @@ show_in_sidebar = true
     assert 'neovim' not in project_config_identity_payload(result.config)['known_agents']
 
 
+def test_load_project_config_supports_rich_layout_alias_without_agent_runtime(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-rich-layout-alias'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+
+[windows]
+main = "agent1:codex, rich"
+rich_page = "rich"
+""",
+    )
+
+    result = load_project_config(project_root)
+
+    assert set(result.config.agents) == {'agent1'}
+    assert result.config.default_agents == ('agent1',)
+    assert [window.name for window in result.config.windows] == ['main', 'rich_page']
+    assert result.config.windows[0].agent_names == ('agent1',)
+    assert result.config.windows[0].tool_names == ('rich',)
+    assert result.config.windows[1].agent_names == ()
+    assert result.config.windows[1].tool_names == ('rich',)
+    assert 'rich' not in result.config.agents
+    assert 'rich' not in project_config_identity_payload(result.config)['known_agents']
+    assert result.config.topology_signature_payload['windows'][0]['tools'] == ['rich']
+
+
+def test_load_project_config_rejects_rich_alias_with_provider(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-rich-layout-invalid'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+
+[windows]
+main = "agent1:codex, rich:codex"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match="tool alias 'rich' must not declare a provider"):
+        load_project_config(project_root)
+
+
 def test_load_project_config_tool_windows_affect_topology_identity(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-tool-window-identity'
     config_path = project_root / '.ccb' / 'ccb.config'

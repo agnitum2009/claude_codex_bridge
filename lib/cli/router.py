@@ -93,10 +93,11 @@ def print_start_help(*, file=None) -> None:
               ccb repair <ack|retry|resubmit> ...
 
             Management:
-              ccb version | ccb update [rich|VERSION] | ccb uninstall | ccb reinstall
+              ccb version | ccb update [rich|VERSION] | ccb uninstall [rich] | ccb reinstall
 
             Tools:
               ccb rich
+              ccb rich uninstall
               ccb update rich
 
             Roles:
@@ -385,9 +386,11 @@ _COMMAND_HELP = {
 
         Managed tool provisioning:
           ccb update rich                               Install/update and enable the rich workbench bundle.
+          ccb uninstall rich                            Remove the rich workbench and return normal `ccb` startup.
           ccb rich                                      Launch the installed rich workbench.
+          ccb rich uninstall                            Remove the rich workbench and return normal `ccb` startup.
           ccb tools doctor workbench --profile rich     Inspect the CCB-owned rich workbench bundle.
-          ccb tools install workbench --profile rich    Generate isolated WezTerm/Yazi/LazyVim/Markdown config.
+          ccb tools install workbench --profile rich    Generate isolated WezTerm/Yazi/Markdown config.
           ccb tools enable workbench --profile rich     Mark the bundle enabled for CCB-owned tool usage.
           ccb tools launch workbench --profile rich     Launch the generated workbench wrapper.
           ccb tools launch workbench --dry-run          Print launch commands without starting a terminal.
@@ -421,7 +424,8 @@ def _build_management_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("target", nargs="?", help="version like '4', '4.1', '4.1.3', or 'rich'")
 
     subparsers.add_parser("version", help="Show version and check for updates")
-    subparsers.add_parser("uninstall", help="Uninstall ccb and clean configs")
+    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall ccb, or uninstall the optional rich bundle")
+    uninstall_parser.add_argument("target", nargs="?", help="'rich' to uninstall only the optional rich bundle")
     subparsers.add_parser("reinstall", help="Reinstall ccb and refresh configs")
     return parser
 

@@ -132,6 +132,7 @@ class WindowSpec:
     order: int
     layout_spec: str
     agent_names: tuple[str, ...]
+    tool_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         name = validate_window_name(self.name)
@@ -143,22 +144,59 @@ class WindowSpec:
         if not layout_spec:
             raise AgentValidationError(f'windows.{name} layout cannot be empty')
         agent_names = tuple(normalize_agent_name(item) for item in self.agent_names)
-        if not agent_names:
-            raise AgentValidationError(f'windows.{name} must contain at least one agent')
+        tool_names = tuple(normalize_layout_tool_alias(item) for item in self.tool_names)
+        if not agent_names and not tool_names:
+            raise AgentValidationError(f'windows.{name} must contain at least one agent or tool alias')
         if len(set(agent_names)) != len(agent_names):
             raise AgentValidationError(f'windows.{name} cannot contain duplicate agents')
+        if len(set(tool_names)) != len(tool_names):
+            raise AgentValidationError(f'windows.{name} cannot contain duplicate tool aliases')
+        conflicts = set(agent_names) & set(tool_names)
+        if conflicts:
+            raise AgentValidationError(f'windows.{name} leaf cannot be both agent and tool alias: {sorted(conflicts)[0]}')
         object.__setattr__(self, 'name', name)
         object.__setattr__(self, 'order', order)
         object.__setattr__(self, 'layout_spec', layout_spec)
         object.__setattr__(self, 'agent_names', agent_names)
+        object.__setattr__(self, 'tool_names', tool_names)
 
     def to_record(self) -> dict[str, object]:
-        return {
+        payload = {
             'name': self.name,
             'order': self.order,
             'layout_spec': self.layout_spec,
             'agent_names': list(self.agent_names),
         }
+        if self.tool_names:
+            payload['tool_names'] = list(self.tool_names)
+        return payload
+
+
+LAYOUT_TOOL_ALIASES: dict[str, dict[str, str]] = {
+    'rich': {
+        'label': 'rich',
+        'command': 'CCB_WORKBENCH_PROFILE=rich CCB_WORKBENCH_FORCE_RICH=1 ccb-workbench files',
+    },
+}
+
+
+def normalize_layout_tool_alias(value: object) -> str:
+    name = str(value or '').strip().lower()
+    if name not in LAYOUT_TOOL_ALIASES:
+        raise AgentValidationError(f'unknown layout tool alias: {value!r}')
+    return name
+
+
+def is_layout_tool_alias(value: object) -> bool:
+    return str(value or '').strip().lower() in LAYOUT_TOOL_ALIASES
+
+
+def layout_tool_alias_command(value: object) -> str:
+    return LAYOUT_TOOL_ALIASES[normalize_layout_tool_alias(value)]['command']
+
+
+def layout_tool_alias_label(value: object) -> str:
+    return LAYOUT_TOOL_ALIASES[normalize_layout_tool_alias(value)]['label']
 
 
 @dataclass(frozen=True)
@@ -298,6 +336,7 @@ def _validate_windows(windows: tuple[WindowSpec, ...]) -> tuple[WindowSpec, ...]
             order=index,
             layout_spec=window.layout_spec,
             agent_names=window.agent_names,
+            tool_names=window.tool_names,
         )
         if spec.name in seen_windows:
             raise AgentValidationError(f'duplicate window name: {spec.name}')
@@ -387,6 +426,7 @@ def topology_signature_payload(
                 'order': window.order,
                 'layout': window.layout_spec,
                 'agents': list(window.agent_names),
+                'tools': list(window.tool_names),
             }
             for window in windows
         ],
@@ -418,7 +458,11 @@ __all__ = [
     'WindowSpec',
     'default_sidebar_spec',
     'default_sidebar_view_spec',
+    'is_layout_tool_alias',
+    'layout_tool_alias_command',
+    'layout_tool_alias_label',
     'legacy_main_window',
+    'normalize_layout_tool_alias',
     'normalize_sidebar_width',
     'normalize_sidebar_view_height',
     'normalize_tool_windows',

@@ -2931,12 +2931,35 @@ cleanup_legacy_files() {
   fi
 }
 
+cleanup_legacy_neovim_tool() {
+  local data_home state_home root state_root link target
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  state_home="${XDG_STATE_HOME:-$HOME/.local/state}"
+  root="$data_home/ccb/tools/neovim"
+  state_root="$state_home/ccb/tools/neovim"
+  link="$BIN_DIR/ccb-nvim"
+
+  if [[ -L "$link" ]]; then
+    target="$(readlink "$link" 2>/dev/null || true)"
+    case "$target" in
+      "$root"|"$root"/*)
+        rm -f "$link"
+        ;;
+    esac
+  elif [[ -f "$link" ]] && grep -q 'NVIM_APPNAME=nvim' "$link" 2>/dev/null && grep -q 'ccb/tools/neovim' "$link" 2>/dev/null; then
+    rm -f "$link"
+  fi
+
+  rm -rf "$root" "$state_root"
+}
+
 install_all() {
   validate_temporary_install_scope
   require_major_upgrade_confirmation
   install_requirements
   remove_codex_mcp
   cleanup_legacy_files
+  cleanup_legacy_neovim_tool
   prepare_install_tree
   install_managed_venv
   if ! install_uses_live_source; then

@@ -44,7 +44,11 @@ def build_project_layout_plan(
         else select_project_layout_targets(config, requested_agents=requested_agents)
     )
     layout_source = _layout_source(config)
-    include_names: tuple[str, ...] = (('cmd',) if config.cmd_enabled else ()) + targets
+    include_names: tuple[str, ...] = (
+        (('cmd',) if config.cmd_enabled else ())
+        + targets
+        + _layout_tool_names(config)
+    )
     pruned_layout = prune_layout(
         parse_layout_spec(layout_source),
         include_names=include_names,
@@ -80,6 +84,16 @@ def _layout_source(config: ProjectConfig) -> str:
     if getattr(config, 'windows_explicit', False):
         return '; '.join(str(window.layout_spec) for window in config.windows)
     return str(config.layout_spec or '')
+
+
+def _layout_tool_names(config: ProjectConfig) -> tuple[str, ...]:
+    names: list[str] = []
+    for window in tuple(getattr(config, 'windows', ()) or ()):
+        for name in tuple(getattr(window, 'tool_names', ()) or ()):
+            normalized = str(name or '').strip()
+            if normalized and normalized not in names:
+                names.append(normalized)
+    return tuple(names)
 
 
 __all__ = [

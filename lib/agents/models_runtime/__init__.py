@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 from .config import AgentApiSpec, AgentSpec, MaintenanceHeartbeatConfig, ProjectConfig
-from .config_runtime.topology import SidebarSpec, SidebarViewSpec, ToolWindowSpec, WindowSpec
+from .config_runtime.topology import (
+    SidebarSpec,
+    SidebarViewSpec,
+    ToolWindowSpec,
+    WindowSpec,
+    is_layout_tool_alias,
+    layout_tool_alias_command,
+    layout_tool_alias_label,
+    normalize_layout_tool_alias,
+)
 from provider_profiles.models import ProviderProfileSpec
 
 from .enums import (
@@ -58,7 +67,11 @@ __all__ = [
     'WindowSpec',
     'build_balanced_layout',
     'build_project_layout_plan',
+    'is_layout_tool_alias',
     'iter_layout_names',
+    'layout_tool_alias_command',
+    'layout_tool_alias_label',
+    'normalize_layout_tool_alias',
     'normalize_agent_name',
     'normalize_runtime_binding_source',
     'normalize_runtime_mode',

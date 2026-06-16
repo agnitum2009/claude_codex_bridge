@@ -15,12 +15,10 @@ import urllib.request
 from typing import TextIO
 import zipfile
 
-from . import neovim as neovim_tools
-
-
 SCHEMA_VERSION = 1
 DEFAULT_PROFILE = 'rich'
 GENERATED_MARKER = '# CCB managed workbench file'
+RICH_AUTO_START_ENV = 'CCB_RICH_AUTO_START'
 DETACHED_TMUX_ENV_KEYS = (
     'TMUX',
     'TMUX_PANE',
@@ -523,8 +521,9 @@ def _merge_binary_install_result(status: dict[str, object], binary_result: dict[
             status[f'{prefix}_{key}'] = value
 
 
-def _env_false(name: str) -> bool:
-    value = str(os.environ.get(name) or '').strip().lower()
+def _env_false(name: str, *, environ: dict[str, str] | None = None) -> bool:
+    env = environ if environ is not None else os.environ
+    value = str(env.get(name) or '').strip().lower()
     return value in {'0', 'false', 'off', 'no'}
 
 
@@ -792,6 +791,7 @@ def provision_workbench(*, profile: str = DEFAULT_PROFILE, binary_result: dict[s
     _ensure_dirs(paths)
     if binary_result is None:
         binary_result = install_bundled_rich_binaries(paths=paths) if profile == 'rich' else {'status': 'skipped'}
+    legacy_neovim_cleanup = cleanup_legacy_neovim_tool(remove_cache=False)
     _write_preview_helpers(paths)
     _write_piper_plugin(paths['yazi_safe_profile'] / 'plugins' / 'piper.yazi')
     _write_piper_plugin(paths['yazi_rich_profile'] / 'plugins' / 'piper.yazi')
@@ -800,8 +800,9 @@ def provision_workbench(*, profile: str = DEFAULT_PROFILE, binary_result: dict[s
     _write_wezterm_config(paths)
     _write_wrappers(paths)
     _write_bin_links(paths)
-    neovim_result = neovim_tools.provision_neovim(required=False)
-    status = _build_status(paths, profile=profile, neovim_result=neovim_result, installed=True)
+    status = _build_status(paths, profile=profile, installed=True)
+    if legacy_neovim_cleanup.get('status') == 'ok' and legacy_neovim_cleanup.get('removed'):
+        status['legacy_editor_cleanup_status'] = 'ok'
     _merge_binary_install_result(status, binary_result)
     _write_manifest(paths, status)
     return status
@@ -818,9 +819,8 @@ def workbench_status(*, profile: str = DEFAULT_PROFILE) -> dict[str, object]:
             **_status_paths(paths),
             **_component_statuses(paths, profile=profile, manifest=manifest),
         }
-    neovim_result = neovim_tools.neovim_status()
     enabled = bool(manifest.get('enabled', False))
-    status = _build_status(paths, profile=profile, neovim_result=neovim_result, installed=True, enabled=enabled)
+    status = _build_status(paths, profile=profile, installed=True, enabled=enabled)
     status['installed_at'] = manifest.get('installed_at')
     status['enabled_at'] = manifest.get('enabled_at')
     status['disabled_at'] = manifest.get('disabled_at')
@@ -885,7 +885,7 @@ def launch_workbench(*, profile: str = DEFAULT_PROFILE, dry_run: bool = False) -
     return status
 
 
-def launch_rich_ccb(*, script_root: Path, cwd: Path) -> dict[str, object]:
+def launch_rich_ccb(*, script_root: Path, cwd: Path, start_args: list[str] | tuple[str, ...] | None = None) -> dict[str, object]:
     status = workbench_status(profile='rich')
     if status.get('status') == 'missing':
         status['status'] = 'failed'
@@ -904,12 +904,15 @@ def launch_rich_ccb(*, script_root: Path, cwd: Path) -> dict[str, object]:
         return status
     paths = _paths()
     entrypoint = _ccb_entrypoint(script_root)
+    entrypoint_command = ' '.join(
+        [_shell_quote(str(entrypoint)), *(_shell_quote(str(item)) for item in tuple(start_args or ()))]
+    )
     command = [
         str(paths['wrapper']),
         'terminal',
         '/bin/sh',
         '-lc',
-        f'{_shell_quote(str(entrypoint))}; exec "${{SHELL:-/bin/sh}}" -l',
+        f'{entrypoint_command}; exec "${{SHELL:-/bin/sh}}" -l',
     ]
     process = subprocess.Popen(command, cwd=str(cwd), env=_detached_terminal_env())
     _record_launch(paths, pid=process.pid, command=command)
@@ -917,6 +920,36 @@ def launch_rich_ccb(*, script_root: Path, cwd: Path) -> dict[str, object]:
     status['launch_pid'] = process.pid
     status['launch_command'] = ' '.join(_shell_quote(item) for item in command)
     return status
+
+
+def rich_workbench_enabled() -> bool:
+    status = workbench_status(profile='rich')
+    return status.get('status') != 'missing' and bool(status.get('enabled'))
+
+
+def rich_auto_start_allowed(environ: dict[str, str] | None = None) -> bool:
+    env = environ if environ is not None else os.environ
+    if _env_false(RICH_AUTO_START_ENV, environ=env):
+        return False
+    if _in_rich_terminal_context(env):
+        return False
+    return rich_workbench_enabled()
+
+
+def _in_rich_terminal_context(env: dict[str, str]) -> bool:
+    if str(env.get('CCB_WORKBENCH_FORCE_RICH') or '').strip():
+        return True
+    if str(env.get('CCB_WORKBENCH_PROFILE') or '').strip().lower() == 'rich':
+        return True
+    if str(env.get('CCB_WORKBENCH_TERMINAL_PROGRAM') or '').strip().lower() == 'wezterm':
+        return True
+    if str(env.get('WEZTERM_PANE') or '').strip():
+        return True
+    if str(env.get('WEZTERM_EXECUTABLE') or '').strip():
+        return True
+    if str(env.get('WEZTERM_UNIX_SOCKET') or '').strip():
+        return True
+    return str(env.get('TERM_PROGRAM') or '').strip().lower() == 'wezterm'
 
 
 def uninstall_workbench(*, profile: str = DEFAULT_PROFILE, remove_cache: bool = False) -> dict[str, object]:
@@ -941,6 +974,61 @@ def uninstall_workbench(*, profile: str = DEFAULT_PROFILE, remove_cache: bool = 
         'cache_removed': remove_cache,
         **_status_paths(paths),
     }
+
+
+def cleanup_legacy_neovim_tool(*, remove_cache: bool = False) -> dict[str, object]:
+    paths = _legacy_neovim_paths()
+    removed: list[str] = []
+    link = paths['bin_link']
+    root = paths['root']
+    try:
+        if link.is_symlink():
+            target = link.resolve(strict=False)
+            if _path_is_under(target, root):
+                link.unlink()
+                removed.append(str(link))
+        elif link.is_file():
+            text = link.read_text(encoding='utf-8', errors='ignore')[:1000]
+            if 'NVIM_APPNAME=nvim' in text and 'ccb/tools/neovim' in text:
+                link.unlink()
+                removed.append(str(link))
+    except Exception:
+        pass
+    for key in ('root', 'state_root'):
+        path = paths[key]
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+            removed.append(str(path))
+    if remove_cache and paths['cache_root'].exists():
+        shutil.rmtree(paths['cache_root'], ignore_errors=True)
+        removed.append(str(paths['cache_root']))
+    return {
+        'status': 'ok',
+        'removed': removed,
+        'cache_removed': remove_cache,
+    }
+
+
+def _legacy_neovim_paths() -> dict[str, Path]:
+    data_home = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local' / 'share')
+    state_home = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local' / 'state')
+    cache_home = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
+    return {
+        'root': data_home / 'ccb' / 'tools' / 'neovim',
+        'state_root': state_home / 'ccb' / 'tools' / 'neovim',
+        'cache_root': cache_home / 'ccb' / 'tools' / 'neovim',
+        'bin_link': Path(os.environ.get('CODEX_BIN_DIR') or Path.home() / '.local' / 'bin') / 'ccb-nvim',
+    }
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    try:
+        resolved_path = path.resolve(strict=False)
+        resolved_root = root.resolve(strict=False)
+    except Exception:
+        resolved_path = path.absolute()
+        resolved_root = root.absolute()
+    return resolved_path == resolved_root or resolved_root in resolved_path.parents
 
 
 def _paths() -> dict[str, Path]:
@@ -1393,12 +1481,8 @@ case "$cmd" in
     shift || true
     exec ccb-yazi-rich "$@"
     ;;
-  edit|nvim|neovim)
-    shift || true
-    exec ccb-nvim "$@"
-    ;;
   commands|--print-commands)
-    printf '%s\\n' 'ccb-yazi-rich "$PWD"' 'ccb-nvim "$PWD"'
+    printf '%s\\n' 'ccb-yazi-rich "$PWD"'
     ;;
   terminal|wezterm)
     shift || true
@@ -1509,11 +1593,26 @@ case "$cmd" in
           CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
           CCB_WORKBENCH_FORCE_RICH=1 \
           "$@"
-      fi
-      exec "$wezterm_windows" --config-file "$config_win" \
-        start --always-new-process --no-auto-connect -- wsl.exe --cd "$PWD" -- env \
-        -u TMUX \
-        -u TMUX_PANE \
+    fi
+    exec "$wezterm_windows" --config-file "$config_win" \
+      start --always-new-process --no-auto-connect -- wsl.exe --cd "$PWD" -- env \
+      -u TMUX \
+      -u TMUX_PANE \
+      -u CCB_TMUX_SOCKET \
+        -u CCB_TMUX_SOCKET_PATH \
+        PATH="$PATH" \
+        CCB_WORKBENCH_PROFILE=rich \
+        CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+        CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+        CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+        CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+      CCB_WORKBENCH_FORCE_RICH=1 \
+      "$@"
+  fi
+  if [ "$in_wezterm" = 1 ]; then
+    exec "$wezterm_bin" cli spawn --cwd "$PWD" -- env \
+      -u TMUX \
+      -u TMUX_PANE \
         -u CCB_TMUX_SOCKET \
         -u CCB_TMUX_SOCKET_PATH \
         PATH="$PATH" \
@@ -1522,24 +1621,10 @@ case "$cmd" in
         CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
         CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
         CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
-        CCB_WORKBENCH_FORCE_RICH=1 \
-        "$@"
-    fi
-    if [ "$in_wezterm" = 1 ]; then
-      exec "$wezterm_bin" cli spawn --cwd "$PWD" -- env \
-        -u TMUX \
-        -u TMUX_PANE \
-        -u CCB_TMUX_SOCKET \
-        -u CCB_TMUX_SOCKET_PATH \
-        CCB_WORKBENCH_PROFILE=rich \
-        CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
-        CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
-        CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
-        CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
-        CCB_WORKBENCH_FORCE_RICH=1 \
-        "$@"
-    fi
-    exec "$wezterm_bin" --config-file {_shell_quote(str(paths['wezterm_config']))} \
+      CCB_WORKBENCH_FORCE_RICH=1 \
+      "$@"
+  fi
+  exec "$wezterm_bin" --config-file {_shell_quote(str(paths['wezterm_config']))} \
       start --always-new-process --no-auto-connect --cwd "$PWD" -- env \
       -u TMUX \
       -u TMUX_PANE \
@@ -1618,12 +1703,11 @@ def _build_status(
     paths: dict[str, Path],
     *,
     profile: str,
-    neovim_result: dict[str, object],
     installed: bool,
     enabled: bool | None = None,
 ) -> dict[str, object]:
     manifest = _read_manifest(paths)
-    component_status = _component_statuses(paths, profile=profile, manifest=manifest, neovim_result=neovim_result)
+    component_status = _component_statuses(paths, profile=profile, manifest=manifest)
     status_value, degraded_reasons = _rollup_status(component_status)
     if not installed:
         status_value = 'missing'
@@ -1650,7 +1734,6 @@ def _component_statuses(
     *,
     profile: str,
     manifest: dict[str, object],
-    neovim_result: dict[str, object] | None = None,
 ) -> dict[str, dict[str, object]]:
     del profile, manifest
     yazi = _tool_component('yazi', ('yazi',))
@@ -1663,7 +1746,6 @@ def _component_statuses(
     video_thumbnail = _tool_component('video_thumbnail', ('ffmpeg',))
     terminal = _terminal_component()
     markdown = _markdown_component(paths)
-    neovim = _neovim_component(neovim_result)
     config = _config_component(paths)
     return {
         'config': config,
@@ -1671,7 +1753,6 @@ def _component_statuses(
         'wezterm': wezterm,
         'yazi': yazi,
         'ya': ya,
-        'neovim': neovim,
         'markdown': markdown,
         'image_preview': image_preview,
         'pdf_text': pdf_text,
@@ -1759,18 +1840,6 @@ def _image_component(paths: dict[str, Path]) -> dict[str, object]:
     return {'status': 'missing', 'reason': 'no image preview helper found'}
 
 
-def _neovim_component(neovim_result: dict[str, object] | None) -> dict[str, object]:
-    if neovim_result is None:
-        neovim_result = neovim_tools.neovim_status()
-    result: dict[str, object] = {
-        'status': neovim_result.get('status', 'unknown'),
-        'wrapper': neovim_result.get('wrapper'),
-    }
-    if neovim_result.get('reason'):
-        result['reason'] = neovim_result.get('reason')
-    return result
-
-
 def _config_component(paths: dict[str, Path]) -> dict[str, object]:
     required = (
         paths['wrapper'],
@@ -1793,7 +1862,7 @@ def _config_component(paths: dict[str, Path]) -> dict[str, object]:
 
 
 def _rollup_status(components: dict[str, dict[str, object]]) -> tuple[str, list[str]]:
-    required = ('config', 'yazi', 'neovim', 'markdown')
+    required = ('config', 'yazi', 'markdown')
     missing_required = [
         name
         for name in required
@@ -1838,7 +1907,6 @@ def _launch_commands(paths: dict[str, Path]) -> list[str]:
     return [
         f'{paths["wrapper"]} terminal',
         f'{paths["yazi_rich_wrapper"]} "$PWD"',
-        'ccb-nvim "$PWD"',
     ]
 
 
@@ -1986,9 +2054,6 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'yazi_reason',
         'ya_status',
         'ya_tools',
-        'neovim_status',
-        'neovim_wrapper',
-        'neovim_reason',
         'markdown_status',
         'markdown_tool',
         'markdown_reason',
@@ -2049,13 +2114,17 @@ def _now() -> str:
 __all__ = [
     'cmd_tools',
     'cmd_rich',
+    'cleanup_legacy_neovim_tool',
     'disable_workbench',
     'enable_workbench',
     'install_bundled_rich_binaries',
     'install_rich_dependencies',
     'launch_workbench',
+    'launch_rich_ccb',
     'print_workbench_status',
     'provision_workbench',
+    'rich_auto_start_allowed',
+    'rich_workbench_enabled',
     'uninstall_workbench',
     'update_rich_workbench',
     'workbench_status',

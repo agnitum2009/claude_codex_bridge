@@ -45,15 +45,7 @@ def _prepare_env(tmp_path: Path, monkeypatch) -> Path:
 
 
 def _stub_neovim(monkeypatch, tmp_path: Path) -> None:
-    nvim_root = tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'neovim'
-    nvim_wrapper = _fake_executable(nvim_root / 'bin' / 'ccb-nvim')
-    result = {
-        'status': 'ok',
-        'wrapper': str(nvim_wrapper),
-        'lazyvim_profile': str(nvim_root / 'lazyvim' / 'profile'),
-    }
-    monkeypatch.setattr(workbench_tools.neovim_tools, 'provision_neovim', lambda required=False: result)
-    monkeypatch.setattr(workbench_tools.neovim_tools, 'neovim_status', lambda: result)
+    del monkeypatch, tmp_path
 
 
 def test_workbench_install_writes_independent_bundle_profiles(tmp_path: Path, monkeypatch) -> None:
@@ -170,7 +162,7 @@ def test_workbench_install_writes_independent_bundle_profiles(tmp_path: Path, mo
     assert manifest['schema_version'] == 1
     assert manifest['components']['yazi']['status'] == 'ok'
     assert manifest['components']['wezterm']['status'] == 'ok'
-    assert manifest['components']['neovim']['status'] == 'ok'
+    assert 'neovim' not in manifest['components']
     assert manifest['components']['markdown']['status'] == 'ok'
     assert manifest['components']['image_preview']['status'] == 'ok'
 
@@ -191,7 +183,7 @@ def test_workbench_doctor_reports_manifest_and_component_paths(tmp_path: Path, m
     assert 'profile: rich' in output
     assert 'yazi_status: ok' in output
     assert 'wezterm_status: ok' in output
-    assert 'neovim_status: ok' in output
+    assert 'neovim' not in output.lower()
     assert 'yazi_safe_config:' in output
     assert 'wezterm_config:' in output
 
@@ -207,6 +199,20 @@ def test_update_rich_workbench_provisions_and_enables_bundle(tmp_path: Path, mon
     assert result['rich_update_status'] == 'ok'
     manifest = json.loads((tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'workbench' / 'manifest.json').read_text(encoding='utf-8'))
     assert manifest['enabled'] is True
+
+
+def test_rich_auto_start_allowed_respects_enabled_state_and_terminal_guard(tmp_path: Path, monkeypatch) -> None:
+    _prepare_env(tmp_path, monkeypatch)
+    _stub_neovim(monkeypatch, tmp_path)
+
+    assert workbench_tools.rich_auto_start_allowed(environ={}) is False
+
+    workbench_tools.update_rich_workbench()
+
+    assert workbench_tools.rich_auto_start_allowed(environ={}) is True
+    assert workbench_tools.rich_auto_start_allowed(environ={'WEZTERM_PANE': '1'}) is False
+    assert workbench_tools.rich_auto_start_allowed(environ={'CCB_WORKBENCH_PROFILE': 'rich'}) is False
+    assert workbench_tools.rich_auto_start_allowed(environ={'CCB_RICH_AUTO_START': '0'}) is False
 
 
 def test_install_bundled_rich_binaries_downloads_yazi_bundle(tmp_path: Path, monkeypatch) -> None:
@@ -297,10 +303,11 @@ def test_update_rich_workbench_installs_missing_dependencies(tmp_path: Path, mon
 def test_workbench_enable_disable_and_uninstall_are_bundle_scoped(tmp_path: Path, monkeypatch) -> None:
     _prepare_env(tmp_path, monkeypatch)
     _stub_neovim(monkeypatch, tmp_path)
+    legacy_editor_marker = tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'neovim' / 'keep.txt'
+    legacy_editor_marker.parent.mkdir(parents=True, exist_ok=True)
+    legacy_editor_marker.write_text('keep\n', encoding='utf-8')
     workbench_tools.provision_workbench(profile='rich')
-    neovim_marker = tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'neovim' / 'keep.txt'
-    neovim_marker.parent.mkdir(parents=True, exist_ok=True)
-    neovim_marker.write_text('keep\n', encoding='utf-8')
+    assert not legacy_editor_marker.exists()
 
     enabled = workbench_tools.enable_workbench(profile='rich')
     assert enabled['enabled'] is True
@@ -319,7 +326,6 @@ def test_workbench_enable_disable_and_uninstall_are_bundle_scoped(tmp_path: Path
     assert not (tmp_path / 'global-bin' / 'ccb-workbench').exists()
     assert not (tmp_path / 'global-bin' / 'ccb-yazi-rich').exists()
     assert not (tmp_path / 'global-bin' / 'ccb-image-preview').exists()
-    assert neovim_marker.exists()
 
 
 def test_workbench_launch_dry_run_prints_component_commands(tmp_path: Path, monkeypatch) -> None:
@@ -336,7 +342,8 @@ def test_workbench_launch_dry_run_prints_component_commands(tmp_path: Path, monk
     assert 'launch_status: dry_run' in output
     assert 'launch_command:' in output
     assert 'ccb-yazi-rich' in output
-    assert 'ccb-nvim' in output
+    assert 'neovim' not in output.lower()
+    assert 'ccb-nvim' not in output
 
 
 def test_workbench_launch_detaches_outer_tmux_environment(tmp_path: Path, monkeypatch) -> None:

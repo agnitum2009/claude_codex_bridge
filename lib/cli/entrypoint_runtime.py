@@ -19,7 +19,14 @@ from cli.roles_runtime import cmd_roles
 from cli.sidebar_click import maybe_handle_sidebar_click_command
 from cli.sidebar_resize_sync import maybe_handle_sidebar_resize_sync_command
 from cli.tools_runtime import cmd_tools
-from cli.tools_runtime.workbench import cmd_rich
+from cli.tools_runtime.workbench import (
+    cmd_rich,
+    disable_workbench,
+    launch_rich_ccb,
+    print_workbench_status,
+    rich_auto_start_allowed,
+    uninstall_workbench,
+)
 
 
 def _should_print_version(tokens: list[str]) -> bool:
@@ -163,9 +170,47 @@ def _dispatch_rich(tokens: list[str], *, script_root: Path, cwd: Path, stdout: T
     if not (tokens and tokens[0] == 'rich'):
         return None
     if len(tokens) > 1:
-        print('usage: ccb rich', file=stdout)
-        return 0 if tokens[1] in {'-h', '--help', 'help'} else 2
+        action = tokens[1]
+        if action in {'-h', '--help', 'help'}:
+            _print_rich_usage(stdout)
+            return 0
+        if action in {'uninstall', 'remove'} and len(tokens) == 2:
+            result = uninstall_workbench(profile='rich', remove_cache=False)
+            print_workbench_status(result, stdout)
+            return 0 if result.get('status') in {'ok', 'missing'} else 1
+        if action in {'disable', 'off'} and len(tokens) == 2:
+            result = disable_workbench(profile='rich', close=True)
+            print_workbench_status(result, stdout)
+            return 0 if result.get('status') in {'ok', 'degraded', 'missing'} else 1
+        _print_rich_usage(stdout)
+        return 2
     return cmd_rich(script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
+
+
+def _print_rich_usage(stdout: TextIO) -> None:
+    print('usage: ccb rich [uninstall|disable]', file=stdout)
+
+
+def _tokens_are_start_command(tokens: list[str]) -> bool:
+    visible = _strip_global_project_tokens(tokens)
+    if not visible:
+        return True
+    allowed = {'-s', '--safe', '-n', '--new-context'}
+    return all(token in allowed for token in visible)
+
+
+def _dispatch_auto_rich_start(tokens: list[str], *, script_root: Path, cwd: Path, stdout: TextIO, stderr: TextIO) -> int | None:
+    if not _tokens_are_start_command(tokens):
+        return None
+    if not rich_auto_start_allowed():
+        return None
+    result = launch_rich_ccb(script_root=script_root, cwd=cwd, start_args=tokens)
+    print_workbench_status(result, stdout)
+    if result.get('status') not in {'ok', 'degraded'}:
+        if result.get('reason'):
+            print(f"ERROR: {result['reason']}", file=stderr)
+        return 1
+    return 0 if result.get('launch_status') == 'started' else 1
 
 
 def _dispatch_roles(tokens: list[str], *, script_root: Path, cwd: Path, stdout: TextIO, stderr: TextIO) -> int | None:
@@ -229,6 +274,10 @@ def run_cli_entrypoint(
     roles_result = _dispatch_roles(tokens, script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
     if roles_result is not None:
         return roles_result
+
+    auto_rich_result = _dispatch_auto_rich_start(tokens, script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
+    if auto_rich_result is not None:
+        return auto_rich_result
 
     startup_update_result = maybe_handle_startup_release_update(
         tokens,

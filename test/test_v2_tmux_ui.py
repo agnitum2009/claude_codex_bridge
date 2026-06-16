@@ -122,9 +122,19 @@ def test_apply_project_tmux_ui_sets_session_theme_and_hook_from_current_install_
         backend=FakeBackend(),
     )
 
+    assert ['set-option', '-t', 'ccb-demo', 'status', 'on'] in calls
+    assert ['set-option', '-t', 'ccb-demo', 'status-format', 'CCB_CLEAR'] in calls
+    assert any(
+        call[:4] == ['set-option', '-t', 'ccb-demo', 'status-format[0]']
+        and 'status-left' in call[4]
+        for call in calls
+    )
+    assert ['set-option', '-u', '-t', 'ccb-demo', 'status-format[1]'] not in calls
     assert ['set-option', '-t', 'ccb-demo', '@ccb_version', '9.9.9'] in calls
     assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-status', 'top'] in calls
     assert ['set-window-option', '-t', 'ccb-demo:review', 'pane-border-status', 'top'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-lines', 'heavy'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:review', 'pane-border-lines', 'heavy'] in calls
     assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-style', 'fg=#f7768e'] in calls
     assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-active-border-style', 'fg=#f7768e,bold'] in calls
     assert any(
@@ -217,6 +227,49 @@ def test_apply_project_tmux_ui_applies_window_theme_for_contrast_profile(monkeyp
     assert ['set-window-option', '-t', 'ccb-demo', 'pane-border-style', 'fg=#565f89,bold'] in calls
     assert ['set-window-option', '-t', 'ccb-demo', 'window-style', 'bg=#181825'] in calls
     assert ['set-window-option', '-t', 'ccb-demo', 'window-active-style', 'bg=#1e1e2e'] in calls
+
+
+def test_apply_project_tmux_ui_uses_active_tool_pane_border_style(monkeypatch, tmp_path: Path) -> None:
+    config_dir = tmp_path / 'config'
+    config_dir.mkdir(parents=True)
+    for script_name in ('ccb-status.sh', 'ccb-border.sh', 'ccb-git.sh'):
+        (config_dir / script_name).write_text('#!/bin/sh\n', encoding='utf-8')
+    (tmp_path / 'VERSION').write_text('9.9.9\n', encoding='utf-8')
+
+    calls: list[list[str]] = []
+
+    class FakeBackend:
+        def _tmux_run(self, args, *, check=False, capture=False):
+            del check
+            calls.append(list(args))
+            if capture and args[:4] == ['list-panes', '-t', 'ccb-demo', '-F']:
+                return SimpleNamespace(returncode=0, stdout='\n%5\n', stderr='')
+            if capture and args[:3] == ['list-panes', '-a', '-F']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout='ccb-demo\trich\t%5\t1\ttool\tfg=#54bda7\tfg=#73daca,bold\n',
+                    stderr='',
+                )
+            if capture and args[:4] == ['display-message', '-p', '-t', '%5']:
+                if args[4] == '#{@ccb_active_border_style}':
+                    return SimpleNamespace(returncode=0, stdout='fg=#73daca,bold\n', stderr='')
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
+            if capture and args[:4] == ['list-windows', '-t', 'ccb-demo', '-F']:
+                return SimpleNamespace(returncode=0, stdout='rich\n', stderr='')
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+    monkeypatch.setattr(tmux_helpers, 'current_install_root', lambda: tmp_path)
+
+    tmux_ui.apply_project_tmux_ui(
+        tmux_socket_path='/tmp/ccb.sock',
+        tmux_session_name='ccb-demo',
+        backend=FakeBackend(),
+    )
+
+    assert ['set-window-option', '-t', 'ccb-demo:rich', 'pane-border-style', 'fg=#54bda7'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:rich', 'pane-active-border-style', 'fg=#73daca,bold'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:rich', 'pane-border-lines', 'heavy'] in calls
+    assert ['set-option', '-p', '-t', '%5', 'pane-active-border-style', 'fg=#73daca,bold'] in calls
 
 
 def test_border_script_keeps_sidebar_active_border_gray(tmp_path: Path) -> None:
@@ -322,6 +375,11 @@ exit 0
     assert str(release_config / 'ccb-border.sh') not in calls
     assert 'after-select-pane run-shell -b' in calls
     assert '[ -x ' in calls
+    assert 'set-option -t ccb-demo status on' in calls
+    assert 'set-option -t ccb-demo status-format CCB_CLEAR' in calls
+    assert 'set-option -t ccb-demo status-format[0]' in calls
+    assert 'set-option -u -t ccb-demo status-format[1]' not in calls
+    assert 'Copy: MouseDrag' not in calls
 
 
 def test_detect_ccb_version_prefers_current_install_over_path(monkeypatch, tmp_path: Path) -> None:

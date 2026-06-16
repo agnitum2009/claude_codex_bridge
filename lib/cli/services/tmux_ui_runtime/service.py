@@ -50,6 +50,13 @@ def apply_project_tmux_ui(
 
 def _apply_session_theme(backend, *, session_name: str, rendered_theme) -> None:
     for option, value in rendered_theme.session_options.items():
+        if option == 'status-format[0]':
+            # `status-format` is an array option. Setting index 0 alone leaves
+            # inherited/old hint rows at [1+]. Setting the array root clears it,
+            # then setting [0] preserves the full tmux format string safely.
+            tmux_run(backend, ['set-option', '-t', session_name, 'status-format', 'CCB_CLEAR'])
+            tmux_run(backend, ['set-option', '-t', session_name, 'status-format[0]', value])
+            continue
         tmux_run(backend, ['set-option', '-t', session_name, option, value])
 
 
@@ -246,7 +253,7 @@ def _active_window_pane_styles(backend, *, session_name: str) -> dict[str, dict[
         pane_session, window_name, _pane_id, pane_active, role, border_style, active_border_style = (
             item.strip() for item in parts
         )
-        if pane_session != session_name or pane_active != '1' or role != 'agent':
+        if pane_session != session_name or pane_active != '1' or role not in {'agent', 'tool', 'cmd'}:
             continue
         window_styles: dict[str, str] = {}
         if border_style:

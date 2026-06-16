@@ -97,6 +97,35 @@ def test_namespace_topology_plan_includes_tool_window_without_agent_names() -> N
     assert tool.sidebar.launch_args[-2:] == ('--pane-window', 'neovim')
 
 
+def test_namespace_topology_plan_keeps_rich_alias_inside_agent_window() -> None:
+    config = ProjectConfig(
+        version=2,
+        default_agents=('agent1',),
+        agents={'agent1': _spec('agent1', 'codex')},
+        layout_spec='agent1:codex, rich',
+        windows=(
+            WindowSpec(
+                name='main',
+                order=0,
+                layout_spec='agent1:codex, rich',
+                agent_names=('agent1',),
+                tool_names=('rich',),
+            ),
+        ),
+        entry_window='main',
+    )
+
+    plan = build_namespace_topology_plan(config, ccbd_socket_path='/tmp/ccbd.sock', project_root='/repo')
+
+    assert len(plan.windows) == 1
+    window = plan.windows[0]
+    assert window.kind == 'agents'
+    assert window.agent_names == ('agent1',)
+    assert window.tool_names == ('rich',)
+    assert window.user_layout == 'agent1:codex, rich'
+    assert window.realized_layout == 'sidebar; (agent1:codex, rich)'
+
+
 def test_namespace_topology_plan_keeps_sidebar_pane_for_hidden_tool_row() -> None:
     config = ProjectConfig(
         version=2,

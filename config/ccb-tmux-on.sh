@@ -229,7 +229,7 @@ if [[ -n "$theme_exports" ]]; then
   eval "$theme_exports"
 fi
 
-default_status_format_0='#[align=left bg=#1e1e2e]#{T:status-left}#[align=centre fg=#6c7086]#{b:pane_current_path}#[align=right]#{T:status-right}'
+default_status_format_0='#[align=left,bg=#1e1e2e]#{T:status-left}#[align=centre,fg=#6c7086]#{b:pane_current_path}#[align=right]#{T:status-right}'
 default_status_left='#[fg=#1e1e2e,bg=#{?client_prefix,#f38ba8,#{?pane_in_mode,#fab387,#f5c2e7}},bold] #{?client_prefix,KEY,#{?pane_in_mode,COPY,INPUT}} #[fg=#{?client_prefix,#f38ba8,#{?pane_in_mode,#fab387,#f5c2e7}},bg=#cba6f7]#[fg=#1e1e2e,bg=#cba6f7] - #[fg=#cba6f7,bg=#1e1e2e]'
 default_status_right="#[fg=#f38ba8,bg=#1e1e2e]#[fg=#1e1e2e,bg=#f38ba8,bold] #{?#{@ccb_agent},#{@ccb_agent},-} #[fg=#cba6f7,bg=#f38ba8]#[fg=#1e1e2e,bg=#cba6f7,bold] CCB:#{@ccb_version} #[fg=#89b4fa,bg=#cba6f7]#[fg=#cdd6f4,bg=#89b4fa] #(${status_script} modern) #[fg=#fab387,bg=#89b4fa]#[fg=#1e1e2e,bg=#fab387,bold] %m/%d %a %H:%M #[default]"
 default_pane_border_format='#{?#{@ccb_agent},#{?#{@ccb_label_style},#{@ccb_label_style},#[fg=#1e1e2e]#[bg=#7aa2f7]#[bold]} #{@ccb_agent} #[default],#[fg=#565f89] #{pane_title} #[default]}'
@@ -244,7 +244,10 @@ tmux set-option -t "$session" status on >/dev/null 2>&1 || true
 tmux set-option -t "$session" @ccb_theme_profile "${CCB_TMUX_RENDERED_THEME_PROFILE:-default}" >/dev/null 2>&1 || true
 tmux set-option -t "$session" status-left-length "${CCB_TMUX_RENDERED_STATUS_LEFT_LENGTH:-80}" >/dev/null 2>&1 || true
 tmux set-option -t "$session" status-right-length "${CCB_TMUX_RENDERED_STATUS_RIGHT_LENGTH:-120}" >/dev/null 2>&1 || true
-tmux set-option -u -t "$session" 'status-format[1]' >/dev/null 2>&1 || true
+# `status-format` is an array option. Setting the indexed [0] member leaves
+# inherited/global [1+] members in place on newer tmux, which reintroduces the
+# old CCB hint row. Clear the array root first, then install the full [0] value.
+tmux set-option -t "$session" status-format "CCB_CLEAR" >/dev/null 2>&1 || true
 tmux set-option -t "$session" 'status-format[0]' "${CCB_TMUX_RENDERED_STATUS_FORMAT_0:-$default_status_format_0}" >/dev/null 2>&1 || true
 tmux set-option -t "$session" status-left "${CCB_TMUX_RENDERED_STATUS_LEFT:-$default_status_left}" >/dev/null 2>&1 || true
 tmux set-option -t "$session" @ccb_version "$ccb_version" >/dev/null 2>&1 || true
