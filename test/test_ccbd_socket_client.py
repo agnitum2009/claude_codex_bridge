@@ -131,6 +131,21 @@ def test_ccbd_client_project_clear_context_endpoint_builds_payload(monkeypatch, 
     assert calls == [('project_clear_context', {'agent_names': ['agent1', 'agent2']})]
 
 
+def test_ccbd_client_project_sidebar_click_endpoint_builds_payload(monkeypatch, tmp_path) -> None:
+    client = CcbdClient(tmp_path / 'ccbd.sock')
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(client, 'request', lambda op, payload=None: calls.append((op, payload)) or {'ok': True})
+
+    client.project_sidebar_click(mouse_y=4, pane_top=1, pane_height=47, schema_version=1)
+
+    assert calls == [
+        (
+            'project_sidebar_click',
+            {'mouse_y': 4, 'pane_top': 1, 'pane_height': 47, 'schema_version': 1},
+        )
+    ]
+
+
 def test_ccbd_client_request_wraps_socket_connect_errors(monkeypatch, tmp_path) -> None:
     client = CcbdClient(tmp_path / "ccbd.sock")
 

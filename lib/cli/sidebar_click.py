@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
-from ccbd.socket_client import CcbdClient
+from ccbd.socket_client import CcbdClient, CcbdClientError
+from sidebar_click_targets import relative_coordinate, resolve_sidebar_click_target, sidebar_tree_targets
 
 
 @dataclass(frozen=True)
@@ -29,19 +30,41 @@ def maybe_handle_sidebar_click_command(tokens: list[str], *, stderr: TextIO) -> 
 
 
 def focus_sidebar_click(click: SidebarClick, *, client_factory=CcbdClient) -> str | None:
-    relative_y = _relative_coordinate(click.mouse_y, click.pane_top, click.pane_height)
+    relative_y = relative_coordinate(click.mouse_y, click.pane_top, click.pane_height)
     if relative_y <= 0 or relative_y >= max(1, click.pane_height - 1):
         return None
-    row_index = relative_y - 1
     client = client_factory(click.socket_path)
+    try:
+        payload = client.project_sidebar_click(
+            mouse_y=click.mouse_y,
+            pane_top=click.pane_top,
+            pane_height=click.pane_height,
+            schema_version=1,
+        )
+    except AttributeError:
+        return _focus_sidebar_click_with_project_view(click, client)
+    except CcbdClientError as exc:
+        if 'unknown op' not in str(exc).lower():
+            raise
+        return _focus_sidebar_click_with_project_view(click, client)
+    target = payload.get('target') if isinstance(payload, dict) else None
+    return str(target) if target else None
+
+
+def _focus_sidebar_click_with_project_view(click: SidebarClick, client) -> str | None:
     view_payload = client.project_view(schema_version=1)
     view = view_payload.get('view') if isinstance(view_payload, dict) else None
     if not isinstance(view, dict):
         return None
-    targets = sidebar_tree_targets(view)
-    if row_index < 0 or row_index >= len(targets):
+    target = resolve_sidebar_click_target(
+        view,
+        mouse_y=click.mouse_y,
+        pane_top=click.pane_top,
+        pane_height=click.pane_height,
+    )
+    if target is None:
         return None
-    kind, name = targets[row_index]
+    kind, name = target
     namespace = view.get('namespace') if isinstance(view.get('namespace'), dict) else {}
     namespace_epoch = namespace.get('epoch') if isinstance(namespace, dict) else None
     if kind == 'window':
@@ -49,28 +72,6 @@ def focus_sidebar_click(click: SidebarClick, *, client_factory=CcbdClient) -> st
     else:
         client.project_focus_agent(name, namespace_epoch=namespace_epoch)
     return f'{kind}:{name}'
-
-
-def sidebar_tree_targets(view: dict) -> list[tuple[str, str]]:
-    windows = view.get('windows') if isinstance(view.get('windows'), list) else []
-    agents = view.get('agents') if isinstance(view.get('agents'), list) else []
-    targets: list[tuple[str, str]] = []
-    for window in windows:
-        if not isinstance(window, dict):
-            continue
-        window_name = str(window.get('name') or '').strip()
-        if not window_name:
-            continue
-        targets.append(('window', window_name))
-        for agent in agents:
-            if not isinstance(agent, dict):
-                continue
-            if str(agent.get('window') or '').strip() != window_name:
-                continue
-            agent_name = str(agent.get('name') or '').strip()
-            if agent_name:
-                targets.append(('agent', agent_name))
-    return targets
 
 
 def _parse_sidebar_click(argv: list[str]) -> SidebarClick:
@@ -86,15 +87,6 @@ def _parse_sidebar_click(argv: list[str]) -> SidebarClick:
         pane_top=int(args.pane_top),
         pane_height=int(args.pane_height),
     )
-
-
-def _relative_coordinate(value: int, pane_start: int, pane_size: int) -> int:
-    # tmux normally exposes pane-relative mouse coordinates for pane bindings.
-    # Keep an absolute-coordinate fallback for older or unusual format contexts.
-    if value >= pane_size and value >= pane_start:
-        return value - pane_start
-    return value
-
 
 __all__ = [
     'SidebarClick',

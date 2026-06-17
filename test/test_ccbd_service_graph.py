@@ -136,7 +136,9 @@ def test_ccbd_app_bootstrap_publishes_startup_graph_fields(tmp_path: Path) -> No
     assert app.control_plane_metrics.service_graph_created_at == NOW
     assert app.control_plane_metrics.service_graph_retained_count == 1
     assert app.control_plane_metrics.service_graph_retained_count_scope == SERVICE_GRAPH_RETAINED_COUNT_SCOPE
-    assert {'submit', 'project_view', 'project_focus_agent', 'ping'} <= set(app.socket_server._handlers)
+    assert {'submit', 'project_view', 'project_focus_agent', 'project_sidebar_click', 'ping'} <= set(
+        app.socket_server._handlers
+    )
 
 
 def test_handlers_route_graph_bound_services_through_current_graph(tmp_path: Path) -> None:
@@ -159,6 +161,14 @@ def test_handlers_route_graph_bound_services_through_current_graph(tmp_path: Pat
     project_view = app.socket_server._handlers['project_view']({'schema_version': 1})
     focus_agent = app.socket_server._handlers['project_focus_agent']({'agent': 'alpha'})
     focus_window = app.socket_server._handlers['project_focus_window']({'window': 'main'})
+    replacement.project_view_service.view = {
+        'namespace': {'epoch': 12},
+        'windows': [{'name': 'main'}],
+        'agents': [{'name': 'alpha', 'window': 'main'}],
+    }
+    sidebar_click = app.socket_server._handlers['project_sidebar_click'](
+        {'mouse_y': 1, 'pane_top': 0, 'pane_height': 20, 'schema_version': 1}
+    )
     queue = app.socket_server._handlers['queue']({'target': 'all'})
     ping = app.socket_server._handlers['ping']({'target': 'ccbd'})
 
@@ -166,12 +176,17 @@ def test_handlers_route_graph_bound_services_through_current_graph(tmp_path: Pat
     assert project_view == {'graph_version': 2, 'schema_version': 1}
     assert focus_agent == {'focused': 'agent', 'graph_version': 2, 'agent': 'alpha'}
     assert focus_window == {'focused': 'window', 'graph_version': 2, 'window': 'main'}
+    assert sidebar_click == {'focused': 'window', 'graph_version': 2, 'window': 'main', 'target': 'window:main'}
     assert queue == {'target': 'all', 'graph_version': 2}
     assert ping['diagnostics']['service_graph_version'] == 2
     assert ping['known_agents'] == ['alpha', 'beta', 'gamma']
     assert replacement.dispatcher.calls == [('submit', 'hello'), ('queue', 'all', None)]
-    assert replacement.project_view_service.calls == [('project_view', 1)]
-    assert replacement.project_focus_service.calls == [('focus_agent', 'alpha', None), ('focus_window', 'main', None)]
+    assert replacement.project_view_service.calls == [('project_view', 1), ('project_view', 1)]
+    assert replacement.project_focus_service.calls == [
+        ('focus_agent', 'alpha', None),
+        ('focus_window', 'main', None),
+        ('focus_window', 'main', 12),
+    ]
     assert replacement.registry.calls == []
     assert replacement.health_monitor.calls == ['local_daemon_health']
 
@@ -344,10 +359,14 @@ class _RoutingProjectView:
     def __init__(self, version: int) -> None:
         self.version = version
         self.calls: list[tuple[str, int]] = []
+        self.view: dict | None = None
 
     def build_response(self, *, schema_version: int = 1) -> dict:
         self.calls.append(('project_view', schema_version))
-        return {'graph_version': self.version, 'schema_version': schema_version}
+        payload = {'graph_version': self.version, 'schema_version': schema_version}
+        if self.view is not None:
+            payload['view'] = self.view
+        return payload
 
 
 class _RoutingProjectFocus:

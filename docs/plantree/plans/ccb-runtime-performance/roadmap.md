@@ -21,26 +21,42 @@ Date: 2026-06-16
   project_view when available, while preserving synchronous refresh fallback.
 - Fixed the pending sidebar-refresh crash exposed by that fast path by adding
   the missing project_view refresh metrics helper and regression coverage.
+- Split the previous `shell-system` bucket with corrected project-scoped
+  profiling. Evidence:
+  [history/shell-system-bucket-split-2026-06-16.md](history/shell-system-bucket-split-2026-06-16.md).
+  High-load submission CPU is dominated by `ask-cli-subprocess`; startup CPU is
+  dominated by provider launch/mount, not tmux server work.
+- Added a working-tree interactive-latency slice for sidebar clicks:
+  `ccb __sidebar-click` can now focus through one daemon RPC
+  (`project_sidebar_click`) instead of a CLI-side `project_view` request
+  followed by a second focus request, with old-daemon fallback preserved.
+- Added `dev_tools/perf_sidebar_click_latency.py` as a focused single-RPC
+  latency probe for live daemon socket measurements.
 
 ## In Progress
 
-- Main-agent packaging and review for the first safe slices: profiling
-  attribution, tmux prepare caching, and interactive focus latency. Worker3's
-  wider project_view/Rust-helper output remains quarantined because the reply
-  and worktree did not match. Reviewer agents are not used for this task. Topic:
-  [startup-and-runtime-low-latency-plan.md](topics/startup-and-runtime-low-latency-plan.md).
+- Main-agent review of remaining interactive latency after the sidebar
+  single-RPC slice. The slice is allowed as a local current-branch commit only;
+  it must not be merged to main or included in binary/release packaging until
+  live latency data justifies promotion and the user explicitly approves it.
+- Main-agent review of the highest CPU paths identified by corrected profiling:
+  persistent/batched ask submission for high-load operation and lazy or
+  policy-controlled provider mounting for startup.
 
 ## Next
 
-1. Split the current `shell-system` bucket into tmux server, ask CLI process
-   creation, shell wrappers, terminal frontend, and unrelated OS/UI work.
-2. Add a repeatable startup profile gate with wall time, cumulative CPU, peak
+1. Design a low-risk persistent or batched ask submission path that avoids one
+   Python process per `ccb ask` while preserving current CLI semantics.
+2. Design startup provider-mount policy knobs so non-target providers can be
+   deferred without breaking configured-agent supervision.
+3. Add a repeatable startup profile gate with wall time, cumulative CPU, peak
    process count, and provider mount timing.
-3. Add a high-load profile matrix by provider mix: Codex-only, Gemini-only,
+4. Add a high-load profile matrix by provider mix: Codex-only, Gemini-only,
    mixed mounted-idle, and mixed active.
-4. Add an interactive latency probe for click-to-pane-focus and
-   click-to-stable-sidebar-refresh.
-5. Promote the highest-ROI implementation slice only after the refined profile
+5. Run the interactive latency probe on a live test daemon, then decide whether
+   tmux focus commands or foreground border/status hooks are the next
+   visible-latency owner.
+6. Promote the highest-ROI implementation slice only after the refined profile
    shows a clear owner and acceptance threshold.
 
 ## Deferred

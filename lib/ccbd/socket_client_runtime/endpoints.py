@@ -204,6 +204,21 @@ def _payload_project_focus_agent(agent: str, *, namespace_epoch: int | None = No
     return payload
 
 
+def _payload_project_sidebar_click(
+    *,
+    mouse_y: int,
+    pane_top: int,
+    pane_height: int,
+    schema_version: int = 1,
+) -> dict:
+    return {
+        'mouse_y': int(mouse_y),
+        'pane_top': int(pane_top),
+        'pane_height': int(pane_height),
+        'schema_version': int(schema_version),
+    }
+
+
 def _payload_project_reload_config(*, dry_run: bool = False) -> dict:
     return {'dry_run': bool(dry_run)}
 
@@ -235,6 +250,7 @@ client_endpoints = {
     'project_reload_config': ('project_reload_config', _payload_project_reload_config),
     'project_focus_window': ('project_focus_window', _payload_project_focus_window),
     'project_focus_agent': ('project_focus_agent', _payload_project_focus_agent),
+    'project_sidebar_click': ('project_sidebar_click', _payload_project_sidebar_click),
 }
 
 

@@ -13,6 +13,7 @@ from ccbd.handlers import (
     build_ping_handler,
     build_project_focus_agent_handler,
     build_project_focus_window_handler,
+    build_project_sidebar_click_handler,
     build_project_clear_context_handler,
     build_project_reload_config_handler,
     build_project_restart_agent_handler,
@@ -80,6 +81,13 @@ def register_handlers(app) -> None:
     app.socket_server.register_handler(
         'project_focus_agent',
         _graph_request(graph_source, build_project_focus_agent_handler(project_focus_service)),
+    )
+    app.socket_server.register_handler(
+        'project_sidebar_click',
+        _graph_request(
+            graph_source,
+            build_project_sidebar_click_handler(project_view_service, project_focus_service),
+        ),
     )
     app.socket_server.register_handler(
         'project_restart_panes',

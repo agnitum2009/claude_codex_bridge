@@ -8,7 +8,11 @@ from .get import build_get_handler
 from .inbox import build_inbox_handler
 from .mailbox_head import build_mailbox_head_handler
 from .ping import build_ping_handler
-from .project_focus import build_project_focus_agent_handler, build_project_focus_window_handler
+from .project_focus import (
+    build_project_focus_agent_handler,
+    build_project_focus_window_handler,
+    build_project_sidebar_click_handler,
+)
 from .project_clear import build_project_clear_context_handler
 from .project_reload import build_project_reload_config_handler
 from .project_restart import build_project_restart_agent_handler, build_project_restart_panes_handler
@@ -35,6 +39,7 @@ __all__ = [
     'build_ping_handler',
     'build_project_focus_agent_handler',
     'build_project_focus_window_handler',
+    'build_project_sidebar_click_handler',
     'build_project_clear_context_handler',
     'build_project_reload_config_handler',
     'build_project_restart_agent_handler',
