@@ -207,21 +207,14 @@ def _copy_install(role_id: str | None, source_path: Path | None, *, status: str)
     actual_id = _canonical_role_id(str(manifest.get("id") or ""))
     version = str(manifest.get("version") or "")
     source_digest = _tree_digest(source)
-    target = _store_root() / actual_id / "versions" / version / source_digest
+    target = _store_root() / actual_id / "current"
     if target.exists():
-        shutil.rmtree(target)
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        else:
+            shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target, symlinks=True)
-    current = _store_root() / actual_id / "current"
-    if current.exists() or current.is_symlink():
-        if current.is_symlink() or current.is_file():
-            current.unlink()
-        else:
-            shutil.rmtree(current)
-    try:
-        current.symlink_to(target, target_is_directory=True)
-    except OSError:
-        shutil.copytree(target, current)
     metadata = {
         "schema": "agent-roles-install/v1",
         "id": actual_id,
@@ -364,15 +357,13 @@ def _write_spec_installed_role(tmp_path: Path, source: Path) -> dict[str, object
     role = load_role_manifest(source)
     digest = tree_digest(source)
     role_dir = _agent_roles_installed_root(tmp_path) / role.id
-    target = role_dir / 'versions' / role.version / digest
-    shutil.copytree(source, target, symlinks=True)
-    current = role_dir / 'current'
-    if current.exists() or current.is_symlink():
-        if current.is_symlink() or current.is_file():
-            current.unlink()
+    target = role_dir / 'current'
+    if target.exists():
+        if target.is_symlink() or target.is_file():
+            target.unlink()
         else:
-            shutil.rmtree(current)
-    current.symlink_to(target, target_is_directory=True)
+            shutil.rmtree(target)
+    shutil.copytree(source, target, symlinks=True)
     metadata = {
         'schema': 'agent-roles-install/v1',
         'id': role.id,
@@ -937,9 +928,7 @@ def test_roles_add_snapshots_uninstalled_system_role_source(tmp_path: Path, monk
     assert 'install: snapshotted_from_system_source' in out
     assert load_installed_role('local.review') is not None
     assert (_agent_roles_installed_root(tmp_path) / 'local.review' / 'install.json').is_file()
-    lock_payload = json.loads((project / '.ccb' / 'role-lock.json').read_text(encoding='utf-8'))
-    assert lock_payload['roles']['local.review']['version'] == '0.1.0'
-    assert lock_payload['roles']['local.review']['default_agent_name'] == 'review'
+    assert not (project / '.ccb' / 'role-lock.json').exists()
     loaded = load_project_config(project).config
     assert loaded.agents['review'].role == 'local.review'
 
@@ -1359,15 +1348,15 @@ import sys
 args = sys.argv[1:]
 source = Path(os.environ["AGENT_ROLES_SPEC_HOME"]) / "roles" / "archi"
 root = Path(os.environ["AGENT_ROLES_STORE"]) / "installed" / "agentroles.archi"
-target = root / "versions" / "0.2.0" / "fake-digest"
-if target.exists():
-    shutil.rmtree(target)
+target = root / "current"
+if target.exists() or target.is_symlink():
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+    else:
+        shutil.rmtree(target)
 target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copytree(source, target)
-current = root / "current"
-if current.exists() or current.is_symlink():
-    current.unlink()
-current.symlink_to(target, target_is_directory=True)
+current = target
 (root / "install.json").write_text(json.dumps({{
     "schema": "agent-roles-install/v1",
     "id": "agentroles.archi",
@@ -1396,7 +1385,7 @@ print(json.dumps({{
 
     assert payload['role_status'] == 'installed'
     assert payload['role_id'] == 'agentroles.archi'
-    assert payload['path'].endswith('/.roles/installed/agentroles.archi/versions/0.2.0/fake-digest')
+    assert payload['path'].endswith('/.roles/installed/agentroles.archi/current')
     assert load_installed_role('agentroles.archi') is not None
     assert (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').is_file()
     assert not (tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json').exists()
@@ -1479,15 +1468,14 @@ import sys
 args = sys.argv[1:]
 source = Path(args[args.index("--path") + 1])
 root = Path(os.environ["AGENT_ROLES_STORE"]) / "installed" / "agentroles.archi"
-target = root / "versions" / "0.2.0" / "path-update-digest"
-if target.exists():
-    shutil.rmtree(target)
+target = root / "current"
+if target.exists() or target.is_symlink():
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+    else:
+        shutil.rmtree(target)
 target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copytree(source, target)
-current = root / "current"
-if current.exists() or current.is_symlink():
-    current.unlink()
-current.symlink_to(target, target_is_directory=True)
 (root / "install.json").write_text(json.dumps({
     "schema": "agent-roles-install/v1",
     "id": "agentroles.archi",
@@ -1514,7 +1502,7 @@ print(json.dumps({
     payload = update_role('agentroles.archi', source_path=_agent_roles_archi(), with_tools=False)
 
     assert payload['role_status'] == 'updated'
-    assert payload['path'].endswith('/.roles/installed/agentroles.archi/versions/0.2.0/path-update-digest')
+    assert payload['path'].endswith('/.roles/installed/agentroles.archi/current')
     assert (tmp_path / '.roles' / 'installed' / 'agentroles.archi' / 'install.json').is_file()
     assert not (tmp_path / 'xdg-data' / 'ccb' / 'roles' / 'agentroles.archi' / 'install.json').exists()
 
@@ -2014,10 +2002,7 @@ def test_roles_add_accepts_compact_role_provider_spec(tmp_path: Path, monkeypatc
     text = (project / '.ccb' / 'ccb.config').read_text(encoding='utf-8')
     assert 'main = "agent1:codex, agentroles.archi:codex"' in text
     assert '[agents.archi]' not in text
-    assert (project / '.ccb' / 'role-lock.json').is_file()
-    metadata = json.loads((_agent_roles_installed_root(tmp_path) / 'agentroles.archi' / 'install.json').read_text(encoding='utf-8'))
-    lock_payload = json.loads((project / '.ccb' / 'role-lock.json').read_text(encoding='utf-8'))
-    assert lock_payload['roles']['agentroles.archi']['digest'] == metadata['digest']
+    assert not (project / '.ccb' / 'role-lock.json').exists()
     loaded = load_project_config(project).config
     assert loaded.agents['archi'].role == 'agentroles.archi'
 
@@ -2204,18 +2189,38 @@ def test_project_role_lock_blocks_silent_current_drift(tmp_path: Path, monkeypat
     _write_project_config(project)
     install_role('test.locked', with_tools=False)
     assert _run_cli(['roles', 'add', 'test.locked:codex'], cwd=project)[0] == 0
-    lock_payload = json.loads((project / '.ccb' / 'role-lock.json').read_text(encoding='utf-8'))
-    locked_digest = str(lock_payload['roles']['test.locked']['digest'])
+    metadata = json.loads((_agent_roles_installed_root(tmp_path) / 'test.locked' / 'install.json').read_text(encoding='utf-8'))
+    locked_digest = str(metadata['digest'])
+    locked_version = str(metadata['version'])
+    (project / '.ccb' / 'role-lock.json').write_text(
+        json.dumps(
+            {
+                'schema': 'rolepack-lock/v1',
+                'roles': {
+                    'test.locked': {
+                        'version': locked_version,
+                        'digest': locked_digest,
+                        'source': 'installed',
+                        'default_agent_name': 'locked',
+                    }
+                },
+            },
+            sort_keys=True,
+            indent=2,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
     locked_digest_hex = locked_digest.removeprefix('sha256:')
-    locked_path = _agent_roles_installed_root(tmp_path) / 'test.locked' / 'versions' / '1.0.0' / locked_digest_hex
-    assert locked_path.is_dir()
+    legacy_locked_path = _agent_roles_installed_root(tmp_path) / 'test.locked' / 'versions' / '1.0.0' / locked_digest_hex
+    assert not legacy_locked_path.is_dir()
 
     _write_memory_catalog_role(catalog, default_agent_name='drifted', memory_text='drifted memory v2')
     update_role('test.locked', with_tools=False)
     current_path = (_agent_roles_installed_root(tmp_path) / 'test.locked' / 'current').resolve()
 
     loaded = load_project_config(project).config
-    sources = load_memory_sources(project, agent_name='locked', provider='codex')
+    sources = load_memory_sources(project, agent_name='drifted', provider='codex')
     warnings = [source.warning for source in sources if source.kind == 'role_memory' and source.warning]
     role_memory = '\n'.join(source.content for source in sources if source.kind == 'role_memory')
     source_home = tmp_path / 'source-codex'
@@ -2225,20 +2230,19 @@ def test_project_role_lock_blocks_silent_current_drift(tmp_path: Path, monkeypat
         target_home,
         source_home=source_home,
         project_root=project,
-        agent_name='locked',
+        agent_name='drifted',
         workspace_path=project,
     )
     rendered_memory = (target_home / 'AGENTS.md').read_text(encoding='utf-8')
 
-    assert set(loaded.agents) == {'agent1', 'locked'}
-    assert 'drifted' not in loaded.agents
+    assert set(loaded.agents) == {'agent1', 'drifted'}
+    assert 'locked' not in loaded.agents
     assert warnings == []
-    assert current_path != locked_path
-    assert 'locked memory v1' in role_memory
-    assert 'drifted memory v2' not in role_memory
-    assert 'locked memory v1' in rendered_memory
+    assert current_path != legacy_locked_path
+    assert 'drifted memory v2' in role_memory
+    assert 'locked memory v1' not in role_memory
+    assert 'drifted memory v2' in rendered_memory
     assert 'role_lock_mismatch: test.locked' not in rendered_memory
-    assert 'drifted memory v2' not in rendered_memory
 
 
 def test_legacy_migration_merges_locked_digest_into_existing_spec_store(tmp_path: Path, monkeypatch) -> None:
@@ -2303,8 +2307,8 @@ def test_legacy_migration_merges_locked_digest_into_existing_spec_store(tmp_path
     assert metadata['digest'] == current_payload['digest']
     assert current == Path(str(current_payload['path'])).resolve()
     assert warnings == []
-    assert 'legacy locked memory' in role_memory
-    assert 'new current memory' not in role_memory
+    assert 'new current memory' in role_memory
+    assert 'legacy locked memory' not in role_memory
 
 
 def test_codex_role_skills_project_to_managed_home(tmp_path: Path, monkeypatch) -> None:

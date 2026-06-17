@@ -8,6 +8,8 @@ from provider_backends.pane_log_support.lifecycle_recovery import respawn_existi
 from provider_backends.pane_log_support.session import now_str
 from provider_core.registry import build_default_session_binding_map
 from provider_core.session_binding_evidence_runtime.loading import binding_search_roots, load_provider_session
+from rolepacks.runtime_lookup import load_installed_role, tree_digest
+from rolepacks.sources import installed_role_metadata
 from terminal_runtime import TmuxBackend
 
 
@@ -279,6 +281,9 @@ def _restart_agent_pane(app, *, backend, agent_name: str) -> dict[str, object]:
     pane_id = _restart_pane_id(runtime=runtime, session=session)
     if session is None:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'session_missing'}
+    role_restart_block = _role_restart_blocked(session=session)
+    if role_restart_block is not None:
+        return {'agent': agent_name, **role_restart_block}
     if not pane_id:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'pane_missing'}
     start_cmd = str(getattr(session, 'start_cmd', '') or '').strip()
@@ -351,6 +356,63 @@ def _workspace_path(app, *, agent_name: str, runtime) -> Path:
         return Path(app.paths.workspace_path(agent_name))
     except Exception:
         return Path(app.project_root)
+
+
+def _role_restart_blocked(*, session) -> dict[str, str] | None:
+    evidence = _session_role_evidence(session=session)
+    if evidence is None:
+        return None
+    role = _load_installed_role_safe(evidence.get('id', ''))
+    if role is None:
+        return {
+            'status': 'failed',
+            'reason': 'role_not_installed',
+            'detail': f'role_id={evidence.get("id")}',
+        }
+    current_digest = _installed_role_digest(role)
+    launch_digest = evidence.get('digest') or ''
+    if not launch_digest:
+        return None
+    if launch_digest != current_digest:
+        return {
+            'status': 'failed',
+            'reason': 'role_digest_changed_fresh_restart_unsupported',
+            'detail': (
+                f'role_id={evidence.get("id")} '
+                f'launch_version={evidence.get("version")} launch_digest={launch_digest} '
+                f'current_version={role.version} current_digest={current_digest}'
+            ),
+        }
+    return None
+
+
+def _session_role_evidence(*, session) -> dict[str, str] | None:
+    data = getattr(session, 'data', None)
+    if not isinstance(data, dict):
+        return None
+    role_id = _clean(data.get('ccb_role_id'))
+    if not role_id:
+        return None
+    return {
+        'id': role_id,
+        'version': _clean(data.get('ccb_role_version')) or '',
+        'digest': _clean(data.get('ccb_role_digest')) or '',
+    }
+
+
+def _load_installed_role_safe(role_id: str):
+    try:
+        return load_installed_role(role_id)
+    except Exception:
+        return None
+
+
+def _installed_role_digest(role) -> str:
+    metadata = installed_role_metadata(role.id)
+    digest = str(metadata.get('digest') or '').strip()
+    if digest:
+        return digest
+    return f'sha256:{tree_digest(role.root)}'
 
 
 __all__ = [

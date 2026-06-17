@@ -157,11 +157,11 @@ def test_find_project_role_lock_updates_detects_installed_current_drift(
     assert updates[0].current_digest == installed_v2['digest']
 
 
-def test_confirm_project_role_lock_refresh_updates_lock_when_accepted(
+def test_confirm_project_role_lock_refresh_reports_legacy_noop_when_accepted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    project, _installed_v1, installed_v2 = _stale_role_lock_project(monkeypatch, tmp_path)
+    project, installed_v1, installed_v2 = _stale_role_lock_project(monkeypatch, tmp_path)
     stdout = StringIO()
 
     confirm_project_role_lock_refresh(
@@ -173,10 +173,17 @@ def test_confirm_project_role_lock_refresh_updates_lock_when_accepted(
 
     lock_payload = json.loads((project / '.ccb' / 'role-lock.json').read_text(encoding='utf-8'))
     lock_entry = lock_payload['roles']['test.locked']
-    assert lock_entry['version'] == installed_v2['version']
-    assert lock_entry['digest'] == installed_v2['digest']
-    assert 'Role Pack updates are available for this project:' in stdout.getvalue()
-    assert 'role_lock_refreshed: test.locked version=2.0.0' in stdout.getvalue()
+    assert lock_entry['version'] == installed_v1['version']
+    assert lock_entry['digest'] == installed_v1['digest']
+    assert 'Legacy project role-lock residue differs from installed Role Packs:' in stdout.getvalue()
+    assert 'Show legacy diagnostic for' in stdout.getvalue()
+    assert (
+        f'role_lock_legacy_notice: test.locked locked version={installed_v1["version"]} '
+        f'digest={installed_v1["digest"]} -> installed version={installed_v2["version"]} '
+        f'digest={installed_v2["digest"]}'
+    ) in stdout.getvalue()
+    assert 'role_lock_legacy_check: confirmed_noop' in stdout.getvalue()
+    assert 'role_lock_refreshed:' not in stdout.getvalue()
 
 
 def test_confirm_project_role_lock_refresh_warns_without_mutating_noninteractive(
@@ -198,14 +205,14 @@ def test_confirm_project_role_lock_refresh_warns_without_mutating_noninteractive
     assert lock_entry['version'] == installed_v1['version']
     assert lock_entry['digest'] == installed_v1['digest']
     assert 'role_lock_update_available: test.locked' in stdout.getvalue()
-    assert 'role_lock_refresh: skipped_noninteractive' in stdout.getvalue()
+    assert 'role_lock_legacy_check: skipped_noninteractive' in stdout.getvalue()
 
 
-def test_phase2_start_refreshes_role_lock_before_start_service(
+def test_phase2_start_no_longer_refreshes_role_lock_before_start_service(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    project, _installed_v1, installed_v2 = _stale_role_lock_project(monkeypatch, tmp_path)
+    project, installed_v1, installed_v2 = _stale_role_lock_project(monkeypatch, tmp_path)
     seen: dict[str, object] = {}
 
     def _fake_start(context, command):
@@ -229,6 +236,6 @@ def test_phase2_start_refreshes_role_lock_before_start_service(
     code = maybe_handle_phase2([], cwd=project, stdout=stdout, stderr=stderr)
 
     assert code == 0, stderr.getvalue()
-    assert seen == {'lock_version': installed_v2['version'], 'lock_digest': installed_v2['digest']}
-    assert 'role_lock_refreshed: test.locked version=2.0.0' in stdout.getvalue()
+    assert seen == {'lock_version': installed_v1['version'], 'lock_digest': installed_v1['digest']}
+    assert 'role_lock_refreshed: test.locked version=2.0.0' not in stdout.getvalue()
     assert 'start_status: ok' in stdout.getvalue()

@@ -1,10 +1,10 @@
 # Role Pack System Implementation Status
 
-Date: 2026-06-04
+Date: 2026-06-17
 
 ## Current Phase
 
-Spec-owned `.roles` package-manager bridge, single-store simplification slice.
+Single-current `.roles` package-manager bridge and restart-based role adoption.
 
 ## Done This Phase
 
@@ -27,24 +27,40 @@ Spec-owned `.roles` package-manager bridge, single-store simplification slice.
   CCB-owned tool-hook execution, and malformed sync `roles` payloads fail closed.
 - `ccb-config` skill docs say configs must keep canonical role ids and must not
   write local store paths such as `~/.roles` into `.ccb/ccb.config`.
+- The target model now removes project role locks and multi-version installed
+  history. `.roles` keeps one installed current package per role id, and live
+  agents adopt role changes through guarded restart. See
+  [decisions/007-single-current-store-and-restart-adoption.md](decisions/007-single-current-store-and-restart-adoption.md).
+- `agent-roles-spec` writes installed roles to
+  `.roles/installed/<role-id>/current` plus `install.json`; legacy
+  `versions/<version>/<digest>` stores remain readable for compatibility.
+- CCB role lookup and projection now follow installed current and treat
+  `.ccb/role-lock.json` as legacy diagnostic residue only. Role memory and
+  skills are no longer suppressed by lock mismatch.
+- `ccb roles add` writes project config only. The role-lock writer/adopt API has
+  been removed, and the remaining role-lock refresh service is a no-op
+  diagnostic path.
+- Provider launch session files record `ccb_role_id`, `ccb_role_version`, and
+  `ccb_role_digest`.
+- `ccb restart <agent>` checks launch role digest against installed current
+  before respawn. If the digest changed, restart fails explicitly with
+  `role_digest_changed_fresh_restart_unsupported` instead of silently resuming
+  an old provider conversation.
 
 ## Active TODO
 
-1. Verify the default-on release in a real old-version upgrade directory with a
-   legacy `$XDG_DATA_HOME/ccb/roles` install and a project role lock.
-2. Remove or dev-gate the source-checkout fallback for `~/yunwei/agent-roles-spec`
+1. Add provider-specific fresh-start support for `ccb restart <agent>` when the
+   launch role digest differs from installed current. Current behavior is a
+   safe explicit failure, not automatic adoption.
+2. Add a doctor/cleanup command for old `.ccb/role-lock.json` residue.
+3. Remove or dev-gate the source-checkout fallback for `~/yunwei/agent-roles-spec`
    before the bridge graduates from preview.
-3. Add review coverage for import boundaries so provider startup cannot import
-   package-manager subprocess or network-capable code.
-4. Decide whether CCB should install/refresh `agent-roles` during `ccb update`
-   or only consume an already-installed tool.
-5. Move the migration command from the CCB bridge into `agent-roles` once the
-   spec package manager exposes it.
 
 ## Blockers
 
-- Release is blocked until the single-store simplification receives archi/agent3
-  review and real old-version upgrade validation.
+- No current blocker for the single-current store and role-lock removal slice.
+  Automatic provider fresh-start on role digest change remains a follow-up
+  enhancement.
 - `v7.2.11` was created from the earlier opt-in handoff before cancellation
   completed; `VERSION`, `ccb`, README, README_zh, and CHANGELOG now target
   `v7.2.12` and mark `v7.2.11` as superseded.
@@ -60,6 +76,9 @@ worktree.
 - In `agent-roles-spec`: `python -m pytest -q`
 - In `agent-roles-spec`: `python -m compileall -q agent_roles`
 - In `agent-roles-spec`: `git diff --check`
+- In `ccb_source`: `PYTHONPATH=lib python -m pytest -q test/test_rolepacks.py test/test_role_lock_refresh.py test/test_cli_management_update.py test/test_v2_config_loader.py test/test_ccb_restart.py` (`200 passed`)
+- In `ccb_source`: `PYTHONPATH=lib python -m compileall -q lib/rolepacks/service.py lib/cli/services/role_lock_refresh.py lib/ccbd/handlers/project_restart.py lib/cli/services/runtime_launch_runtime/session_files.py lib/rolepacks/runtime_lookup.py lib/agents/config_loader_runtime/role_lookup.py`
+- In `ccb_source`: `git diff --check -- <rolepack/restart/plan-tree files>`
 - In `ccb_source`: `python -m pytest -q test/test_rolepacks.py` (`53 passed`)
 - In `ccb_source`: `python -m pytest -q test/test_rolepacks.py test/test_cli_management_update.py test/test_repo_hygiene.py test/test_source_runtime_guard.py` (`104 passed`)
 - In `ccb_source`: `python -m compileall -q lib/agents/config_loader_runtime/role_lookup.py lib/rolepacks/runtime_lookup.py lib/rolepacks/sources.py lib/rolepacks/service.py lib/rolepacks/agent_roles_manager.py`

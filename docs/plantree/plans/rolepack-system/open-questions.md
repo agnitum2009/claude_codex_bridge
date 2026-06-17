@@ -9,35 +9,27 @@ Date: 2026-06-01
 2. What minimum trust gate is required before running a third-party role
    installer: explicit prompt, allowlist, digest pin, signature, or all of
    these?
-3. Should role memory changes require agent restart, provider-native clear, or
-   an explicit projection refresh command?
-4. How should a host resolve conflicts when two roles want to install the same
+3. How should a host resolve conflicts when two roles want to install the same
    provider skill name?
-5. Should role tool dependencies be allowed to install into user-level
+4. Should role tool dependencies be allowed to install into user-level
    language package managers, or must the first CCB implementation always use
    CCB-owned venv/cache roots?
-6. Should role ids use `publisher.role` only, or should the spec also reserve a
+5. Should role ids use `publisher.role` only, or should the spec also reserve a
    URI-like form such as `rolepack://publisher/role`?
-7. After an installed role is updated from `agent-roles-spec`, should CCB only
-   mark bound project locks as stale, or should it offer an interactive
-   project-lock update for the current project?
-8. If project-locked role content is missing from the installed store, should
-   CCB keep warning-only behavior and mount the agent with role memory/skills
-   suppressed, or fail startup/reload for that role-bound agent?
-9. When a required role tool hook fails during install, update, or sync, should
+6. When a required role tool hook fails during install, update, or sync, should
    CCB roll back `current` and metadata, or record an installed-but-degraded
    state that doctor and reload can surface?
-10. What transaction model should protect role install/update/sync and
-   project config plus role-lock writes from concurrent or partial failures?
-11. Should GitHub catalog clone/pull failures be represented as explicit
+7. What transaction model should protect role install/update/sync and project
+   config writes from concurrent or partial failures?
+8. Should GitHub catalog clone/pull failures be represented as explicit
    catalog diagnostics instead of silently returning no default catalog?
-12. What exact store path should the spec-owned package manager use by default:
+9. What exact store path should the spec-owned package manager use by default:
     `~/.roles`, an XDG data path, or a configurable path with `~/.roles` as a
     user-facing alias?
-13. Should CCB call the spec-owned package manager through a subprocess JSON
+10. Should CCB call the spec-owned package manager through a subprocess JSON
     protocol, a Python library, or both?
-14. How should existing `$XDG_DATA_HOME/ccb/roles/` installs migrate to the
-    spec-owned store without invalidating existing project locks?
+11. What user-facing doctor/cleanup command should report and optionally remove
+    legacy `.ccb/role-lock.json` files after locks become non-authoritative?
 
 ## Resolved
 
@@ -58,6 +50,11 @@ Date: 2026-06-01
   payload install/update semantics, while CCB owns project/runtime integration.
   See
   [decisions/006-agent-roles-spec-owns-roles-store.md](decisions/006-agent-roles-spec-owns-roles-store.md).
+- `.roles` should keep one current installed package per role id, projects
+  should follow installed current, and live agents should adopt role changes
+  through guarded restart rather than provider-native clear or project-lock
+  refresh. See
+  [decisions/007-single-current-store-and-restart-adoption.md](decisions/007-single-current-store-and-restart-adoption.md).
 - CCB may manage a consumption-only GitHub cache of `agent-roles-spec` under
   `$XDG_CACHE_HOME/ccb/role-catalogs/agent-roles-spec` when no local catalog is
   available. User-level system role sources and local env/path catalogs still

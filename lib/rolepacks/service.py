@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import shlex
@@ -8,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
 
 from agents.config_loader import load_project_config
 from agents.config_loader_runtime.paths import project_config_path
@@ -24,14 +22,12 @@ from .runtime_lookup import (
     project_role_memory_sources,
     project_role_skill_sources,
     role_store_roots,
-    tree_digest,
 )
 from .sources import (
     default_agent_roles_source,
     discover_source_roles,
     find_source_role,
     find_system_source_role,
-    installed_role_metadata,
     migrate_legacy_installed_roles,
 )
 
@@ -658,7 +654,6 @@ def add_role_to_project_config(
         )
     if after != before:
         atomic_write_text(config_path, after)
-    _write_project_role_lock(project_root, role)
     return {
         'role_status': 'added' if after != before else 'unchanged',
         'role_id': role_id,
@@ -669,23 +664,6 @@ def add_role_to_project_config(
         'config_binding': 'shorthand' if use_shorthand else 'explicit',
         'install': 'snapshotted_from_system_source' if auto_installed else '',
         'note': 'run ccb reload to mount new role agent' if after != before else '',
-    }
-
-
-def adopt_installed_role_lock(*, project_root: Path, role_id: str) -> dict[str, object]:
-    role_id = normalize_role_id(role_id)
-    role = load_installed_role(role_id)
-    if role is None:
-        raise RolePackError(f'role is not installed; run `ccb roles install {role_id}`')
-    _write_project_role_lock(project_root, role)
-    metadata = installed_role_metadata(role.id)
-    digest = str(metadata.get('digest') or '').strip() or f'sha256:{tree_digest(role.root)}'
-    return {
-        'role_status': 'lock_refreshed',
-        'role_id': role.id,
-        'version': role.version,
-        'digest': digest,
-        'lock': str(Path(project_root).expanduser().resolve() / '.ccb' / 'role-lock.json'),
     }
 
 
@@ -816,34 +794,6 @@ def _remove_key(block: list[str], key: str) -> list[str]:
     ]
 
 
-def _write_project_role_lock(project_root: Path, role: RolePack) -> None:
-    path = Path(project_root).expanduser().resolve() / '.ccb' / 'role-lock.json'
-    metadata = installed_role_metadata(role.id)
-    digest = str(metadata.get('digest') or '').strip() or f'sha256:{tree_digest(role.root)}'
-    payload = {
-        'schema': 'rolepack-lock/v1',
-        'roles': {
-            role.id: {
-                'version': role.version,
-                'digest': digest,
-                'source': 'installed',
-                'default_agent_name': role.default_agent_name,
-            }
-        },
-    }
-    existing: dict[str, Any] = {}
-    try:
-        loaded = json.loads(path.read_text(encoding='utf-8'))
-        if isinstance(loaded, dict):
-            existing = loaded
-    except Exception:
-        existing = {}
-    roles = dict(existing.get('roles') or {})
-    roles.update(payload['roles'])
-    merged = {'schema': 'rolepack-lock/v1', 'roles': roles}
-    atomic_write_text(path, json.dumps(merged, ensure_ascii=True, sort_keys=True, indent=2) + '\n')
-
-
 def _is_under(path: Path, root: Path) -> bool:
     try:
         Path(path).resolve().relative_to(Path(root).resolve())
@@ -870,7 +820,6 @@ __all__ = [
     'RolePack',
     'RolePackError',
     'add_role_to_project_config',
-    'adopt_installed_role_lock',
     'builtin_role_root',
     'install_role',
     'list_builtin_roles',

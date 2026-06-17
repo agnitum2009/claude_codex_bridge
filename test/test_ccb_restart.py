@@ -236,6 +236,43 @@ def test_project_restart_agent_handler_blocks_pending_reply_and_callback(monkeyp
     assert calls == []
 
 
+def test_project_restart_agent_handler_blocks_on_stale_role_digest(monkeypatch, tmp_path: Path) -> None:
+    session = SimpleNamespace(
+        data={
+            'ccb_role_id': 'test.locked',
+            'ccb_role_version': '1.0.0',
+            'ccb_role_digest': 'sha256:olddigest',
+        },
+        start_cmd='reuse-session',
+    )
+    monkeypatch.setattr(
+        project_restart,
+        '_load_agent_provider_session',
+        lambda app, agent_name, runtime: session,
+    )
+    monkeypatch.setattr(
+        project_restart,
+        'load_installed_role',
+        lambda role_id: SimpleNamespace(id='test.locked', version='2.0.0', root=tmp_path / 'roles' / 'test.locked'),
+    )
+    monkeypatch.setattr(project_restart, 'installed_role_metadata', lambda role_id: {'digest': 'sha256:newdigest'})
+
+    app = _app(runtimes={'agent1': _runtime(pane_id='%1')})
+    app.project_namespace = SimpleNamespace(
+        load=lambda: SimpleNamespace(tmux_socket_path=str(tmp_path / '.tmux' / 'tmux.sock'))
+    )
+    handler = build_project_restart_agent_handler(app)
+
+    payload = handler({'agent_name': 'agent1'})
+
+    assert payload['status'] == 'failed'
+    assert payload['restart_status'] == 'failed'
+    assert payload['reason'] == 'role_digest_changed_fresh_restart_unsupported'
+    assert payload['result']['status'] == 'failed'
+    assert payload['result']['reason'] == 'role_digest_changed_fresh_restart_unsupported'
+    assert payload['result']['detail'].startswith('role_id=test.locked launch_version=1.0.0')
+
+
 def test_project_restart_agent_handler_restarts_one_agent(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 

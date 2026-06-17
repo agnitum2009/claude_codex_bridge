@@ -84,6 +84,10 @@ Date: 2026-06-01
   integration. See
   [decisions/006-agent-roles-spec-owns-roles-store.md](decisions/006-agent-roles-spec-owns-roles-store.md)
   and [topics/spec-owned-roles-store.md](topics/spec-owned-roles-store.md).
+- Accepted the single-current `.roles` store and restart-based role adoption
+  model. Project role locks and content-addressed installed history are no
+  longer target runtime semantics. See
+  [decisions/007-single-current-store-and-restart-adoption.md](decisions/007-single-current-store-and-restart-adoption.md).
 - Added the first executable `agent-roles` package-manager slice in
   `agent-roles-spec`: `.roles/installed` store, JSON package commands, and the
   `ccb.archi -> agentroles.archi` alias.
@@ -102,27 +106,27 @@ Date: 2026-06-01
 
 - Validate the single-store spec-owned package manager bridge and legacy store
   copy migration across old-version upgrade scenarios before release.
+- Add provider-specific fresh-start support for role digest changes during
+  guarded restart. The current landing fails explicitly instead of silently
+  resuming an old provider conversation.
 
 ## Next
 
-1. Move legacy store migration ownership into `agent-roles` once the package
+1. Add provider fresh-start implementation behind `ccb restart <agent>` for
+   sessions whose launch role digest differs from installed current.
+2. Add a doctor/cleanup command for legacy `.ccb/role-lock.json` residue.
+3. Move legacy store migration ownership into `agent-roles` once the package
    manager exposes a stable migration command/API.
-2. Decide whether CCB should keep calling `agent-roles` through subprocess JSON
+4. Decide whether CCB should keep calling `agent-roles` through subprocess JSON
    or also support a library API for management commands.
-3. Add import-boundary smoke tests so config loading, provider hooks, and
+5. Add import-boundary smoke tests so config loading, provider hooks, and
    provider-home projection cannot accidentally import role management,
    package-manager subprocess, or network-capable source discovery paths.
-4. Decide whether stale role locks should stay warning-only or become hard
-   startup errors for mounted agents, especially when locked digest content is
-   missing.
-5. Harden role install/update/sync resilience: tool-hook failure state or
-   rollback, concurrent same-role operations, and config-plus-lock mutation
+6. Harden role install/update/sync resilience: tool-hook failure state or
+   rollback, concurrent same-role operations, and project config mutation
    consistency.
-6. Improve stale lock diagnostics in CLI output.
-7. Add `ccb roles refresh` or project role adopt/check command and decide its
-   relationship to `ccb reload`.
-8. Harden role projection cleanup when a role is removed or changed.
-9. Add PR governance and compatibility tests from
+7. Harden role projection cleanup when a role is removed or changed.
+8. Add PR governance and compatibility tests from
    [topics/test-and-governance.md](topics/test-and-governance.md).
 
 ## Deferred
@@ -130,10 +134,8 @@ Date: 2026-06-01
 - Public role registry or marketplace.
 - Signed remote role distribution.
 - Automatic background update checks outside explicit `ccb update`.
-- Role replacement for already-running agents without restart or explicit
-  projection refresh.
+- Role replacement for already-running agents without guarded restart.
 - Multi-role composition on one agent.
 - Role dependency solving across conflicting tool versions.
 - UI browser for discovering community roles.
-- Installed role garbage collection for unreferenced digest versions.
 - Signed or otherwise authenticated catalog/cache updates.

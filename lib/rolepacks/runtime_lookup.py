@@ -42,18 +42,6 @@ def load_installed_role(role_id: str) -> RolePack | None:
     return None
 
 
-def load_locked_installed_role(role_id: str, *, version: str, digest: str) -> RolePack | None:
-    role_id = normalize_role_id(role_id)
-    root = _locked_role_root(role_id, version=version, digest=digest)
-    if root is None:
-        return None
-    try:
-        role = load_role_manifest(root)
-    except Exception:
-        return None
-    return role if role.id == role_id else None
-
-
 def resolve_project_agent_role(project_root: Path, agent_name: str) -> ProjectRoleResolution | None:
     try:
         config = load_project_config(project_root).config
@@ -70,28 +58,27 @@ def resolve_project_agent_role(project_root: Path, agent_name: str) -> ProjectRo
     try:
         lock_entry = project_role_lock_entry(project_root, role_id)
     except ValueError as exc:
-        return ProjectRoleResolution(role_id=role_id, role=None, warning=str(exc), lock_path=lock_path)
-    if lock_entry is not None:
-        locked_role = load_locked_installed_role(
-            role_id,
-            version=str(lock_entry.get('version') or '').strip(),
-            digest=str(lock_entry.get('digest') or '').strip(),
-        )
-        if locked_role is not None:
-            return ProjectRoleResolution(role_id=role_id, role=locked_role, lock_path=lock_path)
+        lock_entry = None
+        lock_warning = str(exc)
+    else:
+        lock_warning = ''
 
     role = load_installed_role(role_id)
     if role is None:
         return ProjectRoleResolution(
             role_id=role_id,
             role=None,
-            warning=f'role_not_installed: {role_id}; run `ccb roles install {role_id}`',
+            warning=lock_warning or f'role_not_installed: {role_id}; run `ccb roles install {role_id}`',
             lock_path=lock_path,
         )
-    warning = project_role_lock_warning(project_root, role)
-    if warning:
-        return ProjectRoleResolution(role_id=role_id, role=None, warning=warning, lock_path=lock_path)
-    return ProjectRoleResolution(role_id=role_id, role=role, lock_path=lock_path)
+
+    warning = lock_warning
+    if not warning:
+        try:
+            warning = project_role_lock_warning(project_root, role)
+        except ValueError as exc:
+            warning = str(exc)
+    return ProjectRoleResolution(role_id=role_id, role=role, warning=warning, lock_path=lock_path)
 
 
 def load_project_agent_role(project_root: Path, agent_name: str) -> RolePack | None:
@@ -103,18 +90,6 @@ def project_role_memory_sources(project_root: Path, agent_name: str) -> tuple[Pr
     resolved = resolve_project_agent_role(project_root, agent_name)
     if resolved is None:
         return ()
-    if resolved.warning:
-        lock_path = resolved.lock_path or project_role_lock_path(project_root)
-        return (
-            ProjectMemorySource(
-                kind='role_memory',
-                title=f'Role Memory: {resolved.role_id}',
-                path=lock_path,
-                content='',
-                exists=lock_path.exists(),
-                warning=resolved.warning,
-            ),
-        )
     role = resolved.role
     if role is None:
         return ()
@@ -155,7 +130,7 @@ def project_role_memory_sources(project_root: Path, agent_name: str) -> tuple[Pr
 
 def project_role_skill_sources(project_root: Path, agent_name: str, provider: str) -> tuple[tuple[str, Path, str], ...]:
     resolved = resolve_project_agent_role(project_root, agent_name)
-    if resolved is None or resolved.warning or resolved.role is None:
+    if resolved is None or resolved.role is None:
         return ()
     role = resolved.role
     skills = dict(role.manifest.get('skills') or {})
@@ -185,17 +160,14 @@ def project_role_lock_warning(project_root: Path, role: RolePack) -> str:
         return ''
     locked_version = str(entry.get('version') or '').strip()
     locked_digest = str(entry.get('digest') or '').strip()
-    locked_role = load_locked_installed_role(role.id, version=locked_version, digest=locked_digest)
-    if locked_role is not None:
-        return ''
     current_digest = f'sha256:{tree_digest(role.root)}'
     if locked_version == role.version and locked_digest == current_digest:
         return ''
     return (
         f'role_lock_mismatch: {role.id} locked version={locked_version or "unknown"} '
         f'digest={locked_digest or "unknown"} but installed current is '
-        f'version={role.version} digest={current_digest}; run `ccb` interactively '
-        'and accept role lock refresh to adopt the installed role version'
+        f'version={role.version} digest={current_digest}; this is legacy residue and will be '
+        'treated as non-blocking diagnostic only'
     )
 
 
@@ -222,25 +194,6 @@ def project_role_lock_entry(project_root: Path, role_id: str) -> dict[str, objec
     return dict(entry)
 
 
-def _locked_role_root(role_id: str, *, version: str, digest: str) -> Path | None:
-    version_text = str(version or '').strip()
-    digest_text = str(digest or '').strip()
-    if not version_text or not digest_text:
-        return None
-    digest_hex = digest_text.removeprefix('sha256:')
-    if not digest_hex:
-        return None
-    for store_root in role_store_roots():
-        for candidate_id in role_id_candidates(role_id):
-            version_root = store_root / candidate_id / 'versions' / version_text
-            candidate = version_root / digest_hex
-            if (candidate / 'role.toml').is_file():
-                return candidate
-            if (version_root / 'role.toml').is_file() and f'sha256:{tree_digest(version_root)}' == digest_text:
-                return version_root
-    return None
-
-
 def tree_digest(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(Path(root).rglob('*')):
@@ -258,7 +211,6 @@ def tree_digest(root: Path) -> str:
 __all__ = [
     'ProjectRoleResolution',
     'load_installed_role',
-    'load_locked_installed_role',
     'load_project_agent_role',
     'project_role_lock_entry',
     'project_role_lock_path',

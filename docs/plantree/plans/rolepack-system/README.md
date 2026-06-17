@@ -69,6 +69,9 @@ across projects without copying every skill or tool into every `.ccb` tree.
 - [decisions/006-agent-roles-spec-owns-roles-store.md](decisions/006-agent-roles-spec-owns-roles-store.md):
   `agent-roles-spec` should own `.roles` package management; CCB should wrap
   those operations for CCB project/runtime integration.
+- [decisions/007-single-current-store-and-restart-adoption.md](decisions/007-single-current-store-and-restart-adoption.md):
+  `.roles` keeps one current role package per role id; projects follow current
+  installed roles, and live agents adopt role changes through guarded restart.
 
 ## Related Sources
 
@@ -89,7 +92,10 @@ In scope:
   names.
 - CCB role-id shorthand that keeps sidebar, mailbox, job, pane, and primary ask
   labels on project-local agent names.
-- Shared installation of role assets with per-project locks and overrides.
+- Shared installation of role assets with legacy project-lock compatibility
+  during migration.
+- Simplified single-current role installation where projects follow installed
+  current and restart is the live-agent adoption boundary.
 - Projection of role memory, skills, prompts, and tools into managed provider
   homes without sharing provider sessions or auth.
 - CCB adapter behavior for `.ccb/ccb.config`, `ccb roles ...`, `ccb reload`,

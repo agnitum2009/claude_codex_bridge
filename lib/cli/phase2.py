@@ -41,7 +41,6 @@ from cli.services.restart import restart_agent
 from cli.services.reset_project import reset_project_state
 from cli.services.resubmit import resubmit_message
 from cli.services.retry import retry_attempt
-from cli.services.role_lock_refresh import confirm_project_role_lock_refresh
 from cli.services.start import start_agents
 from cli.services.trace import trace_target
 from cli.services.wait import wait_for_replies
@@ -74,8 +73,6 @@ def maybe_handle_phase2(
             raise
         if _command_requires_bootstrap_config(command):
             ensure_bootstrap_project_config(context.project.project_root)
-        if command.kind == 'start':
-            _confirm_project_role_lock_refresh(context.project.project_root, out=out)
         return _dispatch(context, command, out)
     except Exception as exc:
         return handle_phase2_exception(err, command_kind=command.kind, exc=exc)
@@ -121,15 +118,6 @@ def _build_context(command, *, cwd: Path | None, out: TextIO):
 
 def _confirm_project_reset(project_root: Path, *, out: TextIO) -> None:
     _confirm_project_reset_impl(
-        project_root,
-        out=out,
-        stdin=sys.stdin,
-        stream_is_tty_fn=_stream_is_tty,
-    )
-
-
-def _confirm_project_role_lock_refresh(project_root: Path, *, out: TextIO) -> None:
-    confirm_project_role_lock_refresh(
         project_root,
         out=out,
         stdin=sys.stdin,

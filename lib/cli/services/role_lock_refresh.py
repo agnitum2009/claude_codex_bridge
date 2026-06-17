@@ -7,7 +7,6 @@ from typing import TextIO
 from agents.config_loader import load_project_config
 from rolepacks.manifest import normalize_role_id
 from rolepacks.runtime_lookup import load_installed_role, project_role_lock_entry, project_role_lock_path, tree_digest
-from rolepacks.service import adopt_installed_role_lock
 from rolepacks.sources import installed_role_metadata
 
 
@@ -74,28 +73,31 @@ def confirm_project_role_lock_refresh(
     if not stream_is_tty_fn(stdin):
         for update in updates:
             print(_format_update_available(update), file=out)
-        print('role_lock_refresh: skipped_noninteractive', file=out)
+        print('role_lock_legacy_check: skipped_noninteractive', file=out)
         return updates
 
-    print('Role Pack updates are available for this project:', file=out)
+    print('Legacy project role-lock residue differs from installed Role Packs:', file=out)
     for update in updates:
         print(f'  {update.role_id}: {_format_versions(update)}', file=out)
     print(
-        f'Refresh {updates[0].lock_path} to installed Role Pack versions now? [y/N] ',
+        f'Show legacy diagnostic for {updates[0].lock_path} without changing the file? [y/N] ',
         end='',
         file=out,
         flush=True,
     )
     reply = stdin.readline()
     if str(reply or '').strip().lower() not in {'y', 'yes'}:
-        print('role_lock_refresh: skipped', file=out)
+        print('role_lock_legacy_check: declined', file=out)
         return updates
 
+    print('role_lock_legacy_check: confirmed_noop', file=out)
+    print('  project role locks are legacy diagnostics and no longer control provider restart adoption', file=out)
+    print('  existing .ccb/role-lock.json remains unchanged in this release', file=out)
     for update in updates:
-        payload = adopt_installed_role_lock(project_root=project_root, role_id=update.role_id)
         print(
-            f'role_lock_refreshed: {payload.get("role_id")} '
-            f'version={payload.get("version")} digest={payload.get("digest")}',
+            f'role_lock_legacy_notice: {update.role_id} '
+            f'locked version={update.locked_version} digest={update.locked_digest} -> '
+            f'installed version={update.current_version} digest={update.current_digest}',
             file=out,
         )
     return updates

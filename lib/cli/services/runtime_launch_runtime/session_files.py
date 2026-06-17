@@ -9,6 +9,8 @@ from provider_core.pathing import session_filename_for_agent
 from project.identity import normalize_work_dir
 from provider_core.runtime_shared import pane_title_marker as build_pane_title_marker
 from provider_sessions.files import safe_write_session
+from rolepacks.runtime_lookup import load_installed_role, tree_digest
+from rolepacks.sources import installed_role_metadata
 
 
 def write_session_file(
@@ -45,6 +47,7 @@ def write_session_file(
         "work_dir": str(run_cwd),
         "work_dir_norm": normalize_work_dir(run_cwd),
         "start_dir": str(context.project.project_root),
+        **_project_role_launch_evidence(spec),
         "active": True,
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "start_cmd": start_cmd,
@@ -147,6 +150,25 @@ def _merge_keys(payload: dict[str, object], existing_payload: dict[str, object],
         if key in payload and str(payload.get(key) or '').strip():
             continue
         payload[key] = value
+
+
+def _project_role_launch_evidence(spec) -> dict[str, str]:
+    role_id = str(getattr(spec, 'role', '') or '').strip()
+    if not role_id:
+        return {}
+    try:
+        role = load_installed_role(role_id)
+    except Exception:
+        return {'ccb_role_id': role_id}
+    if role is None:
+        return {'ccb_role_id': role_id}
+    metadata = installed_role_metadata(role.id)
+    digest = str(metadata.get('digest') or '').strip() or f'sha256:{tree_digest(role.root)}'
+    return {
+        'ccb_role_id': role.id,
+        'ccb_role_version': str(role.version),
+        'ccb_role_digest': digest,
+    }
 
 
 __all__ = [

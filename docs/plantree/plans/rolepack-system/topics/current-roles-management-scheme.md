@@ -10,6 +10,12 @@ role store, project locks, and explicit local `sync` command were introduced.
 It is a current implementation snapshot, not the final public RolePack
 standard.
 
+This snapshot is superseded as target direction by
+[../decisions/007-single-current-store-and-restart-adoption.md](../decisions/007-single-current-store-and-restart-adoption.md).
+The target model removes project role locks and runtime-required
+`versions/<version>/<digest>/` history. Projects follow installed current role
+packages, and live agents adopt changed role assets through guarded restart.
+
 ## Authority Layers
 
 Role source layers:

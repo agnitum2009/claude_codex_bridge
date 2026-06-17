@@ -26,12 +26,13 @@ current implementation snapshot in
 CCB owns CCB runtime state:
 
 - `.ccb/ccb.config`
-- `.ccb/role-lock.json`
 - provider home projection and cleanup
+- legacy role-lock diagnostics and cleanup for old projects
 - CCB adapter policy for tool hooks, prompts, i18n output, and required
   failure semantics
 - CCB update sequencing around old and new entrypoints
 - ask/sidebar/reload/diagnostic behavior for mounted agents
+- role-aware restart behavior for running agents
 
 The practical rule is: `.roles` is package-manager state; `.ccb` is project
 runtime state.
@@ -49,31 +50,33 @@ The target store should be described by `agent-roles-spec`, not CCB:
       reference_roles/
   installed/
     agentroles.archi/
-      current -> versions/0.2.0/<digest>/
       install.json
-      versions/
-        0.2.0/<digest>/
-          role.toml
-          memory.md
-          adapters/
-          skills/
-          tools/
+      current/
+        role.toml
+        memory.md
+        adapters/
+        skills/
+        tools/
 ```
 
-The exact path is still an open design point. The important ownership rule is
-that CCB does not define the package store schema as a private CCB runtime
-detail.
+The package manager may choose `current/` or a flat role directory, but the
+target runtime contract is one installed package per role id. `install.json`
+keeps version, digest, source, and provenance metadata for catalog comparison
+and runtime freshness diagnostics. The digest is not a project lock target.
 
 CCB may keep a compatibility bridge from the current
 `$XDG_DATA_HOME/ccb/roles/` store while the spec-owned store is introduced.
-Project locks must keep resolving old installed snapshots until a deliberate
-migration path exists.
+Old multi-version stores should resolve through their `current` pointer during
+migration, then be rewritten into the single-current store on the next
+install/update.
 
 The current CCB bridge uses `.roles/installed` as the preferred installed-role
-store and keeps `$XDG_DATA_HOME/ccb/roles` as a read fallback. Role-management
-commands copy legacy installed snapshots into `.roles/installed` before package
-operations so existing project locks can resolve the same version/digest from
-the new store. The old store is not deleted during migration.
+store. Earlier bridge slices copied legacy installed snapshots into
+`.roles/installed` so project locks could resolve the same version/digest.
+That lock-preserving requirement is superseded by
+[../decisions/007-single-current-store-and-restart-adoption.md](../decisions/007-single-current-store-and-restart-adoption.md):
+runtime lookup should follow installed current, and old role locks should be
+treated as legacy diagnostics instead of adoption authority.
 
 ## Agent Roles Tool Contract
 
@@ -124,12 +127,12 @@ then adds CCB-specific behavior:
 
 - enforce CCB post-update required/optional failure policy
 - run or validate CCB adapter hooks according to CCB policy
-- write project config and role locks for `roles add`
+- write project config for `roles add`
 - project role memory, skills, prompts, and plugins into provider homes
-- report project lock drift and runtime projection diagnostics
+- report role install/current/freshness diagnostics
+- restart idle agents to adopt changed role assets when requested
 
-`ccb roles add` remains CCB-owned because it mutates `.ccb/ccb.config` and
-`.ccb/role-lock.json`.
+`ccb roles add` remains CCB-owned because it mutates `.ccb/ccb.config`.
 
 Delegation is unconditional in CCB. The CCB-private installed-role writer and
 `CCB_AGENT_ROLES_MANAGER` rollback switch are removed so role payload writes have
@@ -147,19 +150,25 @@ one owner: `agent-roles`.
 5. Done: remove the CCB-private installed role writer, remove the rollback
    switch, and make runtime lookup use `.roles/installed` as the only installed
    role store.
-6. Next: validate old-version upgrades with existing project locks and stale
-   `source_path` metadata.
-7. Next: move migration ownership from the CCB compatibility bridge into
+6. Next: simplify `agent-roles` installed store writes to one current package
+   per role id.
+7. Next: remove CCB role-lock resolution and make old `.ccb/role-lock.json`
+   files diagnostic residue.
+8. Next: add provider launch role digest evidence and role-aware restart
+   adoption.
+9. Next: validate old-version upgrades with existing multi-version stores,
+   existing project locks, and stale `source_path` metadata.
+10. Next: move migration ownership from the CCB compatibility bridge into
    `agent-roles` once the package manager exposes a stable migration command.
 
 ## Non-Goals
 
-- Do not move `.ccb/ccb.config` or `.ccb/role-lock.json` into
-  `agent-roles-spec`.
+- Do not move `.ccb/ccb.config` into `agent-roles-spec`.
 - Do not let `agent-roles-spec` manage provider sessions, auth, tmux panes,
   mailbox state, or CCB lifecycle files.
 - Do not make CCB startup depend on network access to resolve a mounted role.
-- Do not silently update project locks when the package store updates.
+- Do not hot-replace role memory/skills inside a running provider conversation
+  without guarded restart.
 
 ## Risks
 
@@ -172,6 +181,9 @@ one owner: `agent-roles`.
 - Tool hook ownership must stay explicit: role packages declare hooks, but CCB
   decides whether running them is allowed or required in a CCB update/install
   context.
+- Existing `.ccb/role-lock.json` files must become harmless residue; otherwise
+  old projects may keep suppressing role memory or skills after the single-current
+  model lands.
 - CCB currently owns the compatibility migration bridge. Long term, migration
   should be a first-class `agent-roles` operation because `.roles` package state
   belongs to `agent-roles-spec`.
