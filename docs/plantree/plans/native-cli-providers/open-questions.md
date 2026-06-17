@@ -47,3 +47,16 @@ Date: 2026-06-13
 - Kiro first adapter decision: use `kiro-cli chat --no-interactive --wrap
   never` with subprocess exit/stdout until stable structured chat output is
   confirmed.
+- Kimi receipt contract decision: project the structured receipt contract in
+  the inherited Kimi ask skill first. CCB prompt injection remains unchanged for
+  other providers and can be reconsidered only if Kimi ignores the projected
+  skill.
+- Kimi no-captured timeout decision: keep `kimi_native_turn_timeout` as
+  `failed`, but add explicit `no_captured_reply`, `provider_no_reply`,
+  `receipt_valid=false`, and `receipt_class=no_captured_reply` diagnostics.
+- Kimi resume semantics decision: `supports_resume` describes CCB in-flight
+  execution restore. Kimi manifest now reports `supports_resume=false`, matching
+  adapter restore diagnostics and resubmit-only behavior.
+- Kimi routing decision: keep `sl_ki` task sizing and receipt acceptance as an
+  operator convention enforced by `mn_c` for now. Do not add role/config routing
+  policy until there is repeated evidence that convention is insufficient.

@@ -97,12 +97,31 @@ def _event_line(event) -> str:
 
 
 def _job_line(job) -> str:
-    return (
+    line = (
         'job: '
         f'id={job.get("job_id")} agent={job.get("agent_name")} provider={job.get("provider")} '
         f'status={job.get("status")} submission={job.get("submission_id")} '
         f'created={job.get("created_at")} updated={job.get("updated_at")}'
     )
+    extra = _job_extra_fields(job)
+    if extra:
+        return f'{line} {extra}'
+    return line
+
+
+def _job_extra_fields(job) -> str:
+    fields: list[str] = []
+    for key in ('terminal_reason', 'reply_chars', 'total_secs', 'artifact_reply_forced', 'receipt_class'):
+        if key not in job:
+            continue
+        fields.append(f'{key}={_format_trace_value(job.get(key))}')
+    return ' '.join(fields)
+
+
+def _format_trace_value(value: object) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
 
 
 __all__ = ['render_trace']

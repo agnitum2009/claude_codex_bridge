@@ -918,6 +918,14 @@ def _handle_agy(req_id: str, prompt: str, delay_s: float) -> None:
         },
     )
     print(reply, flush=True)
+    _print_agy_ready_prompt()
+
+
+def _print_agy_ready_prompt() -> None:
+    print("────────────────────────────────────────────────────────────", flush=True)
+    print(">", flush=True)
+    print("────────────────────────────────────────────────────────────", flush=True)
+    print("? for shortcuts                                                   Gemini 3.1 Pro (High)", flush=True)
 
 
 def main(argv: list[str]) -> int:
@@ -1034,6 +1042,8 @@ def main(argv: list[str]) -> int:
         print("Welcome to Kimi Code CLI!", flush=True)
         print("── input ─────────", flush=True)
         print("agent (stub-kimi ○)", flush=True)
+    if provider == "agy":
+        _print_agy_ready_prompt()
 
     def _handle_request(req_id: str, prompt: str) -> None:
         if provider == "codex":

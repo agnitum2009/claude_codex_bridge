@@ -56,6 +56,7 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert agy.supports_observed_completion is True
     assert agy.supports_anchor_binding is True
     kimi = catalog.resolve_completion_manifest('kimi', RuntimeMode.PANE_BACKED)
+    assert catalog.get('kimi').supports_resume is False
     assert kimi.completion_family is CompletionFamily.SESSION_BOUNDARY
     assert kimi.completion_source_kind is CompletionSourceKind.SESSION_EVENT_LOG
     assert kimi.supports_observed_completion is True

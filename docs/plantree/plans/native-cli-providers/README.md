@@ -48,6 +48,13 @@ override the shipped contracts.
   package, install, command, and auth findings.
 - [topics/integration-design.md](topics/integration-design.md): CCB provider
   architecture, completion detection, configuration, and testing plan.
+- [topics/kimi-receipt-and-diagnostics-hardening.md](topics/kimi-receipt-and-diagnostics-hardening.md):
+  landed Kimi-only receipt, no-captured-reply, trace, and restore-diagnostics
+  hardening notes with explicit non-impact constraints for other providers.
+- [topics/agy-delivery-stability-hardening.md](topics/agy-delivery-stability-hardening.md):
+  AGY ready-gated prompt delivery, late transcript/pane fallback, and
+  coalesced-request diagnostics needed to approach OpenCode-style reply
+  attribution stability.
 - [history/next-wave-cli-lab-2026-06-13.md](history/next-wave-cli-lab-2026-06-13.md):
   local install/source lab record for Qwen, Copilot, Cursor, Kiro, and Crush.
 - [history/pi-provider-landing-2026-06-13.md](history/pi-provider-landing-2026-06-13.md):
@@ -80,8 +87,13 @@ In scope:
   with assistant message content as completion evidence.
 - AGY completion alignment to Antigravity transcript logs, so AGY no longer
   relies on `CCB_DONE` as its primary completion signal.
+- AGY prompt delivery hardening so CCB waits for an input-ready Antigravity pane
+  before sending, avoids coalescing multiple CCB jobs into one AGY turn, and
+  falls back to stable pane evidence when transcript writes lag.
 - Empty-reply and timeout diagnostics aligned with existing pane-backed
   providers.
+- Kimi-specific receipt hardening, no-captured-reply diagnostics, trace
+  visibility, and execution-resume metadata clarification.
 - Unit and isolated source-runtime validation in `/home/bfly/yunwei/test_ccb2`.
 - Local install/source research under
   `/home/bfly/yunwei/test_ccb2/cli-integration-lab` before source integration.

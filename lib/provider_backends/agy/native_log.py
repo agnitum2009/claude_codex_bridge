@@ -4,11 +4,16 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 from typing import Iterable
 
 from provider_backends.native_cli_support import clean_native_reply
+from provider_core.protocol import REQ_ID_PREFIX
 from provider_core.source_home import current_provider_source_home
+
+
+_REQ_ID_RE = re.compile(rf"{re.escape(REQ_ID_PREFIX)}\s*([^\s`]+)")
 
 
 @dataclass(frozen=True)
@@ -23,6 +28,8 @@ class AgyTranscriptObservation:
     native_started_at: object | None = None
     native_completed_at: object | None = None
     latest_status: str | None = None
+    coalesced_request_ids: tuple[str, ...] = ()
+    request_is_latest: bool = True
 
 
 def observe_agy_transcript(
@@ -133,6 +140,8 @@ def _observe_transcript(path: Path, *, req_id: str) -> AgyTranscriptObservation 
     completed_at: object | None = None
     provider_turn_ref: str | None = None
     latest_line = 0
+    coalesced_request_ids: tuple[str, ...] = ()
+    request_is_latest = True
 
     for index, line in enumerate(lines, 1):
         try:
@@ -144,15 +153,18 @@ def _observe_transcript(path: Path, *, req_id: str) -> AgyTranscriptObservation 
 
         if _is_user_input(event):
             content = _event_content(event)
-            if req_id in content:
-                active = True
+            request_ids = _request_ids(content)
+            if req_id in request_ids:
+                request_is_latest = request_ids[-1] == req_id
+                active = request_is_latest
                 request_line = index
                 latest_reply = ""
-                latest_status = _event_status(event)
+                latest_status = 'COALESCED_SUPERSEDED' if not request_is_latest else _event_status(event)
                 started_at = event.get("created_at") or event.get("timestamp")
                 completed_at = None
                 provider_turn_ref = _event_ref(event)
                 latest_line = index
+                coalesced_request_ids = request_ids if len(request_ids) > 1 else ()
             elif active:
                 active = False
             continue
@@ -188,6 +200,8 @@ def _observe_transcript(path: Path, *, req_id: str) -> AgyTranscriptObservation 
         native_started_at=started_at,
         native_completed_at=completed_at,
         latest_status=latest_status,
+        coalesced_request_ids=coalesced_request_ids,
+        request_is_latest=request_is_latest,
     )
 
 
@@ -233,6 +247,15 @@ def _event_content(event: dict[str, object]) -> str:
         return value if isinstance(value, str) else json.dumps(content, ensure_ascii=False)
     text = event.get("text")
     return text if isinstance(text, str) else ""
+
+
+def _request_ids(content: str) -> tuple[str, ...]:
+    ids: list[str] = []
+    for match in _REQ_ID_RE.finditer(content or ""):
+        candidate = match.group(1).strip().strip(".,;:)")
+        if candidate:
+            ids.append(candidate)
+    return tuple(ids)
 
 
 def _event_status(event: dict[str, object]) -> str | None:

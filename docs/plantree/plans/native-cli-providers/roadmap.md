@@ -9,7 +9,10 @@ Date: 2026-06-13
   `CCB_DONE` as their primary completion signal. Kimi and OpenCode inherited
   ask skill injection landed in commit `a4395c2`; MiMo inherited ask
   instruction injection and native `mimo run --format json` execution landed
-  in commit `fce17c3`.
+  in commit `fce17c3`. Kimi receipt/diagnostics hardening has landed in source
+  with Kimi-only guarded behavior. AGY delivery stability hardening has landed
+  in source with ready-gated prompt delivery, pane fallback, and coalesced
+  request diagnostics.
 - Last verified: focused native completion tests, provider catalog tests,
   Kimi/OpenCode skill projection tests, and a real MiMo CCB ask passed after
   switching CCB MiMo execution to `mimo run --pure --format json`; full
@@ -222,6 +225,31 @@ Date: 2026-06-13
   add-on smoke passed with `pi_run_stop`; full source test gate passed with
   `2621 passed, 2 skipped, 21 deselected`;
   `git diff --check` passed.
+- Landed Kimi-only receipt and diagnostics hardening:
+  - Kimi inherited ask skill projects the structured receipt contract:
+    `status`, `inspected`, `exact_files`, `findings`, `reject_cases`,
+    `required_tests`, `no_open`, and `blockers`.
+  - Kimi no-captured timeout decisions emit machine-readable
+    `receipt_class=no_captured_reply` diagnostics.
+  - Forced Kimi empty artifact replies no longer instruct callers to read an
+    empty artifact as task evidence.
+  - `ccb trace` surfaces Kimi terminal reason, reply chars, elapsed seconds,
+    artifact-forced status, and receipt class.
+  - Kimi manifest `supports_resume=false` now matches CCB in-flight execution
+    restore semantics.
+- Landed AGY delivery stability hardening:
+  - AGY start stores pending prompts while the Antigravity pane is busy and
+    sends only after the empty input prompt is observed.
+  - AGY poll keeps busy-pane jobs running past the old anchor-missing window
+    instead of terminalizing and allowing later retries to merge into the same
+    native turn.
+  - AGY poll can use stable pane fallback when transcript writes lag.
+  - AGY preserves ambiguous tmux send errors as diagnostics and continues
+    observing transcript/pane evidence before deciding failure.
+  - AGY transcript parsing detects multiple `CCB_REQ_ID` anchors in one native
+    `USER_INPUT` and reports superseded requests as `agy_request_coalesced`.
+  - Focused AGY/native provider verification passed with `34 passed`; isolated
+    stub source-runtime smoke completed with `agy_transcript_response_done`.
 
 ## In Progress
 
@@ -235,7 +263,10 @@ Date: 2026-06-13
 2. Decide whether to keep
    `/home/bfly/yunwei/test_ccb2/next_wave_provider_smoke` as a reusable smoke
    fixture.
-3. Review the full dirty source diff, excluding unrelated managed-tool/neovim
+3. Run a real source-runtime AGY smoke in `/home/bfly/yunwei/test_ccb2` when an
+   authenticated AGY account is available; unit coverage currently validates
+   the delivery and parsing mechanics without provider login.
+4. Review the full dirty source diff, excluding unrelated managed-tool/neovim
    changes already present in the worktree.
 
 ## Deferred

@@ -109,7 +109,7 @@ def job_summary(service, job_id: str, *, hint_agent: str | None = None) -> dict[
                 break
     if job is None:
         return None
-    return {
+    summary = {
         'job_id': job.job_id,
         'agent_name': job.agent_name,
         'provider': job.provider,
@@ -118,6 +118,28 @@ def job_summary(service, job_id: str, *, hint_agent: str | None = None) -> dict[
         'created_at': job.created_at,
         'updated_at': job.updated_at,
     }
+    _add_kimi_terminal_fields(summary, job)
+    return summary
+
+
+def _add_kimi_terminal_fields(summary: dict[str, object], job) -> None:
+    terminal = job.terminal_decision if isinstance(job.terminal_decision, dict) else {}
+    reason = str(terminal.get('reason') or '')
+    provider = str(getattr(job, 'provider', '') or '').strip().lower()
+    if provider != 'kimi' and not reason.startswith('kimi_'):
+        return
+
+    diagnostics = terminal.get('diagnostics') if isinstance(terminal.get('diagnostics'), dict) else {}
+    _set_present(summary, 'terminal_reason', reason)
+    _set_present(summary, 'terminal_confidence', terminal.get('confidence'))
+    for key in ('reply_chars', 'total_secs', 'artifact_reply_forced', 'receipt_class'):
+        _set_present(summary, key, diagnostics.get(key))
+
+
+def _set_present(target: dict[str, object], key: str, value: object) -> None:
+    if value is None or value == '':
+        return
+    target[key] = value
 
 
 def preview_text(value: str, *, limit: int = 120) -> str:

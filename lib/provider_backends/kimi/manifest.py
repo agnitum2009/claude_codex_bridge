@@ -9,7 +9,7 @@ from provider_core.manifests import ProviderManifest
 def build_manifest() -> ProviderManifest:
     return ProviderManifest(
         provider="kimi",
-        supports_resume=True,
+        supports_resume=False,
         supports_permission_auto=True,
         supports_stream_watch=False,
         supports_subagents=True,

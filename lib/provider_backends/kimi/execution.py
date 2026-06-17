@@ -514,6 +514,20 @@ def _terminal(
         "reply_chars": len(cleaned_reply),
     }
     diagnostics.update(diagnostics_extra or {})
+    if _is_no_captured_reply_timeout(reason=reason, reply=cleaned_reply):
+        diagnostics.update(
+            {
+                "no_captured_reply": True,
+                "provider_no_reply": True,
+                "receipt_valid": False,
+                "receipt_class": "no_captured_reply",
+                "error_type": "empty_provider_reply",
+                "diagnosis": (
+                    "Kimi native turn polling timed out after observing the submitted CCB_REQ_ID, "
+                    "but no assistant reply text was captured."
+                ),
+            }
+        )
     decision = CompletionDecision(
         terminal=True,
         status=status,
@@ -529,6 +543,10 @@ def _terminal(
         diagnostics=diagnostics,
     )
     return ProviderPollResult(submission=progress, items=(), decision=decision)
+
+
+def _is_no_captured_reply_timeout(*, reason: str, reply: str) -> bool:
+    return reason == "kimi_native_turn_timeout" and not (reply or "")
 
 
 def _pane_snapshot(backend: object, pane_id: str, *, lines: int) -> str:

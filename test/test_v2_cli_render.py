@@ -24,6 +24,7 @@ from cli.render import (
     render_wait,
     render_watch_batch,
 )
+from message_bureau.control_trace_runtime.summaries import job_summary
 
 
 def test_render_ask_includes_submission_and_jobs() -> None:
@@ -1053,6 +1054,107 @@ def test_render_trace_keeps_line_protocol_shape() -> None:
     assert 'event: id=iev_1 agent=codex type=task_request status=consumed mailbox_state=idle active=false message=msg_1 attempt=att_1 created=2026-03-30T00:00:00Z finished=2026-03-30T00:00:10Z' in lines
     assert 'event: id=iev_2 agent=claude type=task_reply status=queued mailbox_state=blocked active=false message=msg_1 attempt=att_1 created=2026-03-30T00:00:10Z finished=None' in lines
     assert 'job: id=job_123 agent=codex provider=codex status=completed submission=None created=2026-03-30T00:00:00Z updated=2026-03-30T00:00:10Z' in lines
+
+
+def test_render_trace_appends_kimi_terminal_metadata_when_present() -> None:
+    payload = {
+        'target': 'job_kimi',
+        'resolved_kind': 'job',
+        'submission_id': None,
+        'message_id': None,
+        'attempt_id': None,
+        'reply_id': None,
+        'job_id': 'job_kimi',
+        'message_count': 0,
+        'attempt_count': 0,
+        'reply_count': 0,
+        'event_count': 0,
+        'job_count': 1,
+        'jobs': [
+            {
+                'job_id': 'job_kimi',
+                'agent_name': 'sl_ki',
+                'provider': 'kimi',
+                'status': 'failed',
+                'submission_id': 'sub_1',
+                'created_at': '2026-03-30T00:00:00Z',
+                'updated_at': '2026-03-30T00:05:01Z',
+                'terminal_reason': 'kimi_native_turn_timeout',
+                'reply_chars': 0,
+                'total_secs': 301.0,
+                'artifact_reply_forced': True,
+                'receipt_class': 'no_captured_reply',
+            }
+        ],
+    }
+
+    lines = render_trace(payload)
+
+    assert (
+        'job: id=job_kimi agent=sl_ki provider=kimi status=failed submission=sub_1 '
+        'created=2026-03-30T00:00:00Z updated=2026-03-30T00:05:01Z '
+        'terminal_reason=kimi_native_turn_timeout reply_chars=0 total_secs=301.0 '
+        'artifact_reply_forced=true receipt_class=no_captured_reply'
+    ) in lines
+
+
+def test_trace_job_summary_projects_kimi_terminal_metadata_only_for_kimi() -> None:
+    class _JobStore:
+        def __init__(self, jobs):
+            self._jobs = jobs
+
+        def get_latest(self, agent_name: str, job_id: str):
+            return self._jobs.get((agent_name, job_id))
+
+    kimi_job = SimpleNamespace(
+        job_id='job_kimi',
+        agent_name='sl_ki',
+        provider='kimi',
+        status=SimpleNamespace(value='failed'),
+        submission_id='sub_1',
+        created_at='2026-03-30T00:00:00Z',
+        updated_at='2026-03-30T00:05:01Z',
+        terminal_decision={
+            'reason': 'kimi_native_turn_timeout',
+            'confidence': 'degraded',
+            'diagnostics': {
+                'reply_chars': 0,
+                'total_secs': 301.0,
+                'artifact_reply_forced': True,
+                'receipt_class': 'no_captured_reply',
+            },
+        },
+    )
+    codex_job = SimpleNamespace(
+        job_id='job_codex',
+        agent_name='codex',
+        provider='codex',
+        status=SimpleNamespace(value='completed'),
+        submission_id='sub_2',
+        created_at='2026-03-30T00:00:00Z',
+        updated_at='2026-03-30T00:00:10Z',
+        terminal_decision={
+            'reason': 'task_complete',
+            'diagnostics': {'reply_chars': 4, 'total_secs': 10.0},
+        },
+    )
+    service = SimpleNamespace(
+        _config=SimpleNamespace(agents={'sl_ki': object(), 'codex': object()}),
+        _job_store=_JobStore({('sl_ki', 'job_kimi'): kimi_job, ('codex', 'job_codex'): codex_job}),
+    )
+
+    kimi_summary = job_summary(service, 'job_kimi')
+    codex_summary = job_summary(service, 'job_codex')
+
+    assert kimi_summary is not None
+    assert kimi_summary['terminal_reason'] == 'kimi_native_turn_timeout'
+    assert kimi_summary['reply_chars'] == 0
+    assert kimi_summary['total_secs'] == 301.0
+    assert kimi_summary['artifact_reply_forced'] is True
+    assert kimi_summary['receipt_class'] == 'no_captured_reply'
+    assert codex_summary is not None
+    assert 'terminal_reason' not in codex_summary
+    assert 'reply_chars' not in codex_summary
 
 
 def test_render_inbox_and_ack_include_reply_delivery_details() -> None:

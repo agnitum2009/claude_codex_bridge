@@ -24,11 +24,24 @@ def spill_terminal_reply_if_needed(
             owner_id=current.job_id,
             now=finished_at,
         )
-        reply = artifact_stub(
-            prefix=f'CCB completion reply for job {current.job_id} was stored as an artifact by --artifact-reply.',
-            artifact=artifact,
-            include_preview=False,
-        )
+        if _is_kimi_no_captured_reply(current, decision, diagnostics):
+            reply = artifact_stub(
+                prefix=(
+                    f'CCB completion reply for job {current.job_id} has no captured Kimi provider reply; '
+                    '--artifact-reply stored an empty artifact for transport metadata only.'
+                ),
+                artifact=artifact,
+                include_preview=False,
+                instruction='Instruction: no provider reply was captured; do not treat this artifact as task evidence.',
+            )
+            diagnostics['artifact_instruction'] = 'no_provider_reply_captured'
+            diagnostics['artifact_empty_no_provider_reply'] = True
+        else:
+            reply = artifact_stub(
+                prefix=f'CCB completion reply for job {current.job_id} was stored as an artifact by --artifact-reply.',
+                artifact=artifact,
+                include_preview=False,
+            )
         diagnostics['artifact_reply_forced'] = True
     else:
         reply, artifact = maybe_spill_text(
@@ -48,6 +61,28 @@ def spill_terminal_reply_if_needed(
 def _force_reply_artifact(current) -> bool:
     options = dict(getattr(current.request, 'route_options', None) or {})
     return bool(options.get('artifact_reply'))
+
+
+def _is_kimi_no_captured_reply(current, decision: CompletionDecision, diagnostics: dict[str, object]) -> bool:
+    provider = str(getattr(current, 'provider', '') or '').strip().lower()
+    if provider != 'kimi':
+        return False
+    if str(decision.reason or '') != 'kimi_native_turn_timeout':
+        return False
+    if _int_value(diagnostics.get('reply_chars')) != 0:
+        return False
+    return bool(
+        diagnostics.get('no_captured_reply')
+        or diagnostics.get('provider_no_reply')
+        or diagnostics.get('receipt_class') == 'no_captured_reply'
+    )
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 __all__ = ['spill_terminal_reply_if_needed']

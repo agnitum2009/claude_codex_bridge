@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]')
+_PROMPT_LINE_RE = re.compile(r'^\s*>\s*$')
+_BUSY_MARKERS = ('▸ Thought', '● ', 'Running…', 'Running...', 'ctrl+o to expand')
 
 
 @dataclass
@@ -35,4 +37,34 @@ class AgyPaneReader:
         return _ANSI_RE.sub('', content)
 
 
-__all__ = ['AgyPaneReader']
+def agy_pane_ready_for_input(content: str) -> bool:
+    """Return true when the Antigravity TUI is at an empty input prompt."""
+    text = _ANSI_RE.sub('', str(content or ''))
+    if not text.strip():
+        return False
+    lines = text.replace('\r\n', '\n').replace('\r', '\n').splitlines()
+    tail = lines[-80:]
+    lowered_tail = '\n'.join(tail).lower()
+    if '? for shortcuts' not in lowered_tail and 'gemini' not in lowered_tail:
+        return False
+
+    for index in range(len(tail) - 1, -1, -1):
+        if not _PROMPT_LINE_RE.match(tail[index]):
+            continue
+        if _has_busy_activity(tail[index + 1 :]):
+            continue
+        after = '\n'.join(tail[index:]).lower()
+        if '? for shortcuts' in after or 'gemini' in after:
+            return True
+    return False
+
+
+def _has_busy_activity(lines: list[str]) -> bool:
+    for line in lines:
+        stripped = line.strip()
+        if any(marker in stripped for marker in _BUSY_MARKERS):
+            return True
+    return False
+
+
+__all__ = ['AgyPaneReader', 'agy_pane_ready_for_input']
