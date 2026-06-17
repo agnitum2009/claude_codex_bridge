@@ -248,6 +248,13 @@ Date: 2026-06-13
     observing transcript/pane evidence before deciding failure.
   - AGY transcript parsing detects multiple `CCB_REQ_ID` anchors in one native
     `USER_INPUT` and reports superseded requests as `agy_request_coalesced`.
+- Added Z.ai CLI provider support:
+  - `provider = "zai"` is registered as an optional native CLI provider.
+  - Startup uses managed provider-state and `ZAI_START_CMD` override.
+  - Per-job ask uses `zai --prompt` headless execution with stdout/process-exit
+    completion through the shared native CLI adapter.
+  - Official Z.ai Coding Helper remains documented as a setup helper, not the
+    CCB provider runtime.
   - Focused AGY/native provider verification passed with `34 passed`; isolated
     stub source-runtime smoke completed with `agy_transcript_response_done`.
 

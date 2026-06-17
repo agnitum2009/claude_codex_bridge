@@ -60,3 +60,7 @@ Date: 2026-06-13
 - Kimi routing decision: keep `sl_ki` task sizing and receipt acceptance as an
   operator convention enforced by `mn_c` for now. Do not add role/config routing
   policy until there is repeated evidence that convention is insufficient.
+- Z.ai provider decision: use `provider = "zai"` for conversational/headless
+  `zai` CLIs that support `--prompt`; keep official `@z_ai/coding-helper` out
+  of provider runtime because it configures other coding tools rather than
+  serving as an ask-completing agent.

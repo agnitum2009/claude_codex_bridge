@@ -631,6 +631,9 @@ def _native_cli_prompt(provider: str, argv: list[str]) -> str | None:
                 "--tools",
             },
         )
+    if provider == "zai" and "--prompt" in argv:
+        index = argv.index("--prompt")
+        return argv[index + 1] if index + 1 < len(argv) else ""
     return None
 
 
@@ -739,6 +742,11 @@ def _handle_native_cli_run(provider: str, argv: list[str], delay_s: float) -> in
             ),
             flush=True,
         )
+        return 0
+    if provider == "zai":
+        print(json.dumps({"role": "user", "content": prompt}, ensure_ascii=True), flush=True)
+        if reply:
+            print(json.dumps({"role": "assistant", "content": reply}, ensure_ascii=True), flush=True)
         return 0
     if provider in {"crush", "kiro"}:
         if reply:
@@ -951,6 +959,7 @@ def main(argv: list[str]) -> int:
         "crush",
         "kiro",
         "pi",
+        "zai",
     ):
         print(f"[stub] unknown provider: {provider}", file=sys.stderr)
         return 2
@@ -959,7 +968,7 @@ def main(argv: list[str]) -> int:
 
     if provider == "mimo" and _mimo_run_prompt(argv[1:]) is not None:
         return _handle_mimo_run_cli(argv[1:], delay_s)
-    if provider in {"qwen", "cursor", "copilot", "crush", "kiro", "pi"} and _native_cli_prompt(provider, argv[1:]) is not None:
+    if provider in {"qwen", "cursor", "copilot", "crush", "kiro", "pi", "zai"} and _native_cli_prompt(provider, argv[1:]) is not None:
         return _handle_native_cli_run(provider, argv[1:], delay_s)
 
     # Provider-specific initialization.

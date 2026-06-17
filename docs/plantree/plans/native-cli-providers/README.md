@@ -66,14 +66,14 @@ In scope:
 
 - Provider keys `kimi`, `deepseek`, and `mimo`.
 - Next-wave provider keys `qwen`, `copilot`, `cursor`, `kiro`, `crush`, and
-  `pi`.
+  `pi`, plus Z.ai CLI provider key `zai`.
 - Default executables `kimi`, `deepcode`, and `mimo`.
 - Default next-wave executables `qwen`, `copilot`, `agent`, `kiro-cli`,
-  `crush`, and `pi`.
+  `crush`, `pi`, and `zai`.
 - `KIMI_START_CMD`, `DEEPSEEK_START_CMD`, and `MIMO_START_CMD` overrides.
 - Next-wave command overrides `QWEN_START_CMD`, `COPILOT_START_CMD`,
   `CURSOR_START_CMD`, `KIRO_START_CMD`, `CRUSH_START_CMD`, and
-  `PI_START_CMD`.
+  `PI_START_CMD`; Z.ai uses `ZAI_START_CMD`.
 - Managed tmux pane startup using the existing simple tmux runtime path.
 - Native completion detection using `CCB_REQ_ID` binding plus provider-owned
   Kimi `wire.jsonl` and DeepCode session stores.
@@ -94,6 +94,8 @@ In scope:
   providers.
 - Kimi-specific receipt hardening, no-captured-reply diagnostics, trace
   visibility, and execution-resume metadata clarification.
+- Z.ai CLI (`zai`) provider registration using the shared native CLI subprocess
+  path and `zai --prompt` headless execution.
 - Unit and isolated source-runtime validation in `/home/bfly/yunwei/test_ccb2`.
 - Local install/source research under
   `/home/bfly/yunwei/test_ccb2/cli-integration-lab` before source integration.

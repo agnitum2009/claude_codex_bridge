@@ -9,12 +9,13 @@ import pytest
 
 from ccbd.api_models import DeliveryScope, JobRecord, JobStatus, MessageEnvelope
 from completion.models import CompletionItemKind, CompletionSourceKind, CompletionStatus
+from provider_backends.zai.execution import observe_zai_output
 from provider_core.pathing import session_filename_for_agent
 from provider_core.registry import build_default_backend_registry
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 
 
-PROVIDERS = ("qwen", "cursor", "copilot", "crush", "kiro", "pi")
+PROVIDERS = ("qwen", "cursor", "copilot", "crush", "kiro", "pi", "zai")
 STRUCTURED_PROVIDERS = ("qwen", "cursor", "copilot", "pi")
 
 
@@ -179,6 +180,26 @@ def test_native_cli_provider_adapter_reports_run_timeout(monkeypatch, tmp_path: 
     assert terminal.decision.reason == f"{provider}_run_timeout"
     assert terminal.decision.diagnostics["run_timeout_s"] == 0.1
     assert CompletionItemKind.ANCHOR_SEEN in emitted
+
+
+def test_zai_observer_extracts_assistant_and_drops_progress(tmp_path: Path) -> None:
+    stdout = tmp_path / "zai.out"
+    stdout.write_text(
+        "\n".join(
+            [
+                json.dumps({"role": "user", "content": "CCB_REQ_ID: job_zai\nread file"}, ensure_ascii=True),
+                json.dumps({"role": "assistant", "content": "Using tools to help you..."}, ensure_ascii=True),
+                json.dumps({"role": "assistant", "content": "alpha beta gamma"}, ensure_ascii=True),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    observation = observe_zai_output(stdout)
+
+    assert observation.error == ""
+    assert observation.text == "alpha beta gamma"
 
 
 @pytest.mark.parametrize("provider", STRUCTURED_PROVIDERS)

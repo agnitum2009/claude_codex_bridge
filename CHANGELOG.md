@@ -1,5 +1,22 @@
 # Changelog
 
+## v7.6.10 (2026-06-17)
+
+### Z.ai Provider Support
+
+- **Z.ai CLI Provider Added**: CCB now includes `provider = "zai"` as an
+  optional managed native CLI provider with visible `zai --directory` panes and
+  per-job `zai --prompt` execution.
+- **Native Completion Boundary Preserved**: Z.ai jobs terminalize on subprocess
+  exit plus assistant stdout extraction from JSONL output, without requiring
+  model-printed `CCB_DONE`.
+- **Provider Surface Integrated**: `ZAI_START_CMD`, provider session/pathing,
+  storage classification, deterministic test stubs, focused execution tests,
+  and README/provider lists now include Z.ai.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.10.
+
 ## v7.6.9 (2026-06-17)
 
 ### Kimi And AGY Provider Reliability

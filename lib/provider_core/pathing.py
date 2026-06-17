@@ -21,6 +21,7 @@ PROVIDER_SESSION_FILENAMES = {
     'crush': '.crush-session',
     'kiro': '.kiro-session',
     'pi': '.pi-session',
+    'zai': '.zai-session',
 }
 
 

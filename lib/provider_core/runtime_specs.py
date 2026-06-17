@@ -77,6 +77,7 @@ CURSOR_RUNTIME_SPEC = _provider_runtime_spec("cursor")
 CRUSH_RUNTIME_SPEC = _provider_runtime_spec("crush")
 KIRO_RUNTIME_SPEC = _provider_runtime_spec("kiro")
 PI_RUNTIME_SPEC = _provider_runtime_spec("pi")
+ZAI_RUNTIME_SPEC = _provider_runtime_spec("zai")
 
 CODEX_CLIENT_SPEC = _client_spec(
     provider_key="codex",
@@ -142,6 +143,10 @@ PI_CLIENT_SPEC = _client_spec(
     provider_key="pi",
     session_filename=".pi-session",
 )
+ZAI_CLIENT_SPEC = _client_spec(
+    provider_key="zai",
+    session_filename=".zai-session",
+)
 
 RUNTIME_SPECS_BY_PROVIDER = {
     "codex": CODEX_RUNTIME_SPEC,
@@ -160,6 +165,7 @@ RUNTIME_SPECS_BY_PROVIDER = {
     "crush": CRUSH_RUNTIME_SPEC,
     "kiro": KIRO_RUNTIME_SPEC,
     "pi": PI_RUNTIME_SPEC,
+    "zai": ZAI_RUNTIME_SPEC,
 }
 
 CLIENT_SPECS_BY_PROVIDER = {
@@ -179,6 +185,7 @@ CLIENT_SPECS_BY_PROVIDER = {
     "crush": CRUSH_CLIENT_SPEC,
     "kiro": KIRO_CLIENT_SPEC,
     "pi": PI_CLIENT_SPEC,
+    "zai": ZAI_CLIENT_SPEC,
 }
 
 
@@ -236,6 +243,8 @@ __all__ = [
     "QWEN_CLIENT_SPEC",
     "QWEN_RUNTIME_SPEC",
     "RUNTIME_SPECS_BY_PROVIDER",
+    "ZAI_CLIENT_SPEC",
+    "ZAI_RUNTIME_SPEC",
     "make_qualified_key",
     "parse_qualified_provider",
     "provider_env_name",

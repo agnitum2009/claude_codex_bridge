@@ -6,9 +6,9 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.9-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.10-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
-  <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
+  <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
 
 <p>
@@ -23,6 +23,7 @@
   <img src="https://img.shields.io/badge/Crush-FF5A5F?style=flat-square" alt="Crush">
   <img src="https://img.shields.io/badge/Kiro-6D5EF6?style=flat-square" alt="Kiro">
   <img src="https://img.shields.io/badge/Pi-111111?style=flat-square" alt="Pi">
+  <img src="https://img.shields.io/badge/Z.ai-111111?style=flat-square" alt="Z.ai">
   <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
   <img src="https://img.shields.io/badge/Antigravity-6D5EF6?style=flat-square&logo=google&logoColor=white" alt="Antigravity">
   <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
@@ -55,6 +56,7 @@ Mix CLIs per agent in `.ccb/ccb.config`; actual availability depends on the loca
 - Crush (`crush`)
 - Kiro CLI (`kiro`)
 - Pi (`pi`)
+- Z.ai CLI (`zai`)
 - OpenCode (`opencode`)
 - Antigravity (`agy`)
 - Droid (`droid`)
@@ -205,7 +207,7 @@ CCB is a project-level agent CLI workspace. It uses tmux to manage multiple real
 
 - **Real CLI sessions, not fake panels**: every agent pane runs the actual provider CLI.
 - **Visible collaboration**: the sidebar shows windows, agents, status, and communication; users can switch panes by mouse.
-- **Mixed providers**: one project can run Codex, Claude, Gemini, Kimi (`kimi`), MiMo (`mimo`), Qwen (`qwen`), Cursor (`cursor`), Copilot (`copilot`), Crush (`crush`), Kiro (`kiro`), Pi (`pi`), OpenCode, Droid, and Antigravity (`agy`) together.
+- **Mixed providers**: one project can run Codex, Claude, Gemini, Kimi (`kimi`), MiMo (`mimo`), Qwen (`qwen`), Cursor (`cursor`), Copilot (`copilot`), Crush (`crush`), Kiro (`kiro`), Pi (`pi`), Z.ai CLI (`zai`), OpenCode, Droid, and Antigravity (`agy`) together.
 - **Project config**: `.ccb/ccb.config` defines the team, layout, windows, worktrees, model, key, and url.
 - **Built-in CCB expert**: blank projects include `ccb_self`, a self-maintenance agent with deep CCB knowledge for usage guidance, config design, diagnostics, recovery, and workflow repair.
 - **Roles**: a new role packaging model that lets specialized agents carrying
@@ -245,14 +247,14 @@ Multi-agent systems are not one fixed shape. Use the short table first; expand t
 | :--- | :--- | :--- |
 | [Claude Code native subagents](https://code.claude.com/docs/en/sub-agents) / [agent teams](https://code.claude.com/docs/en/agent-teams) | Native delegation inside Claude Code. | You mostly stay in Claude Code and want more coordination handled by a Claude lead. |
 | [Hive / OpenHive](https://github.com/aden-hive/hive) | Production-oriented multi-agent workflow harness. | You need state, recovery, observability, cost controls, and graph workflows. |
-| CCB | Visible, controllable local CLI-agent workspace with mixed providers. | You want Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, OpenCode, Antigravity, and other real CLIs in one project terminal. |
+| CCB | Visible, controllable local CLI-agent workspace with mixed providers. | You want Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, Z.ai CLI, OpenCode, Antigravity, and other real CLIs in one project terminal. |
 
 <details>
 <summary><b>Details: model choice, control, context, and complex workflows</b></summary>
 
 | Question | Claude Code native | Hive / OpenHive | CCB |
 | :--- | :--- | :--- | :--- |
-| Different model vendors? | Can choose Claude models for teammates/subagents; overall path is still Claude Code. | LiteLLM route covers many hosted and local providers. | Choose Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, OpenCode, Droid, Antigravity, and per-agent model/key/url. |
+| Different model vendors? | Can choose Claude models for teammates/subagents; overall path is still Claude Code. | LiteLLM route covers many hosted and local providers. | Choose Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, Z.ai CLI, OpenCode, Droid, Antigravity, and per-agent model/key/url. |
 | Is the process visible? | In-process or split panes depending on mode. | Runtime observability and dashboard-style control. | Real tmux panes by default; users can click, type, copy, and inspect each CLI. |
 | Is topology controllable? | Natural-language teammate setup, with much coordination handled by the lead. | Goal-generated graph-like topology, harness oriented. | Config explicitly defines agents, windows, panes, worktrees, and sidebar behavior. |
 | Is context manageable? | Subagents/teammates have separate contexts; teams have task and message state. | Role memory, durable state, and recovery are core design points. | Each CLI keeps its provider session; shared project memory and per-agent memory are optional. |
@@ -558,7 +560,7 @@ If agent A is handling a user-originated CCB task and needs agent B's result to 
 - Node.js and npm for the recommended npm install path
 - Python 3.10+
 - `tmux`
-- At least one agent CLI you plan to use, such as Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, OpenCode, Droid, or Antigravity
+- At least one agent CLI you plan to use, such as Codex, Claude, Gemini, Kimi, MiMo, Qwen, Cursor, Copilot, Crush, Kiro, Z.ai CLI, OpenCode, Droid, or Antigravity
 - Linux, macOS, or WSL
 
 Current v7 / newer versions do not claim native Windows support. Native Windows support only applies to the v5 line. If you are on Windows and want current versions, use WSL and keep both `ccb` and agent CLIs inside WSL.
@@ -641,6 +643,19 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.10</b> - Z.ai Provider Support</summary>
+
+- Adds managed optional Z.ai CLI provider support with `provider = "zai"`,
+  visible `zai --directory` panes, and per-job `zai --prompt` execution.
+- Uses Z.ai's native subprocess completion boundary: process exit plus
+  assistant stdout extraction from JSONL output, without model-printed
+  `CCB_DONE`.
+- Adds `ZAI_START_CMD`, provider session/pathing support, deterministic stubs,
+  focused execution tests, and README/provider list updates.
+
+</details>
+
+<details>
 <summary><b>v7.6.9</b> - Kimi And AGY Provider Reliability</summary>
 
 - Kimi execution now records receipt, no-captured-output diagnostics, trace,
@@ -806,14 +821,15 @@ v7 highlights:
 
 - Adds built-in optional provider ids for Qwen Code (`qwen`), Cursor Agent
   (`cursor`), GitHub Copilot CLI (`copilot`), Crush (`crush`), Kiro CLI
-  (`kiro`), and Pi (`pi`).
+  (`kiro`), Pi (`pi`), and Z.ai CLI (`zai`).
 - Uses native per-job CLI execution and provider-owned completion signals:
   stream-json / JSON result events for Qwen, Cursor, Copilot, and Pi; process
-  exit plus stdout for Crush and Kiro. These adapters do not require
+  exit plus stdout for Crush, Kiro, and Z.ai CLI. These adapters do not require
   model-printed `CCB_DONE`; Pi terminalizes on native `turn_end`.
 - Adds `QWEN_START_CMD`, `CURSOR_START_CMD`, `COPILOT_START_CMD`,
-  `CRUSH_START_CMD`, `KIRO_START_CMD`, and `PI_START_CMD` command overrides plus provider
-  session bindings, runtime launchers, deterministic stubs, and focused
+  `CRUSH_START_CMD`, `KIRO_START_CMD`, `PI_START_CMD`, and `ZAI_START_CMD`
+  command overrides plus provider session bindings, runtime launchers,
+  deterministic stubs, and focused
   execution tests.
 
 </details>

@@ -30,6 +30,12 @@ instead of stacking retries into one native turn, records coalesced native
 can use stable pane fallback when transcript flushes lag. Topic:
 [topics/agy-delivery-stability-hardening.md](topics/agy-delivery-stability-hardening.md).
 
+Z.ai CLI provider support has landed in source as `provider = "zai"` using the
+shared native CLI subprocess adapter. It targets conversational `zai` CLIs with
+headless `--prompt` support, such as `@guizmo-ai/zai-cli`; official
+`@z_ai/coding-helper` remains a setup helper for loading GLM Coding Plan into
+other tools, not a standalone CCB ask runtime.
+
 ## Last Landed
 
 - Shared pane-quiet support and Kimi/DeepSeek provider backends were added in
@@ -119,6 +125,13 @@ can use stable pane fallback when transcript flushes lag. Topic:
   native transcript evidence instead of failing before attribution is known.
 - Coalesced native `USER_INPUT` rows with multiple `CCB_REQ_ID` anchors are
   diagnosed as `agy_request_coalesced` for superseded jobs.
+- Z.ai provider registration:
+  - Built-in optional provider id: `zai`.
+  - Pane launcher: `zai --directory <workspace>` with per-agent managed `HOME`.
+  - Ask runner: `zai --directory <workspace> --no-color --prompt <wrapped prompt>`.
+  - Override env: `ZAI_START_CMD`.
+  - Completion detection: provider-native subprocess exit/stdout through the
+    shared native CLI adapter, not model-printed `CCB_DONE`.
 
 ## Active TODO
 
@@ -132,7 +145,7 @@ can use stable pane fallback when transcript flushes lag. Topic:
 ## Blocked By
 
 None for design. Real provider API execution may require user-owned
-Kimi/DeepSeek/MiMo/Qwen/Copilot/Cursor/Kiro/Crush/Pi credentials; CCB integration
+Kimi/DeepSeek/MiMo/Qwen/Copilot/Cursor/Kiro/Crush/Pi/Z.ai credentials; CCB integration
 can still be validated with provider command templates, installed CLI
 help/version checks, and source-backed parser tests.
 

@@ -359,6 +359,38 @@ CCB direction:
   `PI_CODING_AGENT_SESSION_DIR`; skip startup version checks with
   `PI_SKIP_VERSION_CHECK=1`.
 
+## Z.ai CLI
+
+Observed upstream/docs:
+
+- Official Z.ai `@z_ai/coding-helper` is a Coding Tool Helper, not a
+  standalone coding-agent runtime. It installs/configures GLM Coding Plan for
+  tools such as Claude Code, OpenCode, Crush, and Factory Droid.
+- Conversational ZAI CLI evidence comes from `guizmo-ai/zai-glm-cli` /
+  `@guizmo-ai/zai-cli`.
+- Binary: `zai`.
+- README documents interactive mode as `zai` or `zai -d /path/to/project`.
+- README documents headless mode:
+  `zai --prompt "analyze package.json and suggest improvements"` and
+  `zai -p "run tests" --max-tool-rounds 50`.
+- CLI reference lists `zai [options] [message...]`, `-d/--directory <dir>`,
+  `-p/--prompt <prompt>`, `--no-color`, `--model`, `--api-key`, and
+  `--base-url`.
+- Configuration defaults to `~/.zai/user-settings.json`; environment variables
+  include `ZAI_API_KEY`, `ZAI_BASE_URL`, and `ZAI_MODEL`.
+- Project instructions can live in `.zai/ZAI.md`.
+
+CCB direction:
+
+- Provider key `zai`; default command `zai`; override `ZAI_START_CMD`.
+- Visible pane command: `zai --directory <workspace>`.
+- Per-job subprocess execution:
+  `HOME=<provider-state>/home zai --directory <workdir> --no-color --prompt <wrapped prompt>`.
+- Completion source is process exit plus stdout through the shared native CLI
+  adapter. Do not ask the model to print `CCB_DONE`.
+- Treat official `@z_ai/coding-helper` as setup tooling for users who want GLM
+  Coding Plan in other providers, not as the CCB provider runtime.
+
 ## Local Probe Evidence
 
 - Local Node: `v22.20.0`.
