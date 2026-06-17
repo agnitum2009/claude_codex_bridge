@@ -89,7 +89,7 @@ def main_for_target(target_platform: str) -> int:
     )
     build_sidebar_helper_for_release(artifact_root, target_platform=target_platform)
     build_rs_helper_for_release(artifact_root, target_platform=target_platform)
-    patch_ccb_metadata(artifact_root / "ccb", version=version, commit=commit, date=commit_date)
+    patch_ccb_metadata(artifact_root / "ccb.py", version=version, commit=commit, date=commit_date)
 
     build_info = {
         "version": version,
@@ -146,7 +146,7 @@ def resolve_version(repo_root: Path, *, git_ref: str | None = None) -> str:
         version_text = read_git_file(repo_root, git_ref=git_ref, relative_path="VERSION")
         if version_text.strip():
             return version_text.strip()
-        ccb_text = read_git_file(repo_root, git_ref=git_ref, relative_path="ccb")
+        ccb_text = read_git_file(repo_root, git_ref=git_ref, relative_path="ccb.py")
         match = re.search(r'^VERSION\s*=\s*"([^"]+)"', ccb_text, re.MULTILINE)
         if match:
             return match.group(1)
@@ -155,12 +155,12 @@ def resolve_version(repo_root: Path, *, git_ref: str | None = None) -> str:
         value = version_file.read_text(encoding="utf-8").strip()
         if value:
             return value
-    ccb_path = repo_root / "ccb"
+    ccb_path = repo_root / "ccb.py"
     text = ccb_path.read_text(encoding="utf-8", errors="replace")
     match = re.search(r'^VERSION\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if match:
         return match.group(1)
-    raise RuntimeError("unable to resolve version from VERSION or ccb")
+    raise RuntimeError("unable to resolve version from VERSION or ccb.py")
 
 
 def resolve_git_metadata(repo_root: Path, *, git_ref: str | None = None) -> tuple[str | None, str | None]:
