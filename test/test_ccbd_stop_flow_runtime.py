@@ -4,11 +4,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ccbd.stop_flow_runtime.pid_cleanup import collect_pid_candidates
-from ccbd.stop_flow_runtime.pid_cleanup import collect_project_process_candidates
 from ccbd.stop_flow_runtime.service import stop_all_project
 from cli.services.kill_runtime.pid_cleanup import collect_project_authority_pid_candidates
 from ccbd.stop_flow_runtime.pid_cleanup import terminate_runtime_pids
 from ccbd.stop_flow_runtime.runtime_records import extra_agent_dir_names
+from runtime_pid_cleanup import collect_project_process_candidates
 from runtime_pid_cleanup.termination import terminate_runtime_pids as terminate_runtime_pids_impl
 
 
@@ -166,7 +166,7 @@ def test_collect_project_process_candidates_does_not_include_authority_pids(tmp_
     assert candidates == {}
 
 
-def test_terminate_runtime_pids_includes_project_process_scan(tmp_path: Path, monkeypatch) -> None:
+def test_terminate_runtime_pids_skips_broad_project_process_scan(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo'
     seen: dict[str, object] = {}
 
@@ -174,15 +174,10 @@ def test_terminate_runtime_pids_includes_project_process_scan(tmp_path: Path, mo
         'ccbd.stop_flow_runtime.pid_cleanup._terminate_runtime_pids_impl',
         lambda **kwargs: seen.update(kwargs),
     )
-    monkeypatch.setattr(
-        'ccbd.stop_flow_runtime.pid_cleanup.collect_project_process_candidates',
-        lambda project_root: {321: [project_root / '.ccb']},
-    )
 
     terminate_runtime_pids(project_root=project_root, pid_candidates={123: [project_root / 'hint.pid']})
 
-    collect_fn = seen['collect_project_process_candidates_fn']
-    assert collect_fn(project_root) == {321: [project_root / '.ccb']}
+    assert seen['collect_project_process_candidates_fn'] is None
     assert seen['pid_candidates'] == {123: [project_root / 'hint.pid']}
 
 
