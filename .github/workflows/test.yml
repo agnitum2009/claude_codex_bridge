@@ -354,5 +354,4 @@ jobs:
         shell: wsl-bash {0}
         run: |
           export TERM=xterm-256color
-          export CCB_CONTROL_PLANE_RPC_TIMEOUT_S=2.5
           /tmp/ccb-ci-py311/bin/python -m pytest test/ -v --tb=short -m "not provider_blackbox"
