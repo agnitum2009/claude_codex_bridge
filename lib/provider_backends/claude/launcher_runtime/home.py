@@ -494,6 +494,8 @@ def _projected_claude_json_payload(
             workspace_path=workspace_path,
         )
 
+    _merge_profile_mcp_servers(merged, profile=profile)
+
     if not _inherits_auth(profile):
         for key in _CLAUDE_JSON_AUTH_METADATA_KEYS:
             merged.pop(key, None)
@@ -529,6 +531,43 @@ def _project_claude_mcp_config(
         workspace_path=workspace_path,
     )
     _refresh_project_mcp_record(merged, target_key=target_key, selected=selected)
+
+
+def _merge_profile_mcp_servers(merged: dict[str, object], *, profile) -> None:
+    profile_servers = _profile_mcp_servers(profile)
+    if not profile_servers:
+        return
+
+    existing = merged.get('mcpServers')
+    servers = dict(existing) if isinstance(existing, dict) else {}
+    for raw_name, raw_config in profile_servers.items():
+        name = str(raw_name or '').strip()
+        if not name:
+            continue
+        if _mcp_server_disabled(raw_config):
+            servers.pop(name, None)
+            continue
+        payload = _clone_jsonish(raw_config)
+        if not isinstance(payload, dict):
+            continue
+        payload.pop('enabled', None)
+        servers[name] = payload
+
+    if servers:
+        merged['mcpServers'] = servers
+    else:
+        merged.pop('mcpServers', None)
+
+
+def _profile_mcp_servers(profile) -> dict[str, object]:
+    if profile is None:
+        return {}
+    raw = getattr(profile, 'mcp_servers', None)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _mcp_server_disabled(value: object) -> bool:
+    return isinstance(value, dict) and value.get('enabled') is False
 
 
 def _strip_claude_mcp_config(

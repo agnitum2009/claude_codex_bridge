@@ -2250,6 +2250,49 @@ def test_materialize_claude_home_config_projects_inherited_skills_and_commands(t
     assert (layout.claude_dir / 'commands.ccb-projection.json').is_file()
 
 
+def test_materialize_claude_home_config_merges_profile_mcp_server_overrides(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / '.claude.json').write_text(
+        json.dumps(
+            {
+                'mcpServers': {
+                    'agentmemory': {'command': 'agentmemory-old'},
+                    'browser-use': {'command': 'browser-use'},
+                    'playwright': {'command': 'playwright'},
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    layout = materialize_claude_home_config(
+        target_home,
+        profile=ProviderProfileSpec(
+            inherit_memory=False,
+            mcp_servers={
+                'agentmemory': {'command': 'agentmemory-new', 'env': {'AGENTMEMORY_URL': 'http://localhost:3111'}},
+                'browser-use': {'enabled': False},
+                'codegraph': {'command': 'codegraph-mcp'},
+                'playwright': {'enabled': False},
+            },
+        ),
+        source_home=source_home,
+    )
+
+    payload = json.loads(layout.trust_path.read_text(encoding='utf-8'))
+    servers = payload['mcpServers']
+    assert sorted(servers) == ['agentmemory', 'codegraph']
+    assert servers['agentmemory'] == {
+        'command': 'agentmemory-new',
+        'env': {'AGENTMEMORY_URL': 'http://localhost:3111'},
+    }
+    assert servers['codegraph'] == {'command': 'codegraph-mcp'}
+
+
 def test_materialize_claude_home_config_skips_memory_without_project_context(tmp_path: Path) -> None:
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
