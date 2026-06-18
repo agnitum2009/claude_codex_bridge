@@ -49,6 +49,7 @@ class ParsedMobileCommand:
     listen: str = '127.0.0.1:8787'
     public_url: str | None = None
     route_provider: str = 'lan'
+    device_id: str | None = None
     kind: str = 'mobile'
 
 

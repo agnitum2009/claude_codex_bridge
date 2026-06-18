@@ -319,6 +319,21 @@ class MobileGatewayPairingStore:
         self._append_audit(event='device_auth_denied', result='denied', reason='invalid_token')
         raise MobileGatewayPairingError('invalid device token', status_code=401, reason='invalid_token')
 
+    def list_devices(self) -> list[dict[str, object]]:
+        with self._lock:
+            return [_public_device(record) for record in self._read_devices()]
+
+    def revoke_device_locally(self, *, device_id: str, reason: str = 'host_revoked') -> dict[str, object]:
+        requested = _clean_id(device_id)
+        if not requested:
+            raise MobileGatewayPairingError('device_id is required', status_code=400, reason='missing_device_id')
+        with self._lock:
+            return self._revoke_device_record(
+                device_id=requested,
+                revoked_by_device_id=None,
+                reason=str(reason or 'host_revoked'),
+            )
+
     def revoke_device(self, *, device_id: str, device_token: str) -> dict[str, object]:
         requested = _clean_id(device_id)
         if not requested:
@@ -334,28 +349,12 @@ class MobileGatewayPairingStore:
                 reason='self_revoke_only',
             )
             raise MobileGatewayPairingError('device can only revoke itself in G2', status_code=403, reason='self_revoke_only')
-        now = _iso(self._clock())
         with self._lock:
-            devices = self._read_devices()
-            for index, record in enumerate(devices):
-                if record.get('device_id') != requested:
-                    continue
-                updated = dict(record)
-                updated['revoked_at'] = now
-                devices[index] = updated
-                _write_json(self.devices_path, {'schema_version': _SCHEMA_VERSION, 'devices': devices})
-                self._append_audit(
-                    event='device_revoked',
-                    result='ok',
-                    project_id=str(record.get('project_id') or ''),
-                    device_id=requested,
-                )
-                return {
-                    'schema_version': _SCHEMA_VERSION,
-                    'status': 'revoked',
-                    'device': _public_device(updated),
-                }
-        raise MobileGatewayPairingError('device not found', status_code=404, reason='not_found')
+            return self._revoke_device_record(
+                device_id=requested,
+                revoked_by_device_id=auth.device_id,
+                reason='self_revoked',
+            )
 
     def create_terminal_handle(
         self,
@@ -680,6 +679,16 @@ class MobileGatewayPairingStore:
                 reason='revoked',
             )
             raise MobileGatewayPairingError('terminal token revoked', status_code=401, reason='revoked')
+        if self._is_device_revoked(device_id):
+            self._append_audit(
+                event='terminal_auth_denied',
+                result='denied',
+                project_id=project_id,
+                device_id=device_id,
+                terminal_id=terminal_id,
+                reason='device_revoked',
+            )
+            raise MobileGatewayPairingError('terminal device revoked', status_code=401, reason='device_revoked')
         if record.get('closed_at'):
             self._append_audit(
                 event='terminal_auth_denied',
@@ -713,6 +722,75 @@ class MobileGatewayPairingStore:
         if not isinstance(devices, list):
             return []
         return [dict(item) for item in devices if isinstance(item, dict)]
+
+    def _revoke_device_record(
+        self,
+        *,
+        device_id: str,
+        revoked_by_device_id: str | None,
+        reason: str,
+    ) -> dict[str, object]:
+        now = _iso(self._clock())
+        devices = self._read_devices()
+        for index, record in enumerate(devices):
+            if record.get('device_id') != device_id:
+                continue
+            updated = dict(record)
+            if not updated.get('revoked_at'):
+                updated['revoked_at'] = now
+            devices[index] = updated
+            _write_json(self.devices_path, {'schema_version': _SCHEMA_VERSION, 'devices': devices})
+            revoked_terminal_count = self._revoke_terminal_handles_for_device(
+                device_id=device_id,
+                now=now,
+                reason=reason,
+            )
+            self._append_audit(
+                event='device_revoked',
+                result='ok',
+                project_id=str(record.get('project_id') or ''),
+                device_id=device_id,
+                revoked_by_device_id=revoked_by_device_id,
+                reason=reason,
+                revoked_terminal_count=revoked_terminal_count,
+            )
+            return {
+                'schema_version': _SCHEMA_VERSION,
+                'status': 'revoked',
+                'device': _public_device(updated),
+                'revoked_terminal_count': revoked_terminal_count,
+            }
+        raise MobileGatewayPairingError('device not found', status_code=404, reason='not_found')
+
+    def _revoke_terminal_handles_for_device(self, *, device_id: str, now: str, reason: str) -> int:
+        count = 0
+        for record in self._terminal_state_by_id().values():
+            if str(record.get('device_id') or '') != device_id:
+                continue
+            if record.get('revoked_at') or record.get('closed_at'):
+                continue
+            updated = dict(record)
+            updated['revoked_at'] = now
+            updated['revoked_reason'] = reason
+            _append_jsonl(self.terminal_tokens_path, updated)
+            count += 1
+            self._append_audit(
+                event='terminal_revoked',
+                result='ok',
+                project_id=str(record.get('project_id') or ''),
+                device_id=device_id,
+                terminal_id=str(record.get('terminal_id') or ''),
+                reason=reason,
+            )
+        return count
+
+    def _is_device_revoked(self, device_id: str) -> bool:
+        if not device_id:
+            return False
+        return any(
+            record.get('device_id') == device_id and bool(record.get('revoked_at'))
+            for record in self._read_devices()
+        )
 
     def _append_audit(self, *, event: str, result: str, **fields: object) -> None:
         entry = {

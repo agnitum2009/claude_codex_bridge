@@ -69,6 +69,8 @@ def print_start_help(*, file=None) -> None:
               ccb maintenance status Show maintenance heartbeat config and stored status.
               ccb maintenance tick   Run one maintenance heartbeat diagnosis tick.
               ccb mobile serve       Start the loopback CCB Mobile gateway for the current project.
+              ccb mobile devices     List paired mobile devices for the current project.
+              ccb mobile revoke <id> Revoke one paired mobile device locally.
               ccb kill             Stop the current project's background runtime.
               ccb kill -f          Force cleanup project-owned runtime residue.
               ccb cleanup          Prune safe provider rebuildable caches after ccbd is stopped.
@@ -296,7 +298,7 @@ _COMMAND_HELP = {
           - Status reads `.ccb/ccbd/maintenance-heartbeat/`, not `.ccb/ccbd/heartbeats/`.
     """,
     "mobile": """
-        usage: ccb mobile serve [--listen 127.0.0.1:8787] [--public-url URL] [--route-provider lan|tailnet|cloudflare_tunnel|relay]
+        usage: ccb mobile <serve|devices|revoke>
 
         CCB Mobile gateway:
           ccb mobile serve
@@ -307,6 +309,12 @@ _COMMAND_HELP = {
           ccb mobile serve --listen 127.0.0.1:8787 --public-url https://mobile.example.com --route-provider cloudflare_tunnel
               Keep the gateway loopback-bound but emit Cloudflare route
               metadata in the pairing payload.
+          ccb mobile devices
+              List paired devices from the current project's local mobile
+              state.
+          ccb mobile revoke dev_1234
+              Revoke a paired device locally, without exposing a public admin
+              route.
 
         Endpoints:
           GET /v1/health
@@ -324,6 +332,9 @@ _COMMAND_HELP = {
           - The gateway still only accepts loopback listen addresses.
           - --public-url changes pairing metadata only; it does not bind a
             public listener.
+          - Device listing and host-side revocation are local CLI actions,
+            not public HTTP endpoints.
+          - Revoking a device also revokes its still-open terminal handles.
           - It exposes current-project data only.
           - Pairing and device tokens are hashed under `.ccb/ccbd/mobile`.
           - Focus routes require a valid device token with `focus` scope.

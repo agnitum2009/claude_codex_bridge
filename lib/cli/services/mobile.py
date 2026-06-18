@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from ccbd.socket_client import CcbdClient
-from mobile_gateway import MobileGatewayService, build_mobile_gateway_server, parse_listen_address
+from mobile_gateway import (
+    MobileGatewayPairingStore,
+    MobileGatewayService,
+    build_mobile_gateway_server,
+    parse_listen_address,
+)
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,30 @@ def prepare_mobile_gateway(context, command) -> MobileGatewayServeHandle:
     )
 
 
+def mobile_devices_status(context, command) -> dict[str, object]:
+    store = MobileGatewayPairingStore(context.paths.ccbd_mobile_dir)
+    return {
+        'mobile_status': 'devices',
+        'project_id': context.project.project_id,
+        'project_root': str(context.project.project_root),
+        'mobile_state_dir': str(context.paths.ccbd_mobile_dir),
+        'devices': store.list_devices(),
+    }
+
+
+def revoke_mobile_device(context, command) -> dict[str, object]:
+    device_id = str(getattr(command, 'device_id', '') or '').strip()
+    store = MobileGatewayPairingStore(context.paths.ccbd_mobile_dir)
+    result = store.revoke_device_locally(device_id=device_id)
+    return {
+        'mobile_status': 'revoked',
+        'project_id': context.project.project_id,
+        'project_root': str(context.project.project_root),
+        'mobile_state_dir': str(context.paths.ccbd_mobile_dir),
+        **result,
+    }
+
+
 def _public_gateway_url(value: str | None, *, fallback: str) -> str:
     text = str(value or '').strip().rstrip('/')
     if not text:
@@ -71,4 +100,9 @@ def _public_gateway_url(value: str | None, *, fallback: str) -> str:
     return text
 
 
-__all__ = ['MobileGatewayServeHandle', 'prepare_mobile_gateway']
+__all__ = [
+    'MobileGatewayServeHandle',
+    'mobile_devices_status',
+    'prepare_mobile_gateway',
+    'revoke_mobile_device',
+]

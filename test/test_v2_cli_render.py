@@ -167,6 +167,59 @@ def test_render_mobile_serve_includes_pairing_summary_when_present() -> None:
     )
 
 
+def test_render_mobile_devices_lists_without_tokens() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'devices',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mobile_state_dir': '/tmp/project/.ccb/ccbd/mobile',
+            'devices': [
+                {
+                    'device_id': 'dev_1',
+                    'name': 'Pixel',
+                    'scopes': ['focus', 'view'],
+                    'route_provider': 'cloudflare_tunnel',
+                    'last_seen_at': '2026-06-18T00:00:00Z',
+                    'revoked': False,
+                }
+            ],
+        }
+    ) == (
+        'mobile_status: devices',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mobile_state_dir: /tmp/project/.ccb/ccbd/mobile',
+        'device: id=dev_1 name=Pixel revoked=false route_provider=cloudflare_tunnel scopes=focus,view last_seen_at=2026-06-18T00:00:00Z',
+    )
+
+
+def test_render_mobile_revoke_summary() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'revoked',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mobile_state_dir': '/tmp/project/.ccb/ccbd/mobile',
+            'device': {
+                'device_id': 'dev_1',
+                'revoked': True,
+                'revoked_at': '2026-06-18T00:00:00Z',
+            },
+            'revoked_terminal_count': 2,
+        }
+    ) == (
+        'mobile_status: revoked',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mobile_state_dir: /tmp/project/.ccb/ccbd/mobile',
+        'device_id: dev_1',
+        'device_revoked: true',
+        'revoked_at: 2026-06-18T00:00:00Z',
+        'revoked_terminal_count: 2',
+    )
+
+
 def test_render_reload_non_dry_run_apply_diagnostics() -> None:
     lines = render_reload(
         {

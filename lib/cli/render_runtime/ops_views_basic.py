@@ -267,8 +267,47 @@ def render_maintenance(payload) -> tuple[str, ...]:
 
 def render_mobile_serve(summary) -> tuple[str, ...]:
     payload = summary if isinstance(summary, Mapping) else {}
+    status = str(payload.get('mobile_status') or 'unknown')
+    if status == 'devices':
+        lines = [
+            'mobile_status: devices',
+            f'project_id: {payload.get("project_id", "")}',
+            f'project_root: {payload.get("project_root", "")}',
+            f'mobile_state_dir: {payload.get("mobile_state_dir", "")}',
+        ]
+        devices = payload.get('devices')
+        if not isinstance(devices, (list, tuple)) or not devices:
+            lines.append('devices: none')
+            return tuple(lines)
+        for device in devices:
+            if not isinstance(device, Mapping):
+                continue
+            scopes = device.get('scopes')
+            scope_text = ','.join(str(item) for item in scopes) if isinstance(scopes, (list, tuple)) else ''
+            lines.append(
+                'device: '
+                f'id={device.get("device_id", "")} '
+                f'name={device.get("name", "")} '
+                f'revoked={str(bool(device.get("revoked"))).lower()} '
+                f'route_provider={device.get("route_provider", "")} '
+                f'scopes={scope_text} '
+                f'last_seen_at={device.get("last_seen_at", "")}'
+            )
+        return tuple(lines)
+    if status == 'revoked':
+        device = payload.get('device') if isinstance(payload.get('device'), Mapping) else {}
+        return (
+            'mobile_status: revoked',
+            f'project_id: {payload.get("project_id", "")}',
+            f'project_root: {payload.get("project_root", "")}',
+            f'mobile_state_dir: {payload.get("mobile_state_dir", "")}',
+            f'device_id: {device.get("device_id", "")}',
+            f'device_revoked: {str(bool(device.get("revoked"))).lower()}',
+            f'revoked_at: {device.get("revoked_at", "")}',
+            f'revoked_terminal_count: {payload.get("revoked_terminal_count", 0)}',
+        )
     lines = [
-        f'mobile_status: {payload.get("mobile_status", "unknown")}',
+        f'mobile_status: {status}',
         f'listen: {payload.get("listen", "")}',
         f'gateway_url: {payload.get("gateway_url", "")}',
         f'route_provider: {payload.get("route_provider", "")}',

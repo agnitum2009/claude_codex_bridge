@@ -34,6 +34,14 @@ def handle_maintenance(context, command, out, services) -> int:
 
 
 def handle_mobile(context, command, out, services) -> int:
+    if command.action == 'devices':
+        payload = services.mobile_devices_status(context, command)
+        services.write_lines(out, services.render_mobile_serve(payload))
+        return 0
+    if command.action == 'revoke':
+        payload = services.revoke_mobile_device(context, command)
+        services.write_lines(out, services.render_mobile_serve(payload))
+        return 0
     handle = services.prepare_mobile_gateway(context, command)
     services.write_lines(out, services.render_mobile_serve(handle.summary))
     flush = getattr(out, 'flush', None)

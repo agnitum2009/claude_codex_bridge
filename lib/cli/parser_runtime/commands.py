@@ -71,10 +71,21 @@ def parse_maintenance(tokens: list[str], *, project: str | None, error_type) -> 
 
 def parse_mobile(tokens: list[str], *, project: str | None, error_type) -> ParsedMobileCommand:
     if not tokens:
-        raise error_type('mobile requires one of: serve')
+        raise error_type('mobile requires one of: serve, devices, revoke')
     action = str(tokens[0] or '').strip().lower()
+    if action == 'devices':
+        require_no_extra(tokens[1:], command='mobile devices', error_type=error_type)
+        return ParsedMobileCommand(project=project, action=action)
+    if action == 'revoke':
+        parser = argparse.ArgumentParser(prog='ccb mobile revoke', add_help=False)
+        parser.add_argument('device_id')
+        namespace = parse_args(parser, tokens[1:], error_message='invalid mobile revoke command', error_type=error_type)
+        device_id = str(namespace.device_id or '').strip()
+        if not device_id:
+            raise error_type('mobile revoke requires <device_id>')
+        return ParsedMobileCommand(project=project, action=action, device_id=device_id)
     if action != 'serve':
-        raise error_type('mobile only supports: serve')
+        raise error_type('mobile only supports: serve, devices, revoke')
     parser = argparse.ArgumentParser(prog='ccb mobile serve', add_help=False)
     parser.add_argument('--listen', default='127.0.0.1:8787')
     parser.add_argument('--public-url', default=None)

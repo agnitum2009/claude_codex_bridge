@@ -49,7 +49,7 @@ from cli.services.inbox import inbox_target
 from cli.services.kill import kill_project
 from cli.services.logs import agent_logs
 from cli.services.maintenance import maintenance_status
-from cli.services.mobile import prepare_mobile_gateway
+from cli.services.mobile import mobile_devices_status, prepare_mobile_gateway, revoke_mobile_device
 from cli.services.pend import pend_target
 from cli.services.ping import ping_target
 from cli.services.ps import ps_summary
@@ -81,6 +81,7 @@ def build_phase2_dispatch_services(**overrides):
         kill_project=kill_project,
         list_fault_rules=list_fault_rules,
         maintenance_status=maintenance_status,
+        mobile_devices_status=mobile_devices_status,
         prepare_mobile_gateway=prepare_mobile_gateway,
         pend_target=pend_target,
         ping_target=ping_target,
@@ -88,6 +89,7 @@ def build_phase2_dispatch_services(**overrides):
         queue_target=queue_target,
         reload_config=reload_config,
         restart_agent=restart_agent,
+        revoke_mobile_device=revoke_mobile_device,
         render_ack=render_ack,
         render_ask=render_ask,
         render_cancel=render_cancel,

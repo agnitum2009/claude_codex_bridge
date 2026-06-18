@@ -314,11 +314,6 @@ class MobileGatewayService:
             _safe_send_json(connection, {'type': 'error', 'code': 'terminal_stream_error', 'message': _error_text(exc)})
         finally:
             output_stop.set()
-            if session is not None:
-                try:
-                    session.close()
-                except Exception:
-                    pass
             if terminal_token:
                 try:
                     if close_handle:
@@ -334,6 +329,11 @@ class MobileGatewayService:
                             reason=close_reason or 'transport_disconnected',
                         )
                 except MobileGatewayPairingError:
+                    pass
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
                     pass
             _safe_send_json(connection, {'type': 'closed', 'reason': close_reason or 'client_closed'})
             connection.close()

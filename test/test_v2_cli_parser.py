@@ -393,6 +393,15 @@ def test_parse_mobile_serve(parser: CliParser) -> None:
         action='serve',
         listen='127.0.0.1:8787',
     )
+    assert parser.parse(['mobile', 'devices']) == ParsedMobileCommand(
+        project=None,
+        action='devices',
+    )
+    assert parser.parse(['mobile', 'revoke', 'dev_1234']) == ParsedMobileCommand(
+        project=None,
+        action='revoke',
+        device_id='dev_1234',
+    )
     assert parser.parse(
         [
             '--project',
@@ -422,6 +431,10 @@ def test_parse_mobile_rejects_invalid_forms(parser: CliParser) -> None:
         parser.parse(['mobile'])
     with pytest.raises(CliUsageError, match='mobile only supports'):
         parser.parse(['mobile', 'pair'])
+    with pytest.raises(CliUsageError, match='invalid mobile revoke command'):
+        parser.parse(['mobile', 'revoke'])
+    with pytest.raises(CliUsageError, match='mobile devices does not accept extra arguments'):
+        parser.parse(['mobile', 'devices', '--extra'])
     with pytest.raises(CliUsageError, match='invalid mobile serve command'):
         parser.parse(['mobile', 'serve', '--extra'])
     with pytest.raises(CliUsageError, match='invalid mobile serve command'):

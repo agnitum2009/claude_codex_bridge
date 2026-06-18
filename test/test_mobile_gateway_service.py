@@ -13,7 +13,14 @@ from urllib.request import urlopen
 
 import pytest
 
-from mobile_gateway import MobileGatewayError, MobileGatewayService, build_mobile_gateway_server, parse_listen_address
+from mobile_gateway import (
+    MobileGatewayError,
+    MobileGatewayPairingError,
+    MobileGatewayPairingStore,
+    MobileGatewayService,
+    build_mobile_gateway_server,
+    parse_listen_address,
+)
 
 
 class _FakeCcbdClient:
@@ -233,6 +240,45 @@ def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -
     with pytest.raises(MobileGatewayError) as denied:
         service.dispatch_get('/v1/devices/me', {'Authorization': f'Bearer {device_token}'})
     assert denied.value.status_code == 401
+
+
+def test_host_local_device_revoke_lists_devices_and_revokes_terminal_handles(tmp_path: Path) -> None:
+    store = MobileGatewayPairingStore(tmp_path / 'mobile')
+    pairing = store.create_pairing_payload(
+        project_id='proj-demo',
+        gateway_url='https://mobile.example.com',
+        route_provider='cloudflare_tunnel',
+        scopes=('view', 'terminal_input'),
+    )
+    claim = store.claim_pairing(
+        pairing_code=str(pairing['pairing_code']),
+        device_name='Lost phone',
+    )
+    device_id = str(claim['device']['device_id'])
+    handle = store.create_terminal_handle(
+        project_id='proj-demo',
+        device_id=device_id,
+        target_epoch=4,
+        target_summary={'project_id': 'proj-demo', 'agent': 'mobile'},
+        geometry={'columns': 80, 'rows': 24},
+    )
+
+    assert store.list_devices()[0]['device_id'] == device_id
+
+    result = store.revoke_device_locally(device_id=device_id)
+
+    assert result['device']['revoked'] is True
+    assert result['revoked_terminal_count'] == 1
+    with pytest.raises(MobileGatewayPairingError) as denied:
+        store.authenticate_terminal_token(
+            terminal_id=str(handle['terminal_id']),
+            terminal_token=str(handle['terminal_token']),
+        )
+    assert denied.value.reason == 'revoked'
+    audit = (tmp_path / 'mobile' / 'audit.jsonl').read_text(encoding='utf-8')
+    assert 'device_revoked' in audit
+    assert 'terminal_revoked' in audit
+    assert str(handle['terminal_token']) not in audit
 
 
 def test_terminal_open_requires_terminal_scope_and_mints_hashed_token(tmp_path: Path) -> None:
