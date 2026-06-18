@@ -30,6 +30,7 @@ ALLOWED_PROVIDER_PROFILE_KEYS = {
     'mode',
     'home',
     'env',
+    'mcp_servers',
     'inherit_api',
     'inherit_auth',
     'inherit_config',

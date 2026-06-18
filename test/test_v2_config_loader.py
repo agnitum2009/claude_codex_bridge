@@ -313,8 +313,8 @@ def test_render_default_project_config_text_omits_optional_tool_windows(tmp_path
     assert '[tool_windows.' not in rendered
     assert '[ui.sidebar.view]' in rendered
     assert 'agents_height = "50%"' in rendered
-    assert 'comms_height = "15%"' in rendered
-    assert 'tips_height = "35%"' in rendered
+    assert 'comms_height = "23%"' in rendered
+    assert 'tips_height = "27%"' in rendered
     config_path = tmp_path / 'repo-render-default' / '.ccb' / 'ccb.config'
     _write(config_path, rendered)
     loaded = load_project_config(config_path.parents[1]).config
@@ -518,6 +518,13 @@ inherit_memory = false
 
 [agents.agent1.provider_profile.env]
 OPENAI_API_KEY = "sk-test"
+
+[agents.agent1.provider_profile.mcp_servers.codegraph]
+command = "/usr/local/bin/codegraph"
+args = ["serve", "--mcp"]
+
+[agents.agent1.provider_profile.mcp_servers.hindsight.env]
+HINDSIGHT_AGENT_NAME = "agent1"
 """,
     )
 
@@ -532,6 +539,10 @@ OPENAI_API_KEY = "sk-test"
     assert spec.provider_profile.inherit_commands is False
     assert spec.provider_profile.inherit_memory is False
     assert spec.provider_profile.env == {'OPENAI_API_KEY': 'sk-test'}
+    assert spec.provider_profile.mcp_servers == {
+        'codegraph': {'command': '/usr/local/bin/codegraph', 'args': ['serve', '--mcp']},
+        'hindsight': {'env': {'HINDSIGHT_AGENT_NAME': 'agent1'}},
+    }
 
 
 def test_load_project_config_supports_workspace_path_and_group_fields(tmp_path: Path) -> None:
@@ -1268,8 +1279,8 @@ bottom_height = 20
     assert result.config.sidebar.width == '15%'
     assert result.config.sidebar.bottom_height == 20
     assert result.config.sidebar_view.agents_height == '50%'
-    assert result.config.sidebar_view.comms_height == '15%'
-    assert result.config.sidebar_view.tips_height == '35%'
+    assert result.config.sidebar_view.comms_height == '23%'
+    assert result.config.sidebar_view.tips_height == '27%'
     assert result.config.sidebar_view.comms_limit == 5
     assert result.config.sidebar_view.tips[0] == 'C-b d  detach'
     assert 'C-b h/j/k/l pane' in result.config.sidebar_view.tips

@@ -31,6 +31,10 @@ def parse_provider_profile(agent_name: str, value: Any) -> ProviderProfileSpec:
                 raw.get('env', {}),
                 field_name=f'agents.{agent_name}.provider_profile.env',
             ),
+            mcp_servers=expect_mapping(
+                raw.get('mcp_servers', {}),
+                field_name=f'agents.{agent_name}.provider_profile.mcp_servers',
+            ),
             inherit_api=(
                 expect_bool(raw['inherit_api'], field_name=f'agents.{agent_name}.provider_profile.inherit_api')
                 if 'inherit_api' in raw

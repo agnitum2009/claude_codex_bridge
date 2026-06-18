@@ -54,8 +54,10 @@ _CODEX_ACTIVITY_HOOK_EVENTS = (
     'Stop',
 )
 _CODEX_ACTIVITY_HOOK_TIMEOUT_S = 5
-_CODEX_INHERITED_HOOK_EVENTS = frozenset({'SessionStart', 'UserPromptSubmit', 'Stop'})
-_CODEX_INHERITED_HOOK_COMMAND_MARKERS = ('.hindsight/codex/scripts/',)
+_CODEX_DEFAULT_INHERITED_HOOK_EVENTS = frozenset({'SessionStart', 'UserPromptSubmit', 'Stop'})
+_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS = ('.hindsight/codex/scripts/',)
+_CODEX_INHERITED_HOOK_EVENTS_ENV = 'CCB_CODEX_INHERITED_HOOK_EVENTS'
+_CODEX_INHERITED_COMMAND_HOOK_MARKERS_ENV = 'CCB_CODEX_INHERITED_COMMAND_HOOK_MARKERS'
 _TOML_TABLE_HEADER_RE = re.compile(r'^\s*\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$')
 
 
@@ -93,6 +95,7 @@ def materialize_codex_home_config(
         _write_codex_api_authority_config(
             target_config,
             authority,
+            profile=profile,
             source_config=source_config,
             project_root=project_root,
             workspace_path=workspace_path,
@@ -100,10 +103,11 @@ def materialize_codex_home_config(
     elif _inherits_config(profile) and _inherits_api(profile) and _source_config_valid(source_config):
         if source_config.is_file():
             payload = _read_source_config_payload(source_config)
-            if payload:
+            if payload or _profile_mcp_servers(profile):
                 _write_managed_codex_config(
                     target_config,
                     payload,
+                    profile=profile,
                     project_root=project_root,
                     workspace_path=workspace_path,
                 )
@@ -112,9 +116,19 @@ def materialize_codex_home_config(
                 _append_managed_codex_feature_overrides(target_config)
                 _append_managed_codex_project_trust(target_config, project_root=project_root, workspace_path=workspace_path)
         else:
-            _write_managed_config_stub(target_config, project_root=project_root, workspace_path=workspace_path)
+            _write_managed_config_stub(
+                target_config,
+                profile=profile,
+                project_root=project_root,
+                workspace_path=workspace_path,
+            )
     else:
-        _write_managed_config_stub(target_config, project_root=project_root, workspace_path=workspace_path)
+        _write_managed_config_stub(
+            target_config,
+            profile=profile,
+            project_root=project_root,
+            workspace_path=workspace_path,
+        )
 
     _materialize_auth_file(
         source_home / 'auth.json',
@@ -264,19 +278,28 @@ def _write_codex_api_authority_config(
     target: Path,
     authority: CodexApiAuthority,
     *,
+    profile,
     source_config: Path,
     project_root: Path | None,
     workspace_path: Path | None,
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = _managed_codex_config_payload(source_config, authority=authority)
+    _merge_codex_mcp_server_overrides(payload, profile=profile)
     _trust_managed_codex_project_paths(payload, project_root=project_root, workspace_path=workspace_path)
     target.write_text(_render_toml_document(payload), encoding='utf-8')
 
 
-def _write_managed_config_stub(target: Path, *, project_root: Path | None, workspace_path: Path | None) -> None:
+def _write_managed_config_stub(
+    target: Path,
+    *,
+    profile,
+    project_root: Path | None,
+    workspace_path: Path | None,
+) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {}
+    _merge_codex_mcp_server_overrides(payload, profile=profile)
     _trust_managed_codex_project_paths(payload, project_root=project_root, workspace_path=workspace_path)
     rendered = _render_toml_document(payload) if payload else '# ccb agent-local codex config\n'
     target.write_text(rendered, encoding='utf-8')
@@ -286,12 +309,14 @@ def _write_managed_codex_config(
     target: Path,
     payload: dict[str, object],
     *,
+    profile,
     project_root: Path | None,
     workspace_path: Path | None,
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     sanitized = _disable_interactive_migration_features(payload)
     _strip_unmanaged_hook_config(sanitized)
+    _merge_codex_mcp_server_overrides(sanitized, profile=profile)
     _trust_managed_codex_project_paths(sanitized, project_root=project_root, workspace_path=workspace_path)
     target.write_text(_render_toml_document(sanitized), encoding='utf-8')
 
@@ -473,6 +498,52 @@ def _strip_unmanaged_hook_config(payload: dict[str, object]) -> None:
     # CCB installs its own per-agent managed hook declarations below. Inherited
     # user hooks would couple agent runtime behavior to the outer Codex home.
     payload.pop('hooks', None)
+
+
+def _merge_codex_mcp_server_overrides(payload: dict[str, object], *, profile) -> None:
+    overrides = _profile_mcp_servers(profile)
+    if not overrides:
+        return
+
+    existing = _codex_mcp_servers_as_mapping(payload.get('mcp_servers'))
+    for name, server in overrides.items():
+        existing[name] = _clone_mapping(server)
+    payload['mcp_servers'] = existing
+
+
+def _profile_mcp_servers(profile) -> dict[str, dict[str, object]]:
+    raw = getattr(profile, 'mcp_servers', {}) if profile is not None else {}
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, dict[str, object]] = {}
+    for raw_name, raw_server in raw.items():
+        name = str(raw_name or '').strip()
+        if not name or not isinstance(raw_server, dict):
+            continue
+        normalized[name] = _clone_mapping(raw_server)
+    return normalized
+
+
+def _codex_mcp_servers_as_mapping(value: object) -> dict[str, dict[str, object]]:
+    if isinstance(value, dict):
+        return {
+            str(name): _clone_mapping(server)
+            for name, server in value.items()
+            if str(name).strip() and isinstance(server, dict)
+        }
+    if isinstance(value, list):
+        servers: dict[str, dict[str, object]] = {}
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get('name') or '').strip()
+            if not name:
+                continue
+            server = _clone_mapping(item)
+            server.pop('name', None)
+            servers[name] = server
+        return servers
+    return {}
 
 
 def _import_optional_toml_reader():
@@ -821,6 +892,10 @@ def _codex_activity_hook_events(command: str) -> dict[str, list[dict[str, object
 def _allowed_inherited_codex_hooks(source_home: Path | None) -> dict[str, list[dict[str, object]]]:
     if source_home is None:
         return {}
+    policy_events = _codex_inherited_hook_events()
+    command_markers = _codex_inherited_command_hook_markers()
+    if not policy_events or not command_markers:
+        return {}
     hooks_path = Path(source_home).expanduser() / 'hooks.json'
     try:
         payload = json.loads(hooks_path.read_text(encoding='utf-8'))
@@ -833,11 +908,11 @@ def _allowed_inherited_codex_hooks(source_home: Path | None) -> dict[str, list[d
     selected: dict[str, list[dict[str, object]]] = {}
     for event_name, raw_groups in hooks.items():
         event = str(event_name)
-        if event not in _CODEX_INHERITED_HOOK_EVENTS or not isinstance(raw_groups, list):
+        if event not in policy_events or not isinstance(raw_groups, list):
             continue
         groups: list[dict[str, object]] = []
         for raw_group in raw_groups:
-            group = _allowed_inherited_codex_hook_group(raw_group)
+            group = _allowed_inherited_codex_hook_group(raw_group, command_markers=command_markers)
             if group is not None:
                 groups.append(group)
         if groups:
@@ -845,7 +920,38 @@ def _allowed_inherited_codex_hooks(source_home: Path | None) -> dict[str, list[d
     return selected
 
 
-def _allowed_inherited_codex_hook_group(raw_group: object) -> dict[str, object] | None:
+def _codex_inherited_hook_events() -> frozenset[str]:
+    configured = _split_codex_inherited_hook_env(os.environ.get(_CODEX_INHERITED_HOOK_EVENTS_ENV))
+    return frozenset([*_CODEX_DEFAULT_INHERITED_HOOK_EVENTS, *configured])
+
+
+def _codex_inherited_command_hook_markers() -> tuple[str, ...]:
+    configured = _split_codex_inherited_hook_env(os.environ.get(_CODEX_INHERITED_COMMAND_HOOK_MARKERS_ENV))
+    markers = [*_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS, *configured]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for marker in markers:
+        normalized_marker = str(marker or '').strip().replace('\\', '/')
+        if not normalized_marker or normalized_marker in seen:
+            continue
+        normalized.append(normalized_marker)
+        seen.add(normalized_marker)
+    return tuple(normalized)
+
+
+def _split_codex_inherited_hook_env(value: object) -> tuple[str, ...]:
+    raw = str(value or '').strip()
+    if not raw:
+        return ()
+    parts = re.split(f'[,{re.escape(os.pathsep)}]+', raw)
+    return tuple(part.strip() for part in parts if part.strip())
+
+
+def _allowed_inherited_codex_hook_group(
+    raw_group: object,
+    *,
+    command_markers: tuple[str, ...],
+) -> dict[str, object] | None:
     if not isinstance(raw_group, dict):
         return None
     raw_handlers = raw_group.get('hooks')
@@ -853,7 +959,7 @@ def _allowed_inherited_codex_hook_group(raw_group: object) -> dict[str, object] 
         return None
     handlers: list[dict[str, object]] = []
     for raw_handler in raw_handlers:
-        handler = _allowed_inherited_codex_hook_handler(raw_handler)
+        handler = _allowed_inherited_codex_hook_handler(raw_handler, command_markers=command_markers)
         if handler is None:
             return None
         handlers.append(handler)
@@ -865,14 +971,18 @@ def _allowed_inherited_codex_hook_group(raw_group: object) -> dict[str, object] 
     return group
 
 
-def _allowed_inherited_codex_hook_handler(raw_handler: object) -> dict[str, object] | None:
+def _allowed_inherited_codex_hook_handler(
+    raw_handler: object,
+    *,
+    command_markers: tuple[str, ...],
+) -> dict[str, object] | None:
     if not isinstance(raw_handler, dict):
         return None
     if str(raw_handler.get('type') or '') != 'command':
         return None
     command = str(raw_handler.get('command') or '')
     normalized_command = command.replace('\\', '/')
-    if not any(marker in normalized_command for marker in _CODEX_INHERITED_HOOK_COMMAND_MARKERS):
+    if not any(marker in normalized_command for marker in command_markers):
         return None
     handler: dict[str, object] = {
         'type': 'command',

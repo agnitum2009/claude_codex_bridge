@@ -85,3 +85,23 @@ def test_powershell_ask_skill_template_uses_short_ask_command() -> None:
     assert 'In callback chains, each waiting hop uses callback' in text
     assert '@("--callback", "--artifact-reply", "$TARGET")' in text
     assert re.search(r'[\u4e00-\u9fff]', text) is None
+
+
+def test_kimi_ask_skill_projects_structured_receipt_contract_only_to_kimi() -> None:
+    kimi_text = (REPO_ROOT / 'inherit_skills/kimi_skills/ask/SKILL.md').read_text(encoding='utf-8')
+    codex_text = (REPO_ROOT / 'inherit_skills/codex_skills/ask/SKILL.md').read_text(encoding='utf-8')
+
+    assert '## Kimi Receipt Contract' in kimi_text
+    for field in (
+        'status:',
+        'inspected:',
+        'exact_files:',
+        'findings:',
+        'reject_cases:',
+        'required_tests:',
+        'no_open:',
+        'blockers:',
+    ):
+        assert field in kimi_text
+        assert field not in codex_text
+    assert 'Process updates are invalid receipts' in kimi_text

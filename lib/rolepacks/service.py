@@ -397,10 +397,10 @@ def _run_architec_doctor(*, action: str, required: bool) -> dict[str, object]:
         package=package,
         install_command=f'npm install -g {package}',
         archi_binary=archi or '',
-        bundled_hippo=bundle_status,
+        bundled_hippos=bundle_status,
         bundled_llmgateway=bundle_status,
         archi_probe=archi_probe_status,
-        bundle_check='npm package bundle provides Hippo and llmgateway capabilities',
+        bundle_check='npm package bundle provides Hippos and llmgateway capabilities',
         reason=_architec_doctor_reason(
             architec_status,
             package=package,

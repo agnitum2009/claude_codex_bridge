@@ -854,8 +854,8 @@ def test_project_view_returns_minimal_windows_agents_and_comms(tmp_path: Path) -
     assert view['project']['display_name'] == 'repo'
     assert view['ccbd']['state'] == MountState.MOUNTED.value
     assert view['namespace']['sidebar']['view']['agents_height'] == '50%'
-    assert view['namespace']['sidebar']['view']['comms_height'] == '15%'
-    assert view['namespace']['sidebar']['view']['tips_height'] == '35%'
+    assert view['namespace']['sidebar']['view']['comms_height'] == '23%'
+    assert view['namespace']['sidebar']['view']['tips_height'] == '27%'
     assert view['namespace']['sidebar']['view']['comms_limit'] == 5
     assert view['namespace']['sidebar']['view']['tips'][0] == 'C-b d  detach'
     assert 'C-b h/j/k/l pane' in view['namespace']['sidebar']['view']['tips']

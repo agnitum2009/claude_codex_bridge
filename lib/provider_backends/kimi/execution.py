@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from .native_log import KimiTurnObservation, observe_kimi_turn
 
 PANE_LINES_DEFAULT = 2000
 MAX_WAIT_SECS = 300.0
+KIMI_NATIVE_TURN_TIMEOUT_ENV = "CCB_KIMI_NATIVE_TURN_TIMEOUT_S"
 ANCHOR_WAIT_SECS = 120.0
 READY_WAIT_SECS = 60.0
 PANE_FALLBACK_STABLE_SECS = 10.0
@@ -253,7 +255,9 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
     state["next_seq"] = _state_int(state, "next_seq", 1)
     started_at = _state_str(state, "started_at") or submission.accepted_at or now
     total_secs = _seconds_between(started_at, now)
+    max_wait_secs = _native_turn_timeout_secs()
     state["total_secs"] = total_secs
+    state["max_wait_secs"] = max_wait_secs
 
     observation = observe_kimi_turn(Path(work_dir), req_id)
     pane_observation = _observe_kimi_pane_turn(backend, pane_id, req_id)
@@ -400,7 +404,7 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
         )
         state["turn_boundary_ref"] = boundary_ref
 
-    if total_secs >= MAX_WAIT_SECS and not observation.completed:
+    if total_secs >= max_wait_secs and not observation.completed:
         return _terminal(
             submission,
             state,
@@ -409,6 +413,7 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
             reason="kimi_native_turn_timeout",
             reply=str(state.get("reply_buffer") or ""),
             confidence=CompletionConfidence.DEGRADED,
+            diagnostics_extra={"max_wait_secs": max_wait_secs},
         )
 
     updated = replace(submission, reply=str(state.get("reply_buffer") or ""), runtime_state=state)
@@ -514,6 +519,20 @@ def _terminal(
         "reply_chars": len(cleaned_reply),
     }
     diagnostics.update(diagnostics_extra or {})
+    if _is_no_captured_reply_timeout(reason=reason, reply=cleaned_reply):
+        diagnostics.update(
+            {
+                "no_captured_reply": True,
+                "provider_no_reply": True,
+                "receipt_valid": False,
+                "receipt_class": "no_captured_reply",
+                "error_type": "empty_provider_reply",
+                "diagnosis": (
+                    "Kimi native turn polling timed out after observing the submitted CCB_REQ_ID, "
+                    "but no assistant reply text was captured."
+                ),
+            }
+        )
     decision = CompletionDecision(
         terminal=True,
         status=status,
@@ -529,6 +548,10 @@ def _terminal(
         diagnostics=diagnostics,
     )
     return ProviderPollResult(submission=progress, items=(), decision=decision)
+
+
+def _is_no_captured_reply_timeout(*, reason: str, reply: str) -> bool:
+    return reason == "kimi_native_turn_timeout" and not (reply or "")
 
 
 def _pane_snapshot(backend: object, pane_id: str, *, lines: int) -> str:
@@ -750,6 +773,19 @@ def _seconds_between(start: str, end: str) -> float:
     if start_dt is None or end_dt is None:
         return 0.0
     return max(0.0, (end_dt - start_dt).total_seconds())
+
+
+def _native_turn_timeout_secs() -> float:
+    raw = os.environ.get(KIMI_NATIVE_TURN_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return MAX_WAIT_SECS
+    try:
+        value = float(raw)
+    except ValueError:
+        return MAX_WAIT_SECS
+    if value <= 0:
+        return MAX_WAIT_SECS
+    return value
 
 
 def _next_seq(state: dict[str, object]) -> int:

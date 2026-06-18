@@ -46,6 +46,19 @@ def _write_project_memory(project_root: Path, text: str) -> None:
     path.write_text(text, encoding='utf-8')
 
 
+def _latest_agent_event(layout: PathLayout, agent_name: str, event_type: str) -> dict:
+    events_path = layout.agent_events_path(agent_name)
+    events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding='utf-8').splitlines()
+        if line.strip()
+    ]
+    for event in reversed(events):
+        if event.get('event_type') == event_type:
+            return event
+    raise AssertionError(f'{event_type} event not found: {events}')
+
+
 def _write_codex_plugin_source(
     home: Path,
     *,
@@ -224,6 +237,55 @@ def test_materialize_codex_profile_preserves_inline_table_arrays(
     config_text = (Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8')
     assert 'mcp_servers = [{ name = "puppeteer", enabled = true, args = ["-y", "pkg"] }]' in config_text
     assert 'external_migration = false' in config_text
+
+
+def test_materialize_codex_profile_merges_agent_mcp_server_overrides(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[mcp_servers.shared]',
+                'command = "old-shared"',
+                '',
+                '[mcp_servers.keep]',
+                'command = "keep-cmd"',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec(
+            'agent1',
+            provider_profile=ProviderProfileSpec(
+                mode='isolated',
+                mcp_servers={
+                    'codegraph': {'command': '/usr/local/bin/codegraph', 'args': ['serve', '--mcp']},
+                    'shared': {'command': 'new-shared', 'env': {'MODE': 'agent'}},
+                },
+            ),
+        ),
+        workspace_path=project_root,
+    )
+
+    config = tomllib.loads((Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8'))
+
+    assert config['mcp_servers']['keep']['command'] == 'keep-cmd'
+    assert config['mcp_servers']['shared']['command'] == 'new-shared'
+    assert config['mcp_servers']['shared']['env'] == {'MODE': 'agent'}
+    assert config['mcp_servers']['codegraph']['command'] == '/usr/local/bin/codegraph'
+    assert config['mcp_servers']['codegraph']['args'] == ['serve', '--mcp']
+    assert config['features']['external_migration'] is False
 
 
 def test_materialize_codex_profile_preserves_nested_inline_table_arrays(
@@ -673,14 +735,9 @@ def test_materialize_codex_profile_migrates_legacy_profile_runtime_home(tmp_path
     assert f'CODEX_SESSION_ROOT={runtime_home / "sessions"}' in payload['start_cmd']
     assert str(legacy_home) not in payload['codex_start_cmd']
     assert f'UNCHANGED={legacy_home}-suffix' in payload['start_cmd']
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'migrated'
-    assert events[-1]['reason'] == 'legacy_profile_runtime_home_migrated'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'migrated'
+    assert event['reason'] == 'legacy_profile_runtime_home_migrated'
 
 
 def test_materialize_codex_profile_migration_respects_inherit_auth_false(tmp_path: Path, monkeypatch) -> None:
@@ -780,14 +837,9 @@ def test_materialize_codex_profile_does_not_migrate_when_session_authority_is_ma
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'session_authority_preflight_failed'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'session_authority_preflight_failed'
     assert session_file.read_text(encoding='utf-8') == '{not json}\n'
 
 
@@ -837,14 +889,9 @@ def test_materialize_codex_profile_migrates_legacy_sessions_with_unrelated_tmp_s
     assert not legacy_session.exists()
     assert (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').is_file()
     assert (tmp_dir / 'linked-outside').is_symlink()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'migrated'
-    assert events[-1]['reason'] == 'legacy_profile_runtime_home_migrated'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'migrated'
+    assert event['reason'] == 'legacy_profile_runtime_home_migrated'
 
 
 def test_materialize_codex_profile_does_not_migrate_session_material_with_symlink(
@@ -891,14 +938,9 @@ def test_materialize_codex_profile_does_not_migrate_session_material_with_symlin
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'legacy_home_contains_symlink'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'legacy_home_contains_symlink'
 
 
 def test_materialize_codex_profile_does_not_migrate_when_agent_runtime_is_active(
@@ -944,14 +986,9 @@ def test_materialize_codex_profile_does_not_migrate_when_agent_runtime_is_active
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'agent_runtime_active'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'agent_runtime_active'
 
 
 def test_materialize_codex_profile_migrates_with_stale_idle_runtime_record(
@@ -2064,6 +2101,39 @@ def test_materialize_codex_home_config_writes_project_memory_bundle(tmp_path: Pa
     assert 'project codex memory' not in text
     assert '## Agent Private Memory' in text
     assert 'agent1 private memory' in text
+
+
+def test_materialize_codex_provider_profile_writes_project_memory_bundle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'AGENTS.md').write_text('user codex memory\n', encoding='utf-8')
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+    _write_project_memory(project_root, 'shared profile memory\n')
+
+    layout = PathLayout(project_root)
+    profile = materialize_provider_profile(
+        layout=layout,
+        spec=_spec('agent1'),
+        workspace_path=project_root,
+    )
+
+    target_home = Path(str(profile.runtime_home))
+    text = (target_home / 'AGENTS.md').read_text(encoding='utf-8')
+    assert 'agent: agent1' in text
+    assert 'user codex memory' in text
+    assert 'shared profile memory' in text
+    marker = json.loads(
+        (layout.agent_provider_runtime_dir('agent1', 'codex') / 'codex-memory-projection.json').read_text(
+            encoding='utf-8'
+        )
+    )
+    assert marker['status'] == 'ok'
+    assert marker['reason'] == 'written'
+    assert marker['sha256']
 
 
 def test_materialize_codex_home_config_respects_inherit_memory_flag(tmp_path: Path) -> None:

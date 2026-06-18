@@ -527,14 +527,14 @@ def _write_agent_roles_archi_fixture(catalog: Path) -> Path:
     (role / 'memory.md').write_text(
         'Architecture Reviewer Memory\n'
         'Architec is the architecture analysis CLI installed from the @seemseam/archi npm package.\n'
-        'The package also provides the Hippo and llmgateway capabilities Archi uses.\n',
+        'The package also provides the Hippos and llmgateway capabilities Archi uses.\n',
         encoding='utf-8',
     )
     (role / 'adapters' / 'ccb' / 'memory.md').write_text(
         'CCB Adapter Memory\n'
         'Use the `archi` CLI provided by the global `@seemseam/archi` npm package.\n'
         'If the Archi CLI is missing, install or update `@seemseam/archi`.\n'
-        'Do not split Hippo or llmgateway into CCB-managed pip, venv, git, or editable installs.\n'
+        'Do not split Hippos or llmgateway into CCB-managed pip, venv, git, or editable installs.\n'
         'Do not copy llmgateway secrets into role memory.\n',
         encoding='utf-8',
     )
@@ -578,7 +578,7 @@ def _write_agent_roles_archi_fixture(catalog: Path) -> Path:
                 "    print('install_command: npm install -g @seemseam/archi')",
                 "    print('archi_binary: ' + (path_archi or ''))",
                 "    print('archi_probe: ' + archi_probe)",
-                "    print('bundled_hippo: ' + bundle_status)",
+                "    print('bundled_hippos: ' + bundle_status)",
                 "    print('bundled_llmgateway: ' + bundle_status)",
                 "    return 0 if status == 'ok' else 1",
                 '',
@@ -1866,7 +1866,7 @@ def test_archi_doctor_accepts_bundled_capabilities_from_main_cli(tmp_path: Path,
     assert 'package: @seemseam/archi' in result.stdout
     assert 'install_command: npm install -g @seemseam/archi' in result.stdout
     assert f'archi_binary: {fake_archi}' in result.stdout
-    assert 'bundled_hippo: available' in result.stdout
+    assert 'bundled_hippos: available' in result.stdout
     assert 'bundled_llmgateway: available' in result.stdout
 
 
@@ -1921,7 +1921,7 @@ def test_archi_tool_doctor_accepts_cli_without_help_keywords(tmp_path: Path, mon
     stdout = str(results[0]['stdout'])
     assert 'architec_status: ok' in stdout
     assert f'archi_binary: {fake_bin / "archi"}' in stdout
-    assert 'bundled_hippo: available' in stdout
+    assert 'bundled_hippos: available' in stdout
     assert 'bundled_llmgateway: available' in stdout
     assert 'install_command: npm install -g @seemseam/archi' in stdout
 
@@ -2175,7 +2175,7 @@ def test_role_memory_is_included_before_agent_private_memory(tmp_path: Path, mon
     assert 'architecture reviewer' in role_memory.lower()
     assert 'Architec is the architecture analysis CLI' in role_memory
     assert '@seemseam/archi' in role_memory
-    assert 'Do not split Hippo or llmgateway into CCB-managed pip, venv, git, or editable installs' in role_memory
+    assert 'Do not split Hippos or llmgateway into CCB-managed pip, venv, git, or editable installs' in role_memory
     assert 'llmgateway secrets' in role_memory
 
 

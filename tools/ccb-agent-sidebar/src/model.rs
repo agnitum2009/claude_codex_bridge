@@ -219,11 +219,11 @@ fn default_agents_height() -> serde_json::Value {
 }
 
 fn default_comms_height() -> serde_json::Value {
-    serde_json::Value::String("15%".into())
+    serde_json::Value::String("23%".into())
 }
 
 fn default_tips_height() -> serde_json::Value {
-    serde_json::Value::String("35%".into())
+    serde_json::Value::String("27%".into())
 }
 
 fn default_comms_limit() -> usize {

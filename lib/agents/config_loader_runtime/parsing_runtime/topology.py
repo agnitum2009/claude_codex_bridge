@@ -65,8 +65,8 @@ def parse_sidebar_view(raw_ui: Any) -> SidebarViewSpec | None:
     try:
         return SidebarViewSpec(
             agents_height=view.get('agents_height', '50%'),
-            comms_height=view.get('comms_height', '15%'),
-            tips_height=view.get('tips_height', '35%'),
+            comms_height=view.get('comms_height', '23%'),
+            tips_height=view.get('tips_height', '27%'),
             comms_limit=view.get('comms_limit', 5),
             comms_compact=expect_bool(view.get('comms_compact', True), field_name='ui.sidebar.view.comms_compact'),
             tips_enabled=expect_bool(view.get('tips_enabled', True), field_name='ui.sidebar.view.tips_enabled'),

@@ -1,5 +1,22 @@
 # Changelog
 
+## v7.6.9 (2026-06-17)
+
+### Kimi And AGY Provider Reliability
+
+- **Kimi Completion Evidence Hardened**: Kimi execution now records receipt,
+  no-captured-output diagnostics, trace, and resume metadata so missing replies
+  and recovered turns are easier to diagnose.
+- **AGY Delivery Reliability Improved**: AGY prompt delivery now waits for
+  ready evidence, handles pane fallback and ambiguous tmux send outcomes, and
+  reports coalesced request diagnostics more clearly.
+- **Provider Trace Diagnostics Expanded**: dispatcher, mailbox trace, and text
+  artifact paths now expose the provider diagnostics needed to investigate
+  Kimi/AGY delivery and completion edge cases.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.9.
+
 ## v7.6.8 (2026-06-17)
 
 ### Role Pack Current Store

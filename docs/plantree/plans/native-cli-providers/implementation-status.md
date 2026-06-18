@@ -16,6 +16,20 @@ Copilot CLI, Cursor Agent, Kiro CLI, Charm Crush, and Pi. Source implementation 
 landed for the minimal built-in provider path, and the stub-backed
 source-runtime smoke plus real CLI version smoke have passed.
 
+Kimi follow-up receipt and diagnostics hardening has landed in source. This work
+is explicitly Kimi-only: it does not change default provider behavior for Codex,
+Claude, Gemini, OpenCode, DeepSeek, MiMo, AGY, or next-wave native CLI
+providers. Topic:
+[topics/kimi-receipt-and-diagnostics-hardening.md](topics/kimi-receipt-and-diagnostics-hardening.md).
+
+AGY delivery stability hardening has landed in source after a real
+`main -> frontend_engineer:agy` empty-reply investigation. AGY now defers prompt
+delivery until the Antigravity pane is input-ready, keeps busy-pane jobs running
+instead of stacking retries into one native turn, records coalesced native
+`USER_INPUT` diagnostics, keeps observing after ambiguous tmux send errors, and
+can use stable pane fallback when transcript flushes lag. Topic:
+[topics/agy-delivery-stability-hardening.md](topics/agy-delivery-stability-hardening.md).
+
 ## Last Landed
 
 - Shared pane-quiet support and Kimi/DeepSeek provider backends were added in
@@ -81,6 +95,30 @@ source-runtime smoke plus real CLI version smoke have passed.
   - Storage classification now recognizes Qwen, Cursor, Copilot, Crush, Kiro,
     and Pi provider-state contents as native CLI provider-owned session/cache
     or projected skill evidence instead of leaving them as unknown paths.
+- Kimi receipt and diagnostics hardening:
+  - Kimi inherited ask skill now projects a structured receipt contract with
+    `status`, inspected files, findings, reject cases, required tests, no-open,
+    and blockers fields.
+  - Kimi native timeout with no captured reply emits `no_captured_reply`,
+    `provider_no_reply`, `receipt_valid=false`, and
+    `receipt_class=no_captured_reply`.
+  - Forced `--artifact-reply` on a no-captured Kimi reply now stores the empty
+    artifact as metadata while the visible reply says no Kimi provider reply was
+    captured.
+  - `ccb trace` job summaries expose Kimi terminal reason, reply chars, elapsed
+    seconds, forced-artifact status, and receipt class.
+  - Kimi provider manifest now reports `supports_resume=false` for CCB
+    in-flight execution restore, matching adapter restore diagnostics.
+- AGY delivery stability hardening:
+  - AGY prompt delivery now waits for an input-ready Antigravity prompt before
+    sending, storing pending prompts while the pane is busy.
+  - AGY polling no longer treats old anchor-missing windows as terminal while
+    the pane remains busy.
+- AGY can emit stable pane fallback evidence when transcript writes lag.
+- AGY preserves ambiguous tmux send errors as diagnostics and still accepts
+  native transcript evidence instead of failing before attribution is known.
+- Coalesced native `USER_INPUT` rows with multiple `CCB_REQ_ID` anchors are
+  diagnosed as `agy_request_coalesced` for superseded jobs.
 
 ## Active TODO
 
@@ -98,7 +136,38 @@ Kimi/DeepSeek/MiMo/Qwen/Copilot/Cursor/Kiro/Crush/Pi credentials; CCB integratio
 can still be validated with provider command templates, installed CLI
 help/version checks, and source-backed parser tests.
 
+Kimi hardening source work is unblocked. Remaining Kimi prompt-mode and auth
+diagnostic ideas stay deferred/open until real usage needs them.
+
 ## Last Verified
+
+AGY delivery stability focused verification:
+
+- `PYTHONPATH=lib python -m pytest -q test/test_agy_execution_polling.py test/test_native_cli_completion.py -k agy`:
+  `8 passed, 12 deselected`.
+- `PYTHONPATH=lib python -m pytest -q test/test_agy_execution_polling.py test/test_native_cli_completion.py test/test_native_cli_providers.py test/test_v2_provider_catalog.py test/test_opencode_execution_polling.py`:
+  `34 passed`.
+- Isolated source-runtime smoke from
+  `/home/bfly/yunwei/test_ccb2/native_provider_smoke` with
+  `/home/bfly/yunwei/ccb_source/ccb_test`, stub AGY, isolated `HOME` and
+  `CCB_SOURCE_HOME`: completed `job_74d4989cca04` with
+  `agy_transcript_response_done`.
+
+Kimi hardening focused verification:
+
+- `PYTHONPATH=lib python -m pytest -q test/test_ask_skill_templates.py`:
+  `3 passed`.
+- `PYTHONPATH=lib python -m pytest -q test/test_native_cli_completion.py -k kimi`:
+  `8 passed, 5 deselected`.
+- `PYTHONPATH=lib python -m pytest -q test/test_v2_message_bureau_dispatcher_integration.py -k artifact`:
+  `7 passed, 54 deselected`.
+- `PYTHONPATH=lib python -m pytest -q test/test_v2_cli_render.py -k trace`:
+  `3 passed, 21 deselected`.
+- `PYTHONPATH=lib python -m pytest -q test/test_v2_provider_catalog.py`:
+  `4 passed`.
+- `PYTHONPATH=lib python -m py_compile` for touched Kimi, artifact, trace, and
+  catalog modules: passed.
+- `git diff --check`: passed.
 
 Historical first-slice verification:
 

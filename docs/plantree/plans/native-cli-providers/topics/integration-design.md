@@ -79,7 +79,11 @@ result streams:
    messages, and emits `TURN_BOUNDARY` on native `status=completed`.
 6. AGY polls Antigravity transcript logs, binds `USER_INPUT` by `CCB_REQ_ID`,
    emits `ASSISTANT_FINAL` from model response events, and emits
-   `TURN_BOUNDARY` when a completed response is observed.
+   `TURN_BOUNDARY` when a completed response is observed. AGY prompt delivery
+   is ready-gated: CCB defers the prompt while the Antigravity pane is busy,
+   sends only after an empty input prompt is observed, diagnoses native
+   coalesced `CCB_REQ_ID` rows, and uses stable pane fallback only when
+   transcript persistence lags.
 7. MiMo asks run as native subprocesses using
    `mimo run --format json --dir <workdir>`. CCB emits `ASSISTANT_FINAL` from
    nested `part.text` events and emits `TURN_BOUNDARY` / terminal completed on

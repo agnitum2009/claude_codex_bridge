@@ -566,11 +566,112 @@ def test_prepare_provider_workspace_preserves_allowed_codex_hindsight_hooks(
     assert any('ccb-provider-activity-hook' in command for command in user_prompt_commands)
     assert any('.hindsight/codex/scripts/recall.py' in command for command in user_prompt_commands)
     assert not any('unmanaged-root-hook' in command for commands in hooks_payload['hooks'].values() for group in commands for command in [group['hooks'][0]['command']])
+    session_start_handlers = [
+        hook
+        for group in hooks_payload['hooks']['SessionStart']
+        for hook in group['hooks']
+        if '.hindsight/codex/scripts/session_start.py' in str(hook.get('command') or '')
+    ]
+    stop_handlers = [
+        hook
+        for group in hooks_payload['hooks']['Stop']
+        for hook in group['hooks']
+        if '.hindsight/codex/scripts/retain.py' in str(hook.get('command') or '')
+    ]
+    assert session_start_handlers[0]['timeout'] == 5
+    assert stop_handlers[0]['timeout'] == 30
 
     config = tomllib.loads((codex_home / 'config.toml').read_text(encoding='utf-8'))
     state = config['hooks']['state']
     assert any(key.endswith(':user_prompt_submit:1:0') for key in state)
     assert len(state) == 9
+
+
+def test_prepare_provider_workspace_preserves_configured_codex_command_hooks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root / 'workspace'
+    system_home = tmp_path / 'system-home'
+    system_codex = system_home / '.codex'
+    generic_hook_root = tmp_path / 'generic-hooks'
+    system_codex.mkdir(parents=True, exist_ok=True)
+    generic_hook_root.mkdir(parents=True, exist_ok=True)
+    (system_codex / 'AGENTS.md').write_text('system codex memory\n', encoding='utf-8')
+    (system_codex / 'config.toml').write_text('model = "gpt-test"\n', encoding='utf-8')
+    (system_codex / 'hooks.json').write_text(
+        json.dumps(
+            {
+                'hooks': {
+                    'UserPromptSubmit': [
+                        {'hooks': [{'type': 'command', 'command': f'{generic_hook_root / "recall.sh"}', 'timeout': 19}]},
+                        {'hooks': [{'type': 'command', 'command': 'echo unmanaged-root-hook'}]},
+                    ],
+                    'Stop': [
+                        {'hooks': [{'type': 'command', 'command': f'{generic_hook_root / "retain.sh"}', 'timeout': 31}]}
+                    ],
+                    'PreToolUse': [
+                        {'hooks': [{'type': 'command', 'command': f'{generic_hook_root / "pre.sh"}', 'timeout': 7}]}
+                    ],
+                }
+            },
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared ccb memory\n')
+    monkeypatch.setenv('CODEX_HOME', str(system_codex))
+    monkeypatch.setenv('CCB_CODEX_INHERITED_COMMAND_HOOK_MARKERS', str(generic_hook_root))
+    layout = PathLayout(project_root)
+    runtime_dir = layout.agent_provider_runtime_dir('agent1', 'codex')
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='codex'),
+        workspace_path=workspace,
+        completion_dir=runtime_dir / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    codex_home = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home'
+    hooks_payload = json.loads((codex_home / 'hooks.json').read_text(encoding='utf-8'))
+    user_prompt_handlers = [
+        hook
+        for group in hooks_payload['hooks']['UserPromptSubmit']
+        for hook in group['hooks']
+    ]
+    stop_handlers = [
+        hook
+        for group in hooks_payload['hooks']['Stop']
+        for hook in group['hooks']
+    ]
+    all_commands = [
+        str(hook.get('command') or '')
+        for commands in hooks_payload['hooks'].values()
+        for group in commands
+        for hook in group.get('hooks', [])
+    ]
+
+    assert any('ccb-provider-activity-hook' in command for command in all_commands)
+    assert any(
+        str(generic_hook_root / 'recall.sh') == str(hook.get('command') or '') and hook['timeout'] == 19
+        for hook in user_prompt_handlers
+    )
+    assert any(
+        str(generic_hook_root / 'retain.sh') == str(hook.get('command') or '') and hook['timeout'] == 31
+        for hook in stop_handlers
+    )
+    assert 'echo unmanaged-root-hook' not in all_commands
+    assert str(generic_hook_root / 'pre.sh') not in all_commands
+
+    config = tomllib.loads((codex_home / 'config.toml').read_text(encoding='utf-8'))
+    state = config['hooks']['state']
+    assert any(key.endswith(':user_prompt_submit:1:0') for key in state)
+    assert any(key.endswith(':stop:1:0') for key in state)
+    assert len(state) == 8
 
 
 def test_prepare_provider_workspace_respects_codex_explicit_runtime_home(

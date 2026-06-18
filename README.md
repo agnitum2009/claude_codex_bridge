@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.8-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.9-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -641,6 +641,21 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.9</b> - Kimi And AGY Provider Reliability</summary>
+
+- Kimi execution now records receipt, no-captured-output diagnostics, trace,
+  and resume metadata so missing replies and recovered turns are easier to
+  diagnose.
+- AGY prompt delivery now waits for ready evidence, handles pane fallback and
+  ambiguous tmux send outcomes, and reports coalesced request diagnostics more
+  clearly.
+- Dispatcher, mailbox trace, and text artifact diagnostics now expose the
+  provider details needed to investigate Kimi/AGY delivery and completion edge
+  cases.
+
+</details>
+
+<details>
 <summary><b>v7.6.8</b> - Role Pack Current Store</summary>
 
 - Role Pack runtime lookup now follows the installed current package under
@@ -779,6 +794,11 @@ v7 highlights:
   only when `.hindsight/kimi.json`, `.hindsight/codex.json`,
   `HINDSIGHT_API_URL`, or `HINDSIGHT_BANK_ID` is configured, and failures remain
   non-blocking provider diagnostics.
+- Preserves trusted Codex command hooks, including Hindsight Codex hooks, when
+  CCB materializes managed Codex homes. Operators can extend the allowlist with
+  `CCB_CODEX_INHERITED_HOOK_EVENTS` and
+  `CCB_CODEX_INHERITED_COMMAND_HOOK_MARKERS`; arbitrary root hooks remain
+  filtered out.
 - Accepts both `HINDSIGHT_API_KEY` and `HINDSIGHT_API_TOKEN` for the Kimi
   bridge and the `scripts/hindsight` helper.
 - Documents the supported provider surface more clearly in the README while

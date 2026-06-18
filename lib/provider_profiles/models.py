@@ -13,6 +13,7 @@ class ProviderProfileSpec:
     mode: str = "inherit"
     home: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -28,9 +29,10 @@ class ProviderProfileSpec:
         home = str(self.home).strip() if self.home is not None else None
         object.__setattr__(self, 'home', home or None)
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
+        object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
 
     def to_record(self) -> dict[str, Any]:
-        return {
+        payload = {
             'mode': self.mode,
             'home': self.home,
             'env': dict(self.env),
@@ -41,6 +43,9 @@ class ProviderProfileSpec:
             'inherit_commands': bool(self.inherit_commands),
             'inherit_memory': bool(self.inherit_memory),
         }
+        if self.mcp_servers:
+            payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -51,6 +56,7 @@ class ResolvedProviderProfile:
     profile_root: str | None = None
     runtime_home: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -74,6 +80,7 @@ class ResolvedProviderProfile:
         object.__setattr__(self, 'profile_root', _normalize_path_text(self.profile_root))
         object.__setattr__(self, 'runtime_home', _normalize_path_text(self.runtime_home))
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
+        object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
 
     @property
     def profile_root_path(self) -> Path | None:
@@ -88,7 +95,7 @@ class ResolvedProviderProfile:
         return Path(self.runtime_home)
 
     def to_record(self) -> dict[str, Any]:
-        return {
+        payload = {
             'provider': self.provider,
             'agent_name': self.agent_name,
             'mode': self.mode,
@@ -102,6 +109,9 @@ class ResolvedProviderProfile:
             'inherit_commands': bool(self.inherit_commands),
             'inherit_memory': bool(self.inherit_memory),
         }
+        if self.mcp_servers:
+            payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
+        return payload
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> "ResolvedProviderProfile":
@@ -112,6 +122,7 @@ class ResolvedProviderProfile:
             profile_root=record.get('profile_root'),
             runtime_home=record.get('runtime_home'),
             env=dict(record.get('env') or {}),
+            mcp_servers=dict(record.get('mcp_servers') or {}),
             inherit_api=bool(record.get('inherit_api', True)),
             inherit_auth=bool(record.get('inherit_auth', True)),
             inherit_config=bool(record.get('inherit_config', True)),
@@ -134,6 +145,30 @@ def _normalize_path_text(value: object) -> str | None:
         return str(path)
     except Exception:
         return raw
+
+
+def _normalize_mcp_servers(value: object) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_name, raw_payload in value.items():
+        name = str(raw_name or '').strip()
+        if not name or not isinstance(raw_payload, dict):
+            continue
+        normalized[name] = _clone_jsonish_mapping(raw_payload)
+    return normalized
+
+
+def _clone_jsonish_mapping(payload: dict[object, object]) -> dict[str, Any]:
+    return {str(key): _clone_jsonish(value) for key, value in payload.items()}
+
+
+def _clone_jsonish(value: object) -> Any:
+    if isinstance(value, dict):
+        return _clone_jsonish_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return [_clone_jsonish(item) for item in value]
+    return value
 
 
 __all__ = ['ProviderProfileSpec', 'ResolvedProviderProfile']

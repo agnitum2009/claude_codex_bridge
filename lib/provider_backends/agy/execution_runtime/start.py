@@ -6,7 +6,7 @@ from provider_core.protocol import request_anchor_for_job
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 from provider_execution.common import error_submission, send_prompt_to_runtime_target
 
-from ..comm import AgyPaneReader
+from ..comm import AgyPaneReader, agy_pane_ready_for_input
 from ..native_log import agy_home_from_start_cmd
 from ..protocol import wrap_agy_prompt
 from ..session import load_project_session
@@ -87,12 +87,17 @@ def start_submission(
     prompt = wrap_agy_prompt(job.request.body or '', req_id)
 
     reader = AgyPaneReader(backend=backend, pane_id=pane_id, lines=_PANE_LINES_DEFAULT)
+    initial_content = reader.snapshot()
+    prompt_deferred_until_ready = not agy_pane_ready_for_input(initial_content)
 
     send_error: str | None = None
-    try:
-        send_prompt_to_runtime_target(backend, pane_id, prompt)
-    except Exception as exc:
-        send_error = f'send_text_failed:{exc!r}'
+    prompt_sent = False
+    if not prompt_deferred_until_ready:
+        try:
+            send_prompt_to_runtime_target(backend, pane_id, prompt)
+            prompt_sent = True
+        except Exception as exc:
+            send_error = f'send_text_failed:{exc!r}'
 
     diagnostics: dict[str, object] = {
         'provider': provider,
@@ -104,6 +109,8 @@ def start_submission(
     }
     if send_error:
         diagnostics['send_error'] = send_error
+    if prompt_deferred_until_ready:
+        diagnostics['prompt_deferred_until_ready'] = True
 
     return ProviderSubmission(
         job_id=job.job_id,
@@ -129,10 +136,17 @@ def start_submission(
             'last_hash': None,
             'last_change_at': now,
             'last_poll_at': now,
-            'prompt_sent': send_error is None,
+            'prompt_sent': prompt_sent,
+            'pending_prompt': prompt,
+            'prompt_deferred_until_ready': prompt_deferred_until_ready,
             'send_error': send_error,
             'snapshot_errors': 0,
             'next_seq': 1,
+            'anchor_emitted': False,
+            'reply_buffer': '',
+            'last_reply_signature': '',
+            'turn_boundary_ref': '',
+            'session_path': '',
         },
     )
 

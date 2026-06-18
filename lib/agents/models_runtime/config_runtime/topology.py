@@ -66,8 +66,8 @@ class SidebarSpec:
 @dataclass(frozen=True)
 class SidebarViewSpec:
     agents_height: str | int = '50%'
-    comms_height: str | int = '15%'
-    tips_height: str | int = '35%'
+    comms_height: str | int = '23%'
+    tips_height: str | int = '27%'
     comms_limit: int = 5
     comms_compact: bool = True
     tips_enabled: bool = True

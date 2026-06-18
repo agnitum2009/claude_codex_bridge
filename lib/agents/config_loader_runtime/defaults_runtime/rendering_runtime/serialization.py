@@ -101,6 +101,8 @@ def _provider_profile_config_dict(spec) -> dict[str, object] | None:
         payload['home'] = profile.home
     if filtered_env:
         payload['env'] = filtered_env
+    if profile.mcp_servers:
+        payload['mcp_servers'] = dict(profile.mcp_servers)
     if profile.inherit_auth != default_profile.inherit_auth:
         payload['inherit_auth'] = profile.inherit_auth
     if profile.inherit_config != default_profile.inherit_config:

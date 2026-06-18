@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.8-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.9-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -630,6 +630,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.9</b> - Kimi / AGY Provider 可靠性</summary>
+
+- Kimi execution 现在记录 receipt、无捕获输出诊断、trace 和 resume
+  metadata，便于定位缺失回复和恢复 turn。
+- AGY prompt delivery 现在等待 ready evidence，处理 pane fallback 和
+  ambiguous tmux send 结果，并更清楚地报告合并请求诊断。
+- dispatcher、mailbox trace 和 text artifact 诊断现在会暴露排查 Kimi/AGY
+  delivery 与 completion 边界所需的 provider 细节。
+
+</details>
+
+<details>
 <summary><b>v7.6.8</b> - Role Pack Current Store</summary>
 
 - Role Pack 运行时现在跟随 `.roles/installed/<role-id>/current` 下的当前安装包；
@@ -753,6 +765,10 @@ v7 线重点：
 - Kimi Hindsight 记忆改为 CCB 执行边界上的显式 opt-in：只有配置
   `.hindsight/kimi.json`、`.hindsight/codex.json`、`HINDSIGHT_API_URL` 或
   `HINDSIGHT_BANK_ID` 时才启用，失败时只记录 provider diagnostics，不阻塞任务。
+- CCB 物化 managed Codex home 时会保留可信 Codex command hook，包括
+  Hindsight Codex hooks。运维可通过 `CCB_CODEX_INHERITED_HOOK_EVENTS` 和
+  `CCB_CODEX_INHERITED_COMMAND_HOOK_MARKERS` 扩展 allowlist；任意 root hook
+  仍会被过滤。
 - Kimi bridge 和 `scripts/hindsight` helper 同时兼容 `HINDSIGHT_API_KEY` 与
   `HINDSIGHT_API_TOKEN`。
 - README 更明确展示支持的 provider surface，同时保持无关 provider 行为不变。

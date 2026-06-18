@@ -391,7 +391,31 @@ and then log in that agent's managed Codex home directly. With no explicit
 agent API authority, `inherit_auth = false` means "do not inherit global
 Codex credentials"; it must preserve an existing agent-local `auth.json`.
 
-### 4.3 Agent Model Shortcut
+### 4.3 Provider Profile MCP Overlay
+
+Provider profiles may declare agent-local MCP server overrides:
+
+```toml
+[agents.agent1.provider_profile.mcp_servers.codegraph]
+command = "/usr/local/bin/codegraph"
+args = ["serve", "--mcp"]
+```
+
+Contract:
+
+- The overlay is keyed by MCP server name.
+- For Codex, CCB merges the overlay into the managed agent-local
+  `config.toml` under `mcp_servers`. Same-name servers override inherited
+  source config; different names are additive.
+- The overlay is preserved in provider profile records and config rendering.
+- This is source configuration, not provider runtime state. Running providers
+  may need the normal CCB reload/restart flow before a changed MCP set is
+  visible.
+- Claude may still use provider-native `.claude.json` / `claude mcp` scoping
+  for user-level MCP configuration; this overlay is not a replacement for
+  provider-native Claude plugin management.
+
+### 4.4 Agent Model Shortcut
 
 For the common case where an agent only needs a provider model override, rich or
 hybrid `ccb.config` may use an agent-local model shortcut:

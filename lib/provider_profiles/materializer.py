@@ -81,6 +81,7 @@ def materialize_provider_profile(
             profile_root=str(profile_root) if profile_root is not None else None,
             runtime_home=None,
             env=dict(profile_spec.env),
+            mcp_servers=dict(profile_spec.mcp_servers),
             inherit_api=profile_spec.inherit_api,
             inherit_auth=profile_spec.inherit_auth,
             inherit_config=profile_spec.inherit_config,
@@ -157,6 +158,7 @@ def _materialize_codex_profile(
     profile_root: Path,
     workspace_path: Path,
 ) -> ResolvedProviderProfile:
+    runtime_dir = layout.agent_provider_runtime_dir(spec.name, spec.provider)
     runtime_home = _effective_provider_runtime_home(layout=layout, spec=spec)
     if not _codex_profile_uses_explicit_runtime_home(profile_spec):
         migrated_legacy_home = _migrate_legacy_codex_profile_runtime_home(
@@ -171,8 +173,12 @@ def _materialize_codex_profile(
         runtime_home,
         profile=profile_spec,
         project_root=layout.project_root,
+        agent_name=spec.name,
+        runtime_dir=runtime_dir,
         workspace_path=workspace_path,
         shared_cache_root=layout.shared_cache_dir,
+        memory_projection_event_path=layout.agent_events_path(spec.name),
+        memory_projection_marker_path=runtime_dir / 'codex-memory-projection.json',
     )
 
     return ResolvedProviderProfile(
@@ -182,6 +188,7 @@ def _materialize_codex_profile(
         profile_root=str(profile_root) if _codex_profile_uses_explicit_runtime_home(profile_spec) else None,
         runtime_home=str(runtime_home) if runtime_home is not None else None,
         env=dict(profile_spec.env),
+        mcp_servers=dict(profile_spec.mcp_servers),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,
@@ -206,6 +213,7 @@ def _materialize_api_profile(
         profile_root=str(profile_root),
         runtime_home=None,
         env=env,
+        mcp_servers=dict(profile_spec.mcp_servers),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,
@@ -233,6 +241,7 @@ def _materialize_claude_profile(
         profile_root=str(profile_root),
         runtime_home=None,
         env=env,
+        mcp_servers=dict(profile_spec.mcp_servers),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,

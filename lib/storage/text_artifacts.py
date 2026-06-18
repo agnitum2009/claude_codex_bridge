@@ -86,7 +86,13 @@ def write_text_artifact(
     }
 
 
-def artifact_stub(*, prefix: str, artifact: dict[str, Any], include_preview: bool = True) -> str:
+def artifact_stub(
+    *,
+    prefix: str,
+    artifact: dict[str, Any],
+    include_preview: bool = True,
+    instruction: str | None = None,
+) -> str:
     preview = str(artifact.get('preview') or '').rstrip()
     show_preview = bool(include_preview and preview)
     lines = [
@@ -97,10 +103,11 @@ def artifact_stub(*, prefix: str, artifact: dict[str, Any], include_preview: boo
     ]
     if show_preview:
         lines.extend(['', 'Preview:', preview])
-    if show_preview:
-        instruction = 'Instruction: read the full text file above before acting when the preview is insufficient.'
-    else:
-        instruction = 'Instruction: read the full text file above before acting.'
+    if instruction is None:
+        if show_preview:
+            instruction = 'Instruction: read the full text file above before acting when the preview is insufficient.'
+        else:
+            instruction = 'Instruction: read the full text file above before acting.'
     lines.extend(['', instruction])
     return '\n'.join(lines).rstrip()
 
