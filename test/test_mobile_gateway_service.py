@@ -51,11 +51,12 @@ class _FakeCcbdClient:
         }
 
 
-def _service(fake: _FakeCcbdClient) -> MobileGatewayService:
+def _service(fake: _FakeCcbdClient, *, mobile_dir: Path | None = None) -> MobileGatewayService:
     return MobileGatewayService(
         project_id='proj-demo',
         project_root=Path('/srv/demo'),
         ccbd_client_factory=lambda: fake,
+        mobile_dir=mobile_dir,
         clock=lambda: '2026-06-18T00:00:00Z',
     )
 
@@ -100,6 +101,57 @@ def test_project_view_rejects_unknown_project() -> None:
     with pytest.raises(MobileGatewayError, match='unknown project') as excinfo:
         _service(_FakeCcbdClient()).project_view_payload('other')
     assert excinfo.value.status_code == 404
+
+
+def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -> None:
+    service = _service(_FakeCcbdClient(), mobile_dir=tmp_path / 'mobile')
+    pairing = service.create_pairing_payload(gateway_url='http://127.0.0.1:8787')
+    pairing_code = str(pairing['pairing_code'])
+
+    status, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {
+            'pairing_code': pairing_code,
+            'device_name': 'Pixel Fold',
+        },
+    )
+    device_token = str(claim['device_token'])
+    device_id = str(claim['device']['device_id'])
+
+    assert status == 201
+    assert claim['host_profile']['device_id'] == device_id
+    assert claim['host_profile']['scopes'] == ['view']
+    assert claim['host_profile']['route_provider'] == 'lan'
+
+    status, me = service.dispatch_get('/v1/devices/me', {'Authorization': f'Bearer {device_token}'})
+    assert status == 200
+    assert me['device']['name'] == 'Pixel Fold'
+    assert me['device']['revoked'] is False
+
+    stored_pairings = (tmp_path / 'mobile' / 'pairing-tokens.jsonl').read_text(encoding='utf-8')
+    stored_devices = (tmp_path / 'mobile' / 'devices.json').read_text(encoding='utf-8')
+    stored_audit = (tmp_path / 'mobile' / 'audit.jsonl').read_text(encoding='utf-8')
+    assert pairing_code not in stored_pairings
+    assert pairing_code not in stored_audit
+    assert device_token not in stored_devices
+    assert device_token not in stored_audit
+    assert 'sha256:' in stored_pairings
+    assert 'sha256:' in stored_devices
+
+    with pytest.raises(MobileGatewayError) as duplicate:
+        service.dispatch_post('/v1/pairing/claim', {'pairing_code': pairing_code})
+    assert duplicate.value.status_code == 409
+
+    status, revoked = service.dispatch_post(
+        f'/v1/devices/{device_id}/revoke',
+        {},
+        {'Authorization': f'Bearer {device_token}'},
+    )
+    assert status == 200
+    assert revoked['device']['revoked'] is True
+    with pytest.raises(MobileGatewayError) as denied:
+        service.dispatch_get('/v1/devices/me', {'Authorization': f'Bearer {device_token}'})
+    assert denied.value.status_code == 401
 
 
 def test_http_server_exposes_g1_get_endpoints() -> None:

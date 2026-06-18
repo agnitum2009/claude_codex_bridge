@@ -300,20 +300,25 @@ _COMMAND_HELP = {
 
         CCB Mobile gateway:
           ccb mobile serve
-              Start the G1 loopback, current-project HTTP gateway.
+              Start the loopback, current-project HTTP gateway and emit a
+              short-lived pairing code.
           ccb mobile serve --listen 127.0.0.1:0
               Start on a dynamic loopback port.
 
-        G1 endpoints:
+        Endpoints:
           GET /v1/health
           GET /v1/projects
           GET /v1/projects/{project_id}/view
+          POST /v1/pairing/claim
+          GET /v1/devices/me
+          POST /v1/devices/{device_id}/revoke
 
         Safety:
-          - G1 only accepts loopback listen addresses.
+          - The gateway still only accepts loopback listen addresses.
           - It exposes current-project data only.
-          - It does not configure Cloudflare Tunnel, QR pairing, device tokens,
-            terminal WebSocket streaming, lifecycle, or multi-project registry.
+          - Pairing and device tokens are hashed under `.ccb/ccbd/mobile`.
+          - It does not configure Cloudflare Tunnel, terminal WebSocket
+            streaming, lifecycle, or multi-project registry.
           - Stopping the gateway does not stop ccbd, provider panes, or tmux.
     """,
     "doctor": """

@@ -24,9 +24,12 @@ def prepare_mobile_gateway(context, command) -> MobileGatewayServeHandle:
         project_id=context.project.project_id,
         project_root=context.project.project_root,
         ccbd_client_factory=lambda: CcbdClient(context.paths.ccbd_socket_path),
+        mobile_dir=context.paths.ccbd_mobile_dir,
     )
     server = build_mobile_gateway_server(listen, service)
     host, port = server.server_address[:2]
+    gateway_url = f'http://{host}:{port}'
+    pairing = service.create_pairing_payload(gateway_url=gateway_url)
     return MobileGatewayServeHandle(
         summary={
             'mobile_status': 'serving',
@@ -34,10 +37,14 @@ def prepare_mobile_gateway(context, command) -> MobileGatewayServeHandle:
             'project_id': context.project.project_id,
             'project_root': str(context.project.project_root),
             'mode': 'loopback_current_project',
+            'pairing': pairing,
             'endpoints': [
                 '/v1/health',
                 '/v1/projects',
                 '/v1/projects/{project_id}/view',
+                '/v1/pairing/claim',
+                '/v1/devices/me',
+                '/v1/devices/{device_id}/revoke',
             ],
         },
         server=server,

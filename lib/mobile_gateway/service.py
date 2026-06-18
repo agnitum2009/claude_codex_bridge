@@ -5,16 +5,20 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 from urllib.parse import unquote, urlparse
 
 from ccbd.socket_client import CcbdClientError
+from .pairing import MobileGatewayPairingError, MobileGatewayPairingStore
 
 _DEFAULT_HOST = '127.0.0.1'
 _DEFAULT_PORT = 8787
 _SCHEMA_VERSION = 1
-_CAPABILITIES = ('http_json', 'project_view')
+_BASE_CAPABILITIES = ('http_json', 'project_view')
+_PAIRING_CAPABILITIES = ('pairing', 'device_tokens')
 _REDACTED_NAMESPACE_KEYS = ('socket_path', 'session_name')
+_DEFAULT_ROUTE_PROVIDER = 'lan'
+_DEFAULT_PAIRING_SCOPES = ('view',)
 
 
 @dataclass(frozen=True)
@@ -40,12 +44,17 @@ class MobileGatewayService:
         project_id: str,
         project_root: Path,
         ccbd_client_factory: Callable[[], object],
+        mobile_dir: Path | None = None,
+        pairing_store: MobileGatewayPairingStore | None = None,
         clock: Callable[[], str] | None = None,
     ) -> None:
         self._project_id = str(project_id)
         self._project_root = Path(project_root)
         self._ccbd_client_factory = ccbd_client_factory
         self._clock = clock or _utc_now
+        self._pairing_store = pairing_store
+        if self._pairing_store is None and mobile_dir is not None:
+            self._pairing_store = MobileGatewayPairingStore(Path(mobile_dir))
 
     @property
     def project_id(self) -> str:
@@ -61,7 +70,7 @@ class MobileGatewayService:
                 'server_time': self._clock(),
                 'mode': 'loopback_current_project',
                 'project_id': self._project_id,
-                'capabilities': list(_CAPABILITIES),
+                'capabilities': self._capabilities(),
                 'ccbd': {
                     'reachable': False,
                     'error': _error_text(exc),
@@ -73,7 +82,7 @@ class MobileGatewayService:
             'server_time': self._clock(),
             'mode': 'loopback_current_project',
             'project_id': self._project_id,
-            'capabilities': list(_CAPABILITIES),
+            'capabilities': self._capabilities(),
             'ccbd': _ccbd_health_summary(ccbd),
         }
 
@@ -86,7 +95,7 @@ class MobileGatewayService:
                     'id': self._project_id,
                     'display_name': self._project_root.name,
                     'health': str(ccbd.get('health') or 'unknown'),
-                    'capabilities': list(_CAPABILITIES),
+                    'capabilities': self._capabilities(),
                 }
             ],
         }
@@ -98,7 +107,30 @@ class MobileGatewayService:
         payload = self._request_project_view()
         return _redact_project_view_payload(payload)
 
-    def dispatch_get(self, path: str) -> tuple[int, dict[str, object]]:
+    def create_pairing_payload(
+        self,
+        *,
+        gateway_url: str,
+        route_provider: str = _DEFAULT_ROUTE_PROVIDER,
+        scopes: tuple[str, ...] = _DEFAULT_PAIRING_SCOPES,
+        expires_seconds: int = 10 * 60,
+    ) -> dict[str, object]:
+        store = self._require_pairing_store()
+        store.write_gateway_state(
+            project_id=self._project_id,
+            gateway_url=gateway_url,
+            route_provider=route_provider,
+            capabilities=self._capabilities(),
+        )
+        return store.create_pairing_payload(
+            project_id=self._project_id,
+            gateway_url=gateway_url,
+            route_provider=route_provider,
+            scopes=scopes,
+            expires_seconds=expires_seconds,
+        )
+
+    def dispatch_get(self, path: str, headers: Mapping[str, object] | None = None) -> tuple[int, dict[str, object]]:
         parsed = urlparse(path)
         route = parsed.path.rstrip('/') or '/'
         if route == '/v1/health':
@@ -114,10 +146,70 @@ class MobileGatewayService:
         if route.startswith(prefix) and route.endswith(suffix):
             project_id = unquote(route[len(prefix):-len(suffix)].strip('/'))
             return 200, self.project_view_payload(project_id)
+        if route == '/v1/devices/me':
+            device = self._authenticate(headers, required_scopes=('view',))
+            return 200, {
+                'schema_version': _SCHEMA_VERSION,
+                'status': 'ok',
+                'device': device.public_payload(),
+            }
+        raise MobileGatewayError('not found', status_code=404)
+
+    def dispatch_post(
+        self,
+        path: str,
+        body: Mapping[str, object] | None,
+        headers: Mapping[str, object] | None = None,
+    ) -> tuple[int, dict[str, object]]:
+        parsed = urlparse(path)
+        route = parsed.path.rstrip('/') or '/'
+        payload = body if isinstance(body, Mapping) else {}
+        if route == '/v1/pairing/claim':
+            try:
+                result = self._require_pairing_store().claim_pairing(
+                    pairing_code=str(payload.get('pairing_code') or ''),
+                    device_name=str(payload.get('device_name') or ''),
+                    requested_device_id=_optional_text(payload.get('device_id')),
+                )
+            except MobileGatewayPairingError as exc:
+                raise MobileGatewayError(str(exc), status_code=exc.status_code) from exc
+            return 201, result
+        prefix = '/v1/devices/'
+        suffix = '/revoke'
+        if route.startswith(prefix) and route.endswith(suffix):
+            device_id = unquote(route[len(prefix):-len(suffix)].strip('/'))
+            try:
+                result = self._require_pairing_store().revoke_device(
+                    device_id=device_id,
+                    device_token=_bearer_token(headers),
+                )
+            except MobileGatewayPairingError as exc:
+                raise MobileGatewayError(str(exc), status_code=exc.status_code) from exc
+            return 200, result
         raise MobileGatewayError('not found', status_code=404)
 
     def _client(self):
         return self._ccbd_client_factory()
+
+    def _require_pairing_store(self) -> MobileGatewayPairingStore:
+        if self._pairing_store is None:
+            raise MobileGatewayError('mobile pairing store is not configured', status_code=503)
+        return self._pairing_store
+
+    def _capabilities(self) -> list[str]:
+        values = list(_BASE_CAPABILITIES)
+        if self._pairing_store is not None:
+            values.extend(_PAIRING_CAPABILITIES)
+        return values
+
+    def _authenticate(self, headers: Mapping[str, object] | None, *, required_scopes: tuple[str, ...]):
+        try:
+            return self._require_pairing_store().authenticate_device(
+                _bearer_token(headers),
+                required_scopes=required_scopes,
+            )
+        except MobileGatewayPairingError as exc:
+            raise MobileGatewayError(str(exc), status_code=exc.status_code) from exc
 
     def _ping_or_unavailable(self) -> dict[str, object]:
         try:
@@ -154,7 +246,7 @@ def parse_listen_address(value: str | None) -> ListenAddress:
     if port < 0 or port > 65535:
         raise ValueError('listen port must be between 0 and 65535')
     if not _is_loopback_host(host):
-        raise ValueError('G1 mobile gateway only supports loopback listen addresses')
+        raise ValueError('mobile gateway only supports loopback listen addresses')
     return ListenAddress(host=host, port=port)
 
 
@@ -164,7 +256,7 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
 
         def do_GET(self) -> None:  # noqa: N802 - stdlib hook
             try:
-                status, payload = service.dispatch_get(self.path)
+                status, payload = service.dispatch_get(self.path, self.headers)
             except MobileGatewayError as exc:
                 status = exc.status_code
                 payload = {
@@ -175,14 +267,23 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
             self._send_json(status, payload)
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib hook
-            self._send_json(
-                405,
-                {
+            try:
+                status, payload = service.dispatch_post(self.path, self._read_json_body(), self.headers)
+            except MobileGatewayError as exc:
+                status = exc.status_code
+                payload = {
                     'schema_version': _SCHEMA_VERSION,
                     'status': 'error',
-                    'error': 'method not allowed in G1',
-                },
-            )
+                    'error': _error_text(exc),
+                }
+            except ValueError as exc:
+                status = 400
+                payload = {
+                    'schema_version': _SCHEMA_VERSION,
+                    'status': 'error',
+                    'error': _error_text(exc),
+                }
+            self._send_json(status, payload)
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - stdlib signature
             return
@@ -194,6 +295,22 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
             self.send_header('content-length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _read_json_body(self) -> dict[str, object]:
+            length_text = self.headers.get('content-length') or '0'
+            try:
+                length = int(length_text)
+            except ValueError as exc:
+                raise ValueError('invalid content-length') from exc
+            if length < 0 or length > 65536:
+                raise ValueError('request body too large')
+            raw = self.rfile.read(length) if length else b'{}'
+            if not raw:
+                return {}
+            decoded = json.loads(raw.decode('utf-8'))
+            if isinstance(decoded, dict):
+                return {str(key): value for key, value in decoded.items()}
+            raise ValueError('request body must be a JSON object')
 
     return ThreadingHTTPServer((listen.host, listen.port), _Handler)
 
@@ -231,6 +348,29 @@ def _utc_now() -> str:
 
 def _error_text(exc: Exception) -> str:
     return str(exc or '').strip() or type(exc).__name__
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value or '').strip()
+    return text or None
+
+
+def _bearer_token(headers: Mapping[str, object] | None) -> str:
+    if headers is None:
+        return ''
+    value = ''
+    get = getattr(headers, 'get', None)
+    if callable(get):
+        value = str(get('authorization') or get('Authorization') or '')
+    if not value and isinstance(headers, Mapping):
+        for key, item in headers.items():
+            if str(key).lower() == 'authorization':
+                value = str(item or '')
+                break
+    prefix = 'bearer '
+    if value.lower().startswith(prefix):
+        return value[len(prefix):].strip()
+    return ''
 
 
 __all__ = [

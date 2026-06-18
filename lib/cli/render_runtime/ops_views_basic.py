@@ -277,6 +277,15 @@ def render_mobile_serve(summary) -> tuple[str, ...]:
     endpoints = payload.get('endpoints')
     if isinstance(endpoints, (list, tuple)):
         lines.append(f'endpoints: {", ".join(str(item) for item in endpoints)}')
+    pairing = payload.get('pairing')
+    if isinstance(pairing, Mapping):
+        lines.extend(
+            [
+                f'pairing_code: {pairing.get("pairing_code", "")}',
+                f'pairing_expires_at: {pairing.get("expires_at", "")}',
+                f'pairing_claim_endpoint: {pairing.get("claim_endpoint", "")}',
+            ]
+        )
     return tuple(lines)
 
 

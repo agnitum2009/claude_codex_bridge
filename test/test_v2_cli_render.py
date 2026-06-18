@@ -131,6 +131,34 @@ def test_render_mobile_serve_includes_loopback_gateway_summary() -> None:
     )
 
 
+def test_render_mobile_serve_includes_pairing_summary_when_present() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'serving',
+            'listen': '127.0.0.1:8787',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mode': 'loopback_current_project',
+            'endpoints': ['/v1/health', '/v1/pairing/claim'],
+            'pairing': {
+                'pairing_code': 'pair-code',
+                'expires_at': '2026-06-18T00:10:00Z',
+                'claim_endpoint': 'http://127.0.0.1:8787/v1/pairing/claim',
+            },
+        }
+    ) == (
+        'mobile_status: serving',
+        'listen: 127.0.0.1:8787',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mode: loopback_current_project',
+        'endpoints: /v1/health, /v1/pairing/claim',
+        'pairing_code: pair-code',
+        'pairing_expires_at: 2026-06-18T00:10:00Z',
+        'pairing_claim_endpoint: http://127.0.0.1:8787/v1/pairing/claim',
+    )
+
+
 def test_render_reload_non_dry_run_apply_diagnostics() -> None:
     lines = render_reload(
         {
