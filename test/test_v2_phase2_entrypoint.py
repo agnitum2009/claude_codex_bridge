@@ -270,15 +270,31 @@ def test_phase2_mobile_serve_uses_gateway_prepare(monkeypatch, tmp_path: Path) -
     def _fake_prepare(context, command):
         seen['project_root'] = context.project.project_root
         seen['listen'] = command.listen
+        seen['public_url'] = command.public_url
+        seen['route_provider'] = command.route_provider
         return _FakeHandle()
 
     monkeypatch.setattr(phase2_module, 'prepare_mobile_gateway', _fake_prepare)
 
-    code, stdout, stderr = _run_phase2_local(['mobile', 'serve', '--listen', '127.0.0.1:0'], cwd=project_root)
+    code, stdout, stderr = _run_phase2_local(
+        [
+            'mobile',
+            'serve',
+            '--listen',
+            '127.0.0.1:0',
+            '--public-url',
+            'https://mobile.example.com',
+            '--route-provider',
+            'cloudflare_tunnel',
+        ],
+        cwd=project_root,
+    )
 
     assert code == 0, stderr
     assert seen['project_root'] == project_root.resolve()
     assert seen['listen'] == '127.0.0.1:0'
+    assert seen['public_url'] == 'https://mobile.example.com'
+    assert seen['route_provider'] == 'cloudflare_tunnel'
     assert seen['served'] is True
     assert seen['closed'] is True
     assert 'mobile_status: serving' in stdout

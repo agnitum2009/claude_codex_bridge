@@ -116,6 +116,8 @@ def test_render_mobile_serve_includes_loopback_gateway_summary() -> None:
         {
             'mobile_status': 'serving',
             'listen': '127.0.0.1:8787',
+            'gateway_url': 'http://127.0.0.1:8787',
+            'route_provider': 'lan',
             'project_id': 'proj-1',
             'project_root': '/tmp/project',
             'mode': 'loopback_current_project',
@@ -124,6 +126,8 @@ def test_render_mobile_serve_includes_loopback_gateway_summary() -> None:
     ) == (
         'mobile_status: serving',
         'listen: 127.0.0.1:8787',
+        'gateway_url: http://127.0.0.1:8787',
+        'route_provider: lan',
         'project_id: proj-1',
         'project_root: /tmp/project',
         'mode: loopback_current_project',
@@ -136,6 +140,8 @@ def test_render_mobile_serve_includes_pairing_summary_when_present() -> None:
         {
             'mobile_status': 'serving',
             'listen': '127.0.0.1:8787',
+            'gateway_url': 'https://mobile.example.com',
+            'route_provider': 'cloudflare_tunnel',
             'project_id': 'proj-1',
             'project_root': '/tmp/project',
             'mode': 'loopback_current_project',
@@ -149,6 +155,8 @@ def test_render_mobile_serve_includes_pairing_summary_when_present() -> None:
     ) == (
         'mobile_status: serving',
         'listen: 127.0.0.1:8787',
+        'gateway_url: https://mobile.example.com',
+        'route_provider: cloudflare_tunnel',
         'project_id: proj-1',
         'project_root: /tmp/project',
         'mode: loopback_current_project',

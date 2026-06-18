@@ -182,7 +182,10 @@ def test_project_view_rejects_unknown_project() -> None:
 
 def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -> None:
     service = _service(_FakeCcbdClient(), mobile_dir=tmp_path / 'mobile')
-    pairing = service.create_pairing_payload(gateway_url='http://127.0.0.1:8787')
+    pairing = service.create_pairing_payload(
+        gateway_url='https://mobile.example.com',
+        route_provider='cloudflare_tunnel',
+    )
     pairing_code = str(pairing['pairing_code'])
 
     status, claim = service.dispatch_post(
@@ -198,7 +201,8 @@ def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -
     assert status == 201
     assert claim['host_profile']['device_id'] == device_id
     assert claim['host_profile']['scopes'] == ['focus', 'terminal_input', 'view']
-    assert claim['host_profile']['route_provider'] == 'lan'
+    assert claim['host_profile']['route_provider'] == 'cloudflare_tunnel'
+    assert claim['host_profile']['gateway_url'] == 'https://mobile.example.com'
 
     status, me = service.dispatch_get('/v1/devices/me', {'Authorization': f'Bearer {device_token}'})
     assert status == 200

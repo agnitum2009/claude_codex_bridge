@@ -270,6 +270,8 @@ def render_mobile_serve(summary) -> tuple[str, ...]:
     lines = [
         f'mobile_status: {payload.get("mobile_status", "unknown")}',
         f'listen: {payload.get("listen", "")}',
+        f'gateway_url: {payload.get("gateway_url", "")}',
+        f'route_provider: {payload.get("route_provider", "")}',
         f'project_id: {payload.get("project_id", "")}',
         f'project_root: {payload.get("project_root", "")}',
         f'mode: {payload.get("mode", "")}',

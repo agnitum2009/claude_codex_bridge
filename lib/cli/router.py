@@ -296,7 +296,7 @@ _COMMAND_HELP = {
           - Status reads `.ccb/ccbd/maintenance-heartbeat/`, not `.ccb/ccbd/heartbeats/`.
     """,
     "mobile": """
-        usage: ccb mobile serve [--listen 127.0.0.1:8787]
+        usage: ccb mobile serve [--listen 127.0.0.1:8787] [--public-url URL] [--route-provider lan|tailnet|cloudflare_tunnel|relay]
 
         CCB Mobile gateway:
           ccb mobile serve
@@ -304,6 +304,9 @@ _COMMAND_HELP = {
               short-lived pairing code.
           ccb mobile serve --listen 127.0.0.1:0
               Start on a dynamic loopback port.
+          ccb mobile serve --listen 127.0.0.1:8787 --public-url https://mobile.example.com --route-provider cloudflare_tunnel
+              Keep the gateway loopback-bound but emit Cloudflare route
+              metadata in the pairing payload.
 
         Endpoints:
           GET /v1/health
@@ -319,6 +322,8 @@ _COMMAND_HELP = {
 
         Safety:
           - The gateway still only accepts loopback listen addresses.
+          - --public-url changes pairing metadata only; it does not bind a
+            public listener.
           - It exposes current-project data only.
           - Pairing and device tokens are hashed under `.ccb/ccbd/mobile`.
           - Focus routes require a valid device token with `focus` scope.

@@ -77,8 +77,21 @@ def parse_mobile(tokens: list[str], *, project: str | None, error_type) -> Parse
         raise error_type('mobile only supports: serve')
     parser = argparse.ArgumentParser(prog='ccb mobile serve', add_help=False)
     parser.add_argument('--listen', default='127.0.0.1:8787')
+    parser.add_argument('--public-url', default=None)
+    parser.add_argument(
+        '--route-provider',
+        default='lan',
+        choices=('lan', 'tailnet', 'cloudflare_tunnel', 'relay'),
+    )
     namespace = parse_args(parser, tokens[1:], error_message='invalid mobile serve command', error_type=error_type)
-    return ParsedMobileCommand(project=project, action=action, listen=str(namespace.listen))
+    public_url = str(namespace.public_url).strip() if namespace.public_url is not None else None
+    return ParsedMobileCommand(
+        project=project,
+        action=action,
+        listen=str(namespace.listen),
+        public_url=public_url or None,
+        route_provider=str(namespace.route_provider),
+    )
 
 
 def parse_kill(tokens: list[str], *, project: str | None, error_type) -> ParsedKillCommand:
