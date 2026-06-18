@@ -132,6 +132,8 @@ preflight checklist 和自动 smoke 都会使用同一个 tunnel name。
 JSON 还会包含 `named_tunnel_smoke_command`，这是一条可复制命令，会保留相关
 `cloudflared` binary、config path、tunnel name、固定 listen 地址、public URL 和
 route provider 参数。
+如果你想自己启动 `cloudflared`，使用 `cloudflared_run_command`；如果 tunnel
+已经在运行，使用 `existing_tunnel_smoke_command`。
 
 preflight 通过后，开发 smoke 可以自动启动 named tunnel 的
 `cloudflared tunnel run`、启动 disposable CCB gateway、等待公网 `/v1/health`、

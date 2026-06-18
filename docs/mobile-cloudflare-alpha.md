@@ -138,6 +138,8 @@ smoke will use that same tunnel name.
 The JSON also includes `named_tunnel_smoke_command`, a copyable command that
 preserves the relevant `cloudflared` binary, config path, tunnel name, fixed
 listen address, public URL, and route provider arguments.
+If you want to start `cloudflared` yourself, use `cloudflared_run_command`;
+if the tunnel is already running, use `existing_tunnel_smoke_command`.
 
 After the preflight passes, the development smoke can start
 `cloudflared tunnel run` for the named tunnel, start a disposable CCB gateway,
