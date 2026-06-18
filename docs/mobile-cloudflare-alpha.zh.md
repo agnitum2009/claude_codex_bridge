@@ -101,7 +101,20 @@ ccb mobile revoke <device_id>
 
 ## 开发 Smoke 验证
 
-如果你在 `ccb_mobile` 开发仓库中工作，可以用 named tunnel 做验证：
+如果你在 `ccb_mobile` 开发仓库中工作，先运行 named-tunnel preflight。它会检查本地
+`cloudflared` binary、config、credentials file、public URL、route provider 和
+loopback origin 是否匹配，但不会启动 CCB runtime：
+
+```bash
+tools/mobile_gateway_terminal_smoke.py \
+  --cloudflared-named-tunnel-preflight \
+  --gateway-listen 127.0.0.1:8787 \
+  --gateway-public-url https://mobile.example.com \
+  --route-provider cloudflare_tunnel
+```
+
+preflight 通过，并且 `cloudflared tunnel run ccb-mobile` 已经运行后，再用 named
+tunnel 做完整验证：
 
 ```bash
 tools/mobile_gateway_terminal_smoke.py \

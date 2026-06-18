@@ -105,8 +105,21 @@ owning device has been revoked.
 
 ## Development Smoke Validation
 
-If you are working from the `ccb_mobile` development checkout, validate a named
-tunnel with:
+If you are working from the `ccb_mobile` development checkout, first run the
+named-tunnel preflight. This checks the local `cloudflared` binary, config,
+credentials file, public URL, route provider, and loopback origin without
+starting a CCB runtime:
+
+```bash
+tools/mobile_gateway_terminal_smoke.py \
+  --cloudflared-named-tunnel-preflight \
+  --gateway-listen 127.0.0.1:8787 \
+  --gateway-public-url https://mobile.example.com \
+  --route-provider cloudflare_tunnel
+```
+
+After the preflight passes and `cloudflared tunnel run ccb-mobile` is running,
+validate the named tunnel with:
 
 ```bash
 tools/mobile_gateway_terminal_smoke.py \
