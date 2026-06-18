@@ -124,6 +124,8 @@ mismatch 时最短的修复 checklist。
 `~/.cloudflared/config.yml` 草案，会使用本次传入的 hostname 和
 `--gateway-listen` origin。复制前需要把 tunnel id 和 credentials path 替换成
 `cloudflared tunnel create` 生成的真实值。
+如果你的 tunnel 不叫 `ccb-mobile`，加上 `--cloudflared-tunnel-name <name>`；
+preflight checklist 和自动 smoke 都会使用同一个 tunnel name。
 
 preflight 通过后，开发 smoke 可以自动启动 named tunnel 的
 `cloudflared tunnel run`、启动 disposable CCB gateway、等待公网 `/v1/health`、

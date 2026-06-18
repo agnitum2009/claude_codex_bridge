@@ -129,6 +129,9 @@ The same JSON also includes `config_template`, a side-effect-free
 `~/.cloudflared/config.yml` draft using the requested hostname and
 `--gateway-listen` origin. Copy it only after replacing the tunnel id and
 credentials path with the values from `cloudflared tunnel create`.
+If your tunnel is not named `ccb-mobile`, add
+`--cloudflared-tunnel-name <name>`; the preflight checklist and the automated
+smoke will use that same tunnel name.
 
 After the preflight passes, the development smoke can start
 `cloudflared tunnel run` for the named tunnel, start a disposable CCB gateway,
