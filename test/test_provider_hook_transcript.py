@@ -165,6 +165,31 @@ def test_current_turn_req_id_follows_tool_result_parent_chain_to_ccb_prompt() ->
     assert current_turn_req_id_from_transcript_text(content, assistant_reply="done") == "job_current123"
 
 
+def test_current_turn_req_id_follows_queue_operation_parent_to_callback_anchor() -> None:
+    content = _jsonl(
+        {
+            "uuid": "q1",
+            "type": "queue-operation",
+            "content": (
+                "CCB_REQ_ID: job_callback123\n\n"
+                "CCB callback continuation.\n\n"
+                "Forwarded body mentions CCB_REQ_ID: job_old456."
+            ),
+        },
+        {
+            "uuid": "a1",
+            "parentUuid": "q1",
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "callback done"}],
+            },
+        },
+    )
+
+    assert current_turn_req_id_from_transcript_text(content, assistant_reply="callback done") == "job_callback123"
+
+
 def test_current_turn_req_id_ignores_scheduled_task_after_interrupted_ccb_prompt() -> None:
     content = _jsonl(
         {
@@ -219,6 +244,27 @@ def test_current_turn_req_id_ignores_scheduled_task_after_interrupted_ccb_prompt
     assert current_turn_req_id_from_transcript_text(content, assistant_reply="当前进度：已完成第9次。") is None
 
 
+def test_current_turn_req_id_ignores_queue_operation_body_only_req_id() -> None:
+    content = _jsonl(
+        {
+            "uuid": "q1",
+            "type": "queue-operation",
+            "content": "Callback preview mentions CCB_REQ_ID: job_body456 but has no outer anchor.",
+        },
+        {
+            "uuid": "a1",
+            "parentUuid": "q1",
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "done"}],
+            },
+        },
+    )
+
+    assert current_turn_req_id_from_transcript_text(content, assistant_reply="done") is None
+
+
 def test_current_turn_req_id_for_empty_reply_uses_latest_ccb_prompt_after_previous_assistant() -> None:
     content = _jsonl(
         {
@@ -251,6 +297,35 @@ def test_current_turn_req_id_for_empty_reply_uses_latest_ccb_prompt_after_previo
     assert current_turn_req_id_from_transcript_text(content, assistant_reply="") == "job_current222"
 
 
+def test_current_turn_req_id_for_empty_reply_uses_latest_queue_operation_after_previous_assistant() -> None:
+    content = _jsonl(
+        {
+            "uuid": "u1",
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "CCB_REQ_ID: job_old111\n\nOld task.",
+            },
+        },
+        {
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "old done"}],
+            },
+        },
+        {
+            "uuid": "q1",
+            "type": "queue-operation",
+            "content": "CCB_REQ_ID: job_queue222\n\nCallback continuation.",
+        },
+    )
+
+    assert current_turn_req_id_from_transcript_text(content, assistant_reply="") == "job_queue222"
+
+
 def test_current_turn_req_id_for_empty_reply_does_not_reuse_previous_assistant_req_id() -> None:
     content = _jsonl(
         {
@@ -273,3 +348,25 @@ def test_current_turn_req_id_for_empty_reply_does_not_reuse_previous_assistant_r
     )
 
     assert current_turn_req_id_from_transcript_text(content, assistant_reply="") is None
+
+
+def test_latest_user_req_id_ignores_tool_result_even_with_outer_marker_text() -> None:
+    content = _jsonl(
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "CCB_REQ_ID: job_current123\n\nRun the check.",
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "CCB_REQ_ID: job_tool999\n\nTool output, not a prompt.",
+            },
+            "toolUseResult": {"type": "text"},
+        },
+    )
+
+    assert latest_user_req_id_from_transcript_text(content) == "job_current123"

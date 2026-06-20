@@ -79,9 +79,9 @@ def current_turn_req_id_from_transcript_text(content: str, *, assistant_reply: s
 
 
 def latest_req_id_from_transcript_text(content: str) -> str | None:
-    user_req_id = latest_user_req_id_from_transcript_text(content)
-    if user_req_id:
-        return user_req_id
+    prompt_record_req_id = _latest_prompt_record_req_id_from_transcript_text(content)
+    if prompt_record_req_id:
+        return prompt_record_req_id
     prompt_req_id = latest_last_prompt_req_id_from_transcript_text(content)
     if prompt_req_id:
         return prompt_req_id
@@ -90,12 +90,22 @@ def latest_req_id_from_transcript_text(content: str) -> str | None:
 
 def latest_user_req_id_from_transcript_text(content: str) -> str | None:
     latest: str | None = None
-    for line in str(content or '').splitlines():
-        try:
-            record = json.loads(line)
-        except Exception:
+    for record in _parse_jsonl_records(content):
+        if _is_tool_result_user_record(record):
             continue
         text = _user_message_text(record)
+        if text is None:
+            continue
+        req_id = extract_outer_req_id(text)
+        if req_id:
+            latest = req_id
+    return latest
+
+
+def _latest_prompt_record_req_id_from_transcript_text(content: str) -> str | None:
+    latest: str | None = None
+    for record in _parse_jsonl_records(content):
+        text = _prompt_record_text(record)
         if text is None:
             continue
         req_id = extract_outer_req_id(text)
@@ -159,21 +169,21 @@ def _current_assistant_index(records: list[dict[str, Any]], *, assistant_reply: 
 
 
 def _empty_reply_turn_req_id(records: list[dict[str, Any]], content: str) -> str | None:
-    latest_ccb_user: tuple[int, str] | None = None
+    latest_ccb_prompt: tuple[int, str] | None = None
     latest_assistant_index: int | None = None
     for index, record in enumerate(records):
         if _is_assistant_record(record):
             latest_assistant_index = index
-        text = _user_message_text(record)
+        text = _prompt_record_text(record)
         if text is None:
             continue
         req_id = extract_outer_req_id(text)
         if req_id:
-            latest_ccb_user = (index, req_id)
-    if latest_ccb_user is not None and (
-        latest_assistant_index is None or latest_ccb_user[0] > latest_assistant_index
+            latest_ccb_prompt = (index, req_id)
+    if latest_ccb_prompt is not None and (
+        latest_assistant_index is None or latest_ccb_prompt[0] > latest_assistant_index
     ):
-        return latest_ccb_user[1]
+        return latest_ccb_prompt[1]
     if latest_assistant_index is None:
         return latest_req_id_from_transcript_text(content)
     return None
@@ -190,10 +200,31 @@ def _req_id_for_assistant_turn(record: dict[str, Any], indexed: dict[str, dict[s
         if _is_tool_result_user_record(parent):
             parent_uuid = str(parent.get('parentUuid') or '').strip()
             continue
-        if _is_user_record(parent):
-            return extract_outer_req_id(_user_message_text(parent) or '')
+        text = _prompt_record_text(parent)
+        if text is not None:
+            return extract_outer_req_id(text)
         parent_uuid = str(parent.get('parentUuid') or '').strip()
     return None
+
+
+def _prompt_record_text(record: dict[str, Any]) -> str | None:
+    if _is_tool_result_user_record(record):
+        return None
+    user_text = _user_message_text(record)
+    if user_text is not None:
+        return user_text
+    return _queue_operation_text(record)
+
+
+def _queue_operation_text(record: Any) -> str | None:
+    if not isinstance(record, dict):
+        return None
+    if str(record.get('type') or '').strip().lower() != 'queue-operation':
+        return None
+    text = str(record.get('content') or '')
+    if not text.strip():
+        return None
+    return text
 
 
 def _is_user_record(record: dict[str, Any]) -> bool:

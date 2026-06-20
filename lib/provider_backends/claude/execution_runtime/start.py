@@ -10,6 +10,7 @@ from provider_core.instance_resolution import named_agent_instance
 from provider_execution.active import PreparedActiveStart, prepare_active_start, resume_active_submission
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 from provider_execution.common import no_wrap_requested, preferred_session_path, send_prompt_to_runtime_target
+from provider_execution.common_runtime.terminal import interrupt_and_clear_runtime_target
 
 from ..protocol import wrap_claude_prompt, wrap_claude_turn_prompt
 from provider_hooks.artifacts import completion_dir_from_session_data
@@ -47,7 +48,32 @@ def state_session_path(state: dict[str, object]) -> str:
 
 
 def send_prompt(backend: object, pane_id: str, text: str) -> None:
+    clear_stale_prompt_input(backend, pane_id)
     send_prompt_to_runtime_target(backend, pane_id, text)
+
+
+def clear_stale_prompt_input(backend: object, pane_id: str) -> None:
+    tail = _current_prompt_tail(backend, pane_id)
+    if tail is None:
+        return
+    if not tail.strip():
+        return
+    interrupt_and_clear_runtime_target(backend, pane_id)
+
+
+def _current_prompt_tail(backend: object, pane_id: str) -> str | None:
+    get_pane_content = getattr(backend, "get_pane_content", None)
+    if not callable(get_pane_content):
+        return None
+    try:
+        text = str(get_pane_content(pane_id, lines=120) or "")
+    except Exception:
+        return None
+    for line in reversed(text.splitlines()):
+        stripped = line.lstrip()
+        if stripped.startswith("❯"):
+            return stripped[1:]
+    return None
 
 
 def resolved_ready_timeout(timeout_s: float = 8.0) -> float:
