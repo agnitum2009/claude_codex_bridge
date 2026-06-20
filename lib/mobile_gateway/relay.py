@@ -202,6 +202,8 @@ class LocalRelayServerHarness:
         self._sessions: dict[str, RelayHandshakeTranscript] = {}
         self._forwarded: list[dict[str, object]] = []
         self._disconnected_hosts: set[str] = set()
+        self._stale_devices: set[tuple[str, str]] = set()
+        self._relay_unreachable = False
 
     def register_host(self, registration_payload: Mapping[str, object]) -> dict[str, object]:
         registration = RelayHostRegistration.from_json(registration_payload)
@@ -265,18 +267,58 @@ class LocalRelayServerHarness:
         self._require_host(host_id)
         self._disconnected_hosts.add(host_id)
 
-    def diagnostics_for_host(self, host_id: str) -> dict[str, object]:
-        if host_id not in self._hosts:
-            return {'host_id': host_id, 'state': 'unknown_host', 'ready': False}
-        if host_id in self._disconnected_hosts:
-            return {'host_id': host_id, 'state': 'host_disconnected', 'ready': False}
-        sessions = [item for item in self._sessions.values() if item.host_id == host_id]
+    def mark_device_stale(self, *, host_id: str, device_id: str) -> None:
+        self._require_host(host_id)
+        device = _required_text(device_id, 'device_id')
+        self._stale_devices.add((host_id, device))
+
+    def set_relay_unreachable(self, unreachable: bool = True) -> None:
+        self._relay_unreachable = bool(unreachable)
+
+    def diagnostics_for_host(
+        self,
+        host_id: str,
+        *,
+        device_id: str | None = None,
+        expected_host_fingerprint: str | None = None,
+    ) -> dict[str, object]:
+        base_host_id = _required_text(host_id, 'host_id')
+        if self._relay_unreachable:
+            return {
+                'host_id': base_host_id,
+                'state': 'relay_unreachable',
+                'ready': False,
+                'reason': 'relay control plane is unreachable from this harness',
+            }
+        registration = self._hosts.get(base_host_id)
+        if registration is None:
+            return {'host_id': base_host_id, 'state': 'unknown_host', 'ready': False}
+        expected = _optional_text(expected_host_fingerprint)
+        if expected and registration.server_fingerprint != expected:
+            return {
+                'host_id': base_host_id,
+                'state': 'host_fingerprint_mismatch',
+                'ready': False,
+                'expected_host_fingerprint': expected,
+                'observed_host_fingerprint': registration.server_fingerprint,
+            }
+        device = _optional_text(device_id)
+        if device and (base_host_id, device) in self._stale_devices:
+            return {
+                'host_id': base_host_id,
+                'device_id': device,
+                'state': 'stale_device',
+                'ready': False,
+            }
+        if base_host_id in self._disconnected_hosts:
+            return {'host_id': base_host_id, 'state': 'host_disconnected', 'ready': False}
+        sessions = [item for item in self._sessions.values() if item.host_id == base_host_id]
         return {
-            'host_id': host_id,
+            'host_id': base_host_id,
             'state': 'ready' if sessions else 'registered',
             'ready': bool(sessions),
             'session_count': len(sessions),
-            'forwarded_count': len([item for item in self._forwarded if item['host_id'] == host_id]),
+            'forwarded_count': len([item for item in self._forwarded if item['host_id'] == base_host_id]),
         }
 
     @property
@@ -315,8 +357,17 @@ class MobileGatewayRelayOutboundClient:
     def connect(self) -> dict[str, object]:
         return self._relay.register_host(self._registration.to_json())
 
-    def diagnostics(self) -> dict[str, object]:
-        return self._relay.diagnostics_for_host(self._registration.host_id)
+    def diagnostics(
+        self,
+        *,
+        device_id: str | None = None,
+        expected_host_fingerprint: str | None = None,
+    ) -> dict[str, object]:
+        return self._relay.diagnostics_for_host(
+            self._registration.host_id,
+            device_id=device_id,
+            expected_host_fingerprint=expected_host_fingerprint,
+        )
 
 
 def _reject_cleartext_keys(value: object, path: str) -> None:

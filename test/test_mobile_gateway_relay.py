@@ -212,6 +212,44 @@ def test_relay_reports_disconnected_host_without_stopping_runtime() -> None:
     }
 
 
+def test_relay_health_diagnostics_explain_unreachable_stale_and_fingerprint_states() -> None:
+    relay = _registered_relay()
+    client = MobileGatewayRelayOutboundClient(
+        relay=relay,
+        host_id='host-relay',
+        server_fingerprint='host-fp-demo',
+        host_pubkey_b64=_b64('host public key'),
+    )
+
+    relay.set_relay_unreachable()
+    assert client.diagnostics() == {
+        'host_id': 'host-relay',
+        'state': 'relay_unreachable',
+        'ready': False,
+        'reason': 'relay control plane is unreachable from this harness',
+    }
+
+    relay.set_relay_unreachable(False)
+    relay.mark_device_stale(host_id='host-relay', device_id='dev-relay')
+    assert client.diagnostics(device_id='dev-relay') == {
+        'host_id': 'host-relay',
+        'device_id': 'dev-relay',
+        'state': 'stale_device',
+        'ready': False,
+    }
+    assert client.diagnostics(device_id='fresh-device')['state'] == 'registered'
+
+    mismatch = client.diagnostics(expected_host_fingerprint='expected-fp')
+    assert mismatch == {
+        'host_id': 'host-relay',
+        'state': 'host_fingerprint_mismatch',
+        'ready': False,
+        'expected_host_fingerprint': 'expected-fp',
+        'observed_host_fingerprint': 'host-fp-demo',
+    }
+    assert client.diagnostics(expected_host_fingerprint='host-fp-demo')['state'] == 'registered'
+
+
 def test_relay_validates_base64_and_handshake_mismatches() -> None:
     with pytest.raises(MobileRelayError, match='base64url'):
         RelayHostRegistration(
