@@ -218,6 +218,7 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ### 联系方式
 
 - Email: `bfly123@126.com`
+- Telegram 群: https://t.me/+BKn03v8I_ehmYzRk
 - 微信: `seemseam-com`
 
 <p align="center">
