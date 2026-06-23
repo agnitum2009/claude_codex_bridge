@@ -1385,6 +1385,7 @@ def _agent_conversation_items(
             or _optional_text(comm.get('body_preview'))
         )
         reply = _completion_reply_for_job(project_root, _optional_text(comm.get('id')))
+        attachments = _attachment_records(comm.get('attachments'))
         if reply:
             comm_id = str(comm.get('id') or f'comms-{len(items)}')
             if body:
@@ -1398,6 +1399,7 @@ def _agent_conversation_items(
                         'format': _optional_text(comm.get('format')) or 'markdown',
                         'source': 'mobile',
                         'state': 'sent',
+                        'attachments': attachments,
                     }
                 )
             items.append(
@@ -1424,6 +1426,7 @@ def _agent_conversation_items(
                 'body': body,
                 'format': _optional_text(comm.get('format')) or 'plain',
                 'source': _optional_text(comm.get('source')) or 'project_view',
+                'attachments': attachments,
             }
         )
     if len(items) > limit:

@@ -190,6 +190,7 @@ def _job(
     terminal_reason: str | None = None,
     body: str = 'work',
     silence_on_success: bool = False,
+    route_options: dict[str, object] | None = None,
 ) -> JobRecord:
     terminal_decision = None
     if status in {JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.INCOMPLETE}:
@@ -205,6 +206,7 @@ def _job(
             _message(project_id, sender=sender, target=target),
             body=body,
             silence_on_success=silence_on_success,
+            route_options=dict(route_options or {}),
         ),
         status=status,
         terminal_decision=terminal_decision,
@@ -1259,6 +1261,70 @@ def test_project_view_comms_includes_recent_terminal_jobs(tmp_path: Path) -> Non
     assert comms[0]['status'] == 'completed'
     assert comms[0]['short_reason'] == 'task_complete'
     assert comms[2]['status'] == 'failed'
+
+
+def test_project_view_comms_exposes_mobile_attachment_metadata(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-comms-attachments'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    dispatcher._append_job(
+        _job(
+            project_id,
+            job_id='job_mobile_attachment',
+            sender='user',
+            target='agent1',
+            status=JobStatus.COMPLETED,
+            body='Uploaded attachment: probe.txt',
+            route_options={
+                'source': 'mobile_gateway',
+                'attachments': [
+                    {
+                        'file_id': 'mobile-file-1',
+                        'file_name': 'probe.txt',
+                        'mime_type': 'text/plain',
+                        'size_bytes': 11,
+                        'kind': 'document',
+                        'local_path': '/tmp/should-not-leak',
+                    }
+                ],
+            },
+        )
+    )
+
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    comm = service.build_response()['view']['comms'][0]
+
+    assert comm['id'] == 'job_mobile_attachment'
+    assert comm['attachments'] == [
+        {
+            'file_id': 'mobile-file-1',
+            'file_name': 'probe.txt',
+            'mime_type': 'text/plain',
+            'size_bytes': 11,
+            'kind': 'document',
+        }
+    ]
+    assert 'local_path' not in str(comm['attachments'])
 
 
 def test_project_view_filters_dismissed_comms_from_shared_state(tmp_path: Path) -> None:

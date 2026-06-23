@@ -172,6 +172,15 @@ class _FakeCcbdClientWithConversationComms(_FakeCcbdClient):
                 'business_status': 'replied',
                 'created_at': '2026-06-18T00:00:02Z',
                 'body_preview': 'question from phone',
+                'attachments': [
+                    {
+                        'file_id': 'mobile-file-1',
+                        'file_name': 'probe.txt',
+                        'mime_type': 'text/plain',
+                        'size_bytes': 11,
+                        'kind': 'document',
+                    }
+                ],
             },
             {
                 'id': 'job_mobile_old_reply',
@@ -435,6 +444,8 @@ def test_agent_conversation_includes_completed_comms_reply_preview(tmp_path: Pat
     assert items[3]['body'] == 'older answer from mobile_probe'
     assert items[4]['kind'] == 'user_message'
     assert items[4]['body'] == 'question from phone'
+    assert items[4]['attachments'][0]['file_id'] == 'mobile-file-1'
+    assert items[4]['attachments'][0]['file_name'] == 'probe.txt'
     assert items[5]['kind'] == 'agent_reply'
     assert items[5]['body'] == 'answer from mobile_probe'
     assert 'wrong target' not in json.dumps(payload)

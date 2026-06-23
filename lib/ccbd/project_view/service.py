@@ -1471,6 +1471,7 @@ def _comm_record(
         running_hint=running_recover_hint,
         lineage_for_job=lineage_for_recoverability,
     )
+    attachments = _comm_attachments(job)
     return {
         'id': job.job_id,
         'short_id': _short_id(job.job_id),
@@ -1486,8 +1487,44 @@ def _comm_record(
         'reply_delivery_job_id': reply_delivery.job_id if reply_delivery is not None else None,
         'callback': bool(getattr(job.request, 'reply_to', None)),
         'short_reason': _short_reason(job),
+        **({'attachments': attachments} if attachments else {}),
         **recoverability.to_record(),
     }
+
+
+def _comm_attachments(job) -> list[dict[str, object]]:
+    options = getattr(getattr(job, 'request', None), 'route_options', None)
+    if not isinstance(options, dict):
+        return []
+    raw = options.get('attachments')
+    if not isinstance(raw, (list, tuple)):
+        return []
+    attachments: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        file_id = str(item.get('file_id') or item.get('attachment_id') or '').strip()
+        if not file_id:
+            continue
+        file_name = str(item.get('file_name') or item.get('filename') or 'attachment').strip()
+        mime_type = str(item.get('mime_type') or 'application/octet-stream').strip()
+        try:
+            size_bytes = int(item.get('size_bytes') or 0)
+        except Exception:
+            size_bytes = 0
+        kind = str(item.get('kind') or '').strip()
+        if not kind:
+            kind = 'image' if mime_type.startswith('image/') else 'document'
+        attachments.append(
+            {
+                'file_id': file_id,
+                'file_name': file_name or 'attachment',
+                'mime_type': mime_type or 'application/octet-stream',
+                'size_bytes': max(0, size_bytes),
+                'kind': kind,
+            }
+        )
+    return attachments
 
 
 def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[str]) -> tuple[str, str]:
