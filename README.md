@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.13-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.14-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -708,6 +708,22 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.14</b> - Mobile Gateway Alpha And Codex Diagnostics</summary>
+
+- Adds the mobile gateway alpha surface: authenticated pairing, focus routes,
+  terminal open/resume/history routes, websocket terminal frames, public route
+  metadata, and device revocation commands.
+- Adds right-side sidebar placement and flattened `[ui.sidebar]` rendering while
+  keeping legacy `[ui.sidebar.view]` input compatible.
+- Supports multiple local agents sharing one Role Pack role id without
+  collapsing them into a single runtime identity.
+- Reduces Codex diagnostic SQLite churn by filtering TRACE/DEBUG log rows by
+  default while preserving INFO/ERROR rows; `CCB_CODEX_DIAGNOSTIC_LOGS=1`
+  disables the filter.
+
+</details>
+
+<details>
 <summary><b>v7.6.13</b> - Provider Profile Overlay Fixes</summary>
 
 - Codex plugin overrides now resolve in the intended order: inherited source

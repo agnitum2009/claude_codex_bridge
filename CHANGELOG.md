@@ -2,17 +2,26 @@
 
 ## Unreleased
 
-### Sidebar Layout And Config
+## v7.6.14 (2026-06-23)
 
-- **Sidebar Config Flattened**: canonical rendering now keeps sidebar topology
-  and presentation fields in one `[ui.sidebar]` table. The legacy
-  `[ui.sidebar.view]` table remains accepted as compatibility input.
-- **Right Sidebar Placement Added**: `position = "right"` places the existing
-  vertical sidebar pane on the right side of managed tmux windows while
-  preserving the default left placement.
-- **Sidebar Scrolling Adjusted**: the default native sidebar split is Agents
-  `50%`, Comms `15%`, Tips `35%`, and sidebar scrollbars now reach the visual
-  end consistently.
+### Mobile Gateway Alpha And Codex Diagnostics
+
+- **Mobile Gateway Alpha Added**: authenticated pairing, focus routes, terminal
+  open/resume/history routes, websocket terminal frames, public route metadata,
+  and device revocation commands now provide the first mobile control surface.
+- **Sidebar Layout Extended**: canonical rendering now keeps sidebar topology
+  and presentation fields in one `[ui.sidebar]` table, accepts legacy
+  `[ui.sidebar.view]` compatibility input, and supports `position = "right"`
+  for right-side sidebar placement.
+- **Multiple Local Agents Per Role Fixed**: local agents can share one Role Pack
+  role id while retaining distinct agent names and runtime identities.
+- **Codex Diagnostic SQLite Churn Reduced**: managed Codex homes now install a
+  stable diagnostic log filter that drops TRACE/DEBUG rows by default, keeps
+  INFO/ERROR rows, avoids unnecessary trigger recreation, and can be disabled
+  with `CCB_CODEX_DIAGNOSTIC_LOGS=1`.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.14.
 
 ## v7.6.13 (2026-06-22)
 

@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.13-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.14-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -694,6 +694,20 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.14</b> - Mobile Gateway Alpha 与 Codex 诊断治理</summary>
+
+- 新增 Mobile Gateway Alpha 能力：认证 pairing、focus routes、terminal
+  open/resume/history routes、websocket terminal frames、public route metadata
+  和设备撤销命令。
+- 新增 sidebar 右侧放置能力，并把 canonical `[ui.sidebar]` 渲染扁平化；
+  legacy `[ui.sidebar.view]` 输入继续兼容。
+- 支持多个本地 agent 共用同一个 Role Pack role id，不再被折叠成单一运行时身份。
+- 降低 Codex diagnostic SQLite 写盘抖动：默认过滤 TRACE/DEBUG 日志行并保留
+  INFO/ERROR；设置 `CCB_CODEX_DIAGNOSTIC_LOGS=1` 可关闭过滤。
+
+</details>
+
+<details>
 <summary><b>v7.6.13</b> - Provider Profile Overlay 修复</summary>
 
 - Codex plugin override 现在按预期顺序解析：继承的 source config、
