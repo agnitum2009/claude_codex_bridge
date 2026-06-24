@@ -54,6 +54,14 @@ def test_control_plane_env_keeps_agent_roles_store_pin(monkeypatch) -> None:
     assert env['AGENT_ROLES_STORE'] == '/home/demo/.roles'
 
 
+def test_control_plane_env_keeps_mobile_host_state_override(monkeypatch) -> None:
+    monkeypatch.setenv('CCB_MOBILE_HOST_STATE_HOME', '/tmp/ccb-mobile-state')
+
+    env = control_plane_env()
+
+    assert env['CCB_MOBILE_HOST_STATE_HOME'] == '/tmp/ccb-mobile-state'
+
+
 def test_control_plane_env_keeps_user_session_transport_for_cmd_shell(monkeypatch) -> None:
     monkeypatch.setenv('DISPLAY', ':0')
     monkeypatch.setenv('WAYLAND_DISPLAY', 'wayland-0')
