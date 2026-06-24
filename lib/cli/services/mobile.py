@@ -84,7 +84,7 @@ def prepare_server_mobile_gateway(
     project_registry: MobileGatewayProjectRegistry | None = None,
     host_id: str | None = None,
 ) -> MobileGatewayServeHandle:
-    registry = project_registry or load_mobile_gateway_project_registry()
+    registry = project_registry or load_mobile_gateway_project_registry(include_running=True)
     listen = parse_listen_address(command.listen)
     resolved_host_id = str(host_id or '').strip() or _server_host_id()
     state_dir = mobile_host_state_dir()

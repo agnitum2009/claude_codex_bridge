@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import socket
 from types import SimpleNamespace
 
 import pytest
@@ -10,9 +11,11 @@ from cli.services.mobile import _public_gateway_url, prepare_server_mobile_gatew
 from mobile_gateway import (
     MobileGatewayProject,
     MobileGatewayProjectRegistry,
+    discover_running_mobile_gateway_projects,
     load_mobile_gateway_project_registry,
     publish_mobile_gateway_project,
 )
+from project.ids import compute_project_id
 
 
 class _FakeCcbdClient:
@@ -101,6 +104,103 @@ def test_host_project_registry_publish_and_loads_redacted_projects(tmp_path: Pat
     assert projects[0].project_id == 'proj-one'
     assert projects[0].project_root == tmp_path / 'one'
     assert projects[0].public_display_name == 'one'
+
+
+def test_running_project_discovery_reads_ccbd_main_project_cmdline(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'running-project'
+    project_root.mkdir()
+    socket_path = tmp_path / 'ccbd.sock'
+    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    unix_socket.bind(str(socket_path))
+    monkeypatch.setattr(
+        'mobile_gateway.project_registry._ccbd_socket_path_for_project',
+        lambda root: socket_path,
+    )
+    try:
+        projects = discover_running_mobile_gateway_projects(
+            cmdlines=[
+                ['python', '/opt/ccb/lib/ccbd/main.py', '--project', str(project_root)],
+                ['python', '/opt/ccb/lib/ccbd/keeper_main.py', '--project', str(tmp_path / 'ignored')],
+            ]
+        )
+    finally:
+        unix_socket.close()
+
+    assert len(projects) == 1
+    assert projects[0].project_id == compute_project_id(project_root)
+    assert projects[0].project_root == project_root.resolve()
+    assert projects[0].public_display_name == 'running-project'
+
+
+def test_host_project_registry_can_merge_running_projects(tmp_path: Path, monkeypatch) -> None:
+    registry_path = tmp_path / 'mobile' / 'projects.json'
+    publish_mobile_gateway_project(
+        project_id='proj-persisted',
+        project_root=tmp_path / 'persisted',
+        ccbd_socket_path=tmp_path / 'persisted.sock',
+        display_name='persisted',
+        registry_path=registry_path,
+    )
+    running = MobileGatewayProject(
+        project_id='proj-running',
+        project_root=tmp_path / 'running',
+        display_name='running',
+        ccbd_client_factory=lambda: None,
+    )
+    monkeypatch.setattr(
+        'mobile_gateway.project_registry.discover_running_mobile_gateway_projects',
+        lambda: (running,),
+    )
+
+    registry = load_mobile_gateway_project_registry(
+        registry_path=registry_path,
+        include_running=True,
+    )
+
+    assert [project.project_id for project in registry.projects()] == [
+        'proj-persisted',
+        'proj-running',
+    ]
+
+
+def test_prepare_server_mobile_gateway_includes_running_projects(tmp_path: Path, monkeypatch) -> None:
+    fake = _FakeCcbdClient(
+        project_id='proj-running',
+        project_root='/srv/running',
+        display_name='running',
+    )
+    registry = MobileGatewayProjectRegistry(
+        [
+            MobileGatewayProject(
+                project_id='proj-running',
+                project_root=Path('/srv/running'),
+                ccbd_client_factory=lambda: fake,
+                display_name='running',
+            )
+        ]
+    )
+    seen: dict[str, object] = {}
+
+    def fake_load_mobile_gateway_project_registry(**kwargs):
+        seen.update(kwargs)
+        return registry
+
+    monkeypatch.setattr(
+        'cli.services.mobile.load_mobile_gateway_project_registry',
+        fake_load_mobile_gateway_project_registry,
+    )
+    monkeypatch.setattr('cli.services.mobile.mobile_host_state_dir', lambda: tmp_path / 'mobile-state')
+
+    handle = prepare_server_mobile_gateway(
+        SimpleNamespace(listen='127.0.0.1:0', public_url=None, route_provider='lan'),
+        host_id='host-test',
+    )
+    try:
+        assert seen['include_running'] is True
+        assert handle.summary['project_count'] == 1
+        assert handle.summary['projects'][0]['display_name'] == 'running'
+    finally:
+        handle.close()
 
 
 def test_prepare_server_mobile_gateway_uses_host_registry_without_socket_leak(tmp_path: Path, monkeypatch) -> None:

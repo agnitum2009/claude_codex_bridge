@@ -133,15 +133,46 @@ def publish_mobile_gateway_project(
 def load_mobile_gateway_project_registry(
     *,
     registry_path: Path | None = None,
+    include_running: bool = False,
 ) -> MobileGatewayProjectRegistry:
     path = Path(registry_path or mobile_host_project_registry_path()).expanduser()
     payload = _read_registry_payload(path)
-    projects: list[MobileGatewayProject] = []
+    projects_by_id: dict[str, MobileGatewayProject] = {}
     for record in _registry_projects(payload).values():
         project = _project_from_record(record)
         if project is not None:
-            projects.append(project)
-    return MobileGatewayProjectRegistry(projects)
+            projects_by_id[project.project_id] = project
+    if include_running:
+        for project in discover_running_mobile_gateway_projects():
+            projects_by_id[project.project_id] = project
+    return MobileGatewayProjectRegistry(list(projects_by_id.values()))
+
+
+def discover_running_mobile_gateway_projects(
+    *,
+    process_root: Path | None = None,
+    cmdlines: list[list[str]] | tuple[list[str], ...] | None = None,
+) -> tuple[MobileGatewayProject, ...]:
+    discovered: dict[str, MobileGatewayProject] = {}
+    for argv in cmdlines if cmdlines is not None else _read_proc_cmdlines(process_root or Path('/proc')):
+        project_root = _project_root_from_ccbd_cmdline(argv)
+        if project_root is None:
+            continue
+        try:
+            project_root = project_root.expanduser().resolve()
+            project_id = _compute_project_id(project_root)
+            socket_path = _ccbd_socket_path_for_project(project_root)
+        except Exception:
+            continue
+        if not socket_path.is_socket():
+            continue
+        discovered[project_id] = MobileGatewayProject(
+            project_id=project_id,
+            project_root=project_root,
+            display_name=project_root.name,
+            ccbd_client_factory=lambda socket_path=socket_path: CcbdClient(socket_path),
+        )
+    return tuple(discovered.values())
 
 
 def _read_registry_payload(path: Path) -> dict[str, object]:
@@ -191,11 +222,66 @@ def _project_from_record(record: dict[str, object]) -> MobileGatewayProject | No
     )
 
 
+def _read_proc_cmdlines(process_root: Path) -> list[list[str]]:
+    cmdlines: list[list[str]] = []
+    try:
+        entries = list(Path(process_root).iterdir())
+    except Exception:
+        return cmdlines
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / 'cmdline').read_bytes()
+        except Exception:
+            continue
+        parts = [part.decode('utf-8', errors='replace') for part in raw.split(b'\0') if part]
+        if parts:
+            cmdlines.append(parts)
+    return cmdlines
+
+
+def _project_root_from_ccbd_cmdline(argv: list[str]) -> Path | None:
+    if not _is_ccbd_main_cmdline(argv):
+        return None
+    for index, token in enumerate(argv):
+        if token == '--project' and index + 1 < len(argv):
+            value = argv[index + 1]
+            return Path(value) if str(value or '').strip() else None
+        if token.startswith('--project='):
+            value = token.split('=', 1)[1]
+            return Path(value) if str(value or '').strip() else None
+    return None
+
+
+def _is_ccbd_main_cmdline(argv: list[str]) -> bool:
+    for index, token in enumerate(argv):
+        normalized = str(token or '').replace('\\', '/')
+        if normalized.endswith('/ccbd/main.py'):
+            return True
+        if token == '-m' and index + 1 < len(argv) and argv[index + 1] == 'ccbd.main':
+            return True
+    return False
+
+
+def _compute_project_id(project_root: Path) -> str:
+    from project.ids import compute_project_id
+
+    return compute_project_id(project_root)
+
+
+def _ccbd_socket_path_for_project(project_root: Path) -> Path:
+    from storage.paths import PathLayout
+
+    return PathLayout(project_root).ccbd_socket_path
+
+
 __all__ = [
     'HOST_PROJECT_REGISTRY_FILENAME',
     'HOST_PROJECT_REGISTRY_RECORD_TYPE',
     'MobileGatewayProject',
     'MobileGatewayProjectRegistry',
+    'discover_running_mobile_gateway_projects',
     'load_mobile_gateway_project_registry',
     'mobile_host_project_registry_path',
     'mobile_host_state_dir',
