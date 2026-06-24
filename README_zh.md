@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.16-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.17-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -695,6 +695,17 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.17</b> - Codex Log Symlink Target 修复</summary>
+
+- 当 `/tmp/ccb-codex-logs-*` 清理导致 managed Codex `logs_2.sqlite` 临时
+  symlink target 目录消失时，启动前会自动重建 target parent。
+- 如果坏 symlink 无法修复，CCB 会先移除 symlink 并恢复本地备份，再让
+  Codex 初始化自己的 SQLite 数据库。
+- 增加缺失 symlink target parent 启动路径的回归测试。
+
+</details>
+
+<details>
 <summary><b>v7.6.16</b> - Codex SQLite Migration 恢复修复</summary>
 
 - 修复 managed Codex `logs_2.sqlite` redirect：CCB 不再预创建 Codex 自有

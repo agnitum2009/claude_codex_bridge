@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.16-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.17-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -709,6 +709,17 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.17</b> - Codex Log Symlink Target Repair</summary>
+
+- Repairs managed Codex `logs_2.sqlite` temp symlink targets when
+  `/tmp/ccb-codex-logs-*` cleanup removes the target directory between starts.
+- Falls back by removing an unrecoverable broken symlink and restoring the local
+  backup before Codex initializes its SQLite databases.
+- Adds regression coverage for the missing symlink target parent startup path.
+
+</details>
+
+<details>
 <summary><b>v7.6.16</b> - Codex SQLite Migration Recovery</summary>
 
 - Fixes the managed Codex `logs_2.sqlite` redirect so CCB no longer

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v7.6.17 (2026-06-25)
+
+### Codex Log Symlink Target Repair
+
+- **Codex Temp Log Symlink Repaired**: managed Codex startup now recreates the
+  `logs_2.sqlite` symlink target parent when `/tmp/ccb-codex-logs-*` cleanup
+  removes it between launches.
+- **Bad Symlink Fallback Hardened**: if the symlink target cannot be repaired,
+  CCB removes the broken symlink and restores the local backup before Codex
+  starts, avoiding startup failures in Codex-owned SQLite initialization.
+- **Regression Coverage Added**: focused tests cover missing temp target
+  parents and preserve the existing diagnostic-log redirect and restore paths.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.17.
+
 ## v7.6.16 (2026-06-23)
 
 ### Codex SQLite Migration Recovery
