@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -183,6 +183,15 @@ class _FakeCcbdClientWithConversationComms(_FakeCcbdClient):
                 'business_status': 'replied',
                 'created_at': '2026-06-18T00:00:02Z',
                 'body_preview': 'question from phone',
+                'attachments': [
+                    {
+                        'file_id': 'mobile-file-1',
+                        'file_name': 'probe.txt',
+                        'mime_type': 'text/plain',
+                        'size_bytes': 11,
+                        'kind': 'document',
+                    }
+                ],
             },
             {
                 'id': 'job_mobile_old_reply',
@@ -530,9 +539,87 @@ def test_agent_conversation_includes_completed_comms_reply_preview(tmp_path: Pat
     assert items[3]['body'] == 'older answer from mobile_probe'
     assert items[4]['kind'] == 'user_message'
     assert items[4]['body'] == 'question from phone'
+    assert items[4]['attachments'][0]['file_id'] == 'mobile-file-1'
+    assert items[4]['attachments'][0]['file_name'] == 'probe.txt'
     assert items[5]['kind'] == 'agent_reply'
     assert items[5]['body'] == 'answer from mobile_probe'
     assert 'wrong target' not in json.dumps(payload)
+
+
+def test_agent_conversation_maps_artifact_links_to_download_attachments(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    snapshot_dir = project_root / '.ccb' / 'ccbd' / 'snapshots'
+    snapshot_dir.mkdir(parents=True)
+    file_id = 'mobile-file-backend-artifact'
+    (snapshot_dir / 'job_mobile_reply.json').write_text(
+        json.dumps(
+            {
+                'latest_decision': {
+                    'reply': (
+                        'Generated files:\n'
+                        f'- [artifact.txt](ccb-artifact://{file_id})'
+                    ),
+                },
+            }
+        ),
+        encoding='utf-8',
+    )
+    file_dir = (
+        project_root
+        / '.ccb'
+        / 'ccbd'
+        / 'mobile'
+        / 'files'
+        / 'proj-demo'
+        / 'mobile'
+        / file_id
+    )
+    file_dir.mkdir(parents=True)
+    (file_dir / 'metadata.json').write_text(
+        json.dumps(
+            {
+                'file_id': file_id,
+                'file_name': 'artifact.txt',
+                'mime_type': 'text/plain',
+                'size_bytes': 12,
+            }
+        ),
+        encoding='utf-8',
+    )
+    service = _service(
+        _FakeCcbdClientWithConversationComms(),
+        project_root=project_root,
+        mobile_dir=tmp_path / 'mobile',
+    )
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+
+    status, payload = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4&limit=20',
+        {'Authorization': f'Bearer {claim["device_token"]}'},
+    )
+
+    assert status == 200
+    reply = next(
+        item
+        for item in payload['conversation']['items']
+        if item['id'] == 'reply-job_mobile_reply'
+    )
+    assert reply['attachments'] == [
+        {
+            'file_id': file_id,
+            'file_name': 'artifact.txt',
+            'mime_type': 'text/plain',
+            'size_bytes': 12,
+            'kind': 'document',
+        }
+    ]
 
 
 def test_agent_conversation_requires_view_auth_and_fresh_epoch(tmp_path: Path) -> None:
@@ -615,9 +702,56 @@ def test_agent_message_submit_uses_ccbd_submit_without_terminal_scope(tmp_path: 
     assert submit['delivery_scope'] == 'single'
     assert submit['route_options']['idempotency_key'] == 'mobile-msg-1'
     assert submit['route_options']['source'] == 'mobile_gateway'
+    assert submit['route_options']['mobile_files_dir'] == str(
+        tmp_path / 'mobile' / 'files'
+    )
     response_json = json.dumps(payload)
     assert 'terminal_input' not in response_json
     assert 'tmux.sock' not in response_json
+
+
+def test_agent_message_submit_accepts_attachment_only_message(tmp_path: Path) -> None:
+    fake = _FakeCcbdClient()
+    service = _service(fake, mobile_dir=tmp_path / 'mobile')
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view', 'message_submit'),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+
+    status, payload = service.dispatch_post(
+        '/v1/projects/proj-demo/agents/mobile/messages',
+        {
+            'schema_version': 1,
+            'project_id': 'proj-demo',
+            'agent': 'mobile',
+            'namespace_epoch': 4,
+            'idempotency_key': 'mobile-file-msg-1',
+            'body': '',
+            'format': 'markdown',
+            'attachments': [
+                {
+                    'file_id': 'mobile-file-1',
+                    'file_name': 'probe.txt',
+                    'mime_type': 'text/plain',
+                    'size_bytes': 11,
+                    'kind': 'document',
+                }
+            ],
+        },
+        {'Authorization': f'Bearer {claim["device_token"]}'},
+    )
+
+    assert status == 202
+    message = payload['message_submit']['message']
+    assert message['body'] == ''
+    assert message['attachments'][0]['file_id'] == 'mobile-file-1'
+    submit = next(call for call in fake.calls if call[0] == 'submit')[1]
+    assert submit['body'] == 'Uploaded attachment: probe.txt'
+    assert submit['route_options']['attachments'][0]['file_name'] == 'probe.txt'
 
 
 def test_agent_message_submit_requires_chat_scope_not_terminal_input(tmp_path: Path) -> None:
@@ -668,6 +802,83 @@ def test_agent_message_submit_requires_chat_scope_not_terminal_input(tmp_path: P
     assert payload['message_submit']['idempotency_key'] == 'mobile-msg-2'
 
 
+def test_agent_file_upload_download_round_trips_bytes_over_http(tmp_path: Path) -> None:
+    service = _service(_FakeCcbdClient(), mobile_dir=tmp_path / 'mobile')
+    pairing = service.create_pairing_payload(gateway_url='http://127.0.0.1:8787')
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+    token = str(claim['device_token'])
+    server = build_mobile_gateway_server(parse_listen_address('127.0.0.1:0'), service)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    try:
+        thread.start()
+        host, port = server.server_address[:2]
+        base = f'http://{host}:{port}'
+        data = b'hello from mobile file route\n'
+        upload_request = Request(
+            f'{base}/v1/projects/proj-demo/agents/mobile/files',
+            data=data,
+            method='POST',
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'text/plain',
+                'X-Ccb-File-Name': 'probe%20file.txt',
+                'Accept': 'application/json',
+            },
+        )
+
+        with urlopen(upload_request) as response:
+            upload = json.loads(response.read().decode('utf-8'))
+        file_id = upload['file_id']
+        assert upload['file_name'] == 'probe file.txt'
+        assert upload['mime_type'] == 'text/plain'
+        assert upload['size_bytes'] == len(data)
+
+        download_request = Request(
+            f'{base}/v1/projects/proj-demo/agents/mobile/files/{file_id}',
+            headers={'Authorization': f'Bearer {token}', 'Accept': '*/*'},
+        )
+        with urlopen(download_request) as response:
+            downloaded = response.read()
+            content_type = response.headers.get('content-type')
+            file_name = response.headers.get('x-ccb-file-name')
+
+        assert downloaded == data
+        assert content_type == 'text/plain'
+        assert file_name == 'probe file.txt'
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_agent_file_routes_require_file_scopes(tmp_path: Path) -> None:
+    service = _service(_FakeCcbdClient(), mobile_dir=tmp_path / 'mobile')
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+    token = str(claim['device_token'])
+
+    with pytest.raises(MobileGatewayError) as denied:
+        service.dispatch_file_upload(
+            '/v1/projects/proj-demo/agents/mobile/files',
+            b'hello',
+            {
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'text/plain',
+                'X-Ccb-File-Name': 'probe.txt',
+            },
+        )
+    assert denied.value.status_code == 403
+
+
 def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -> None:
     service = _service(_FakeCcbdClient(), mobile_dir=tmp_path / 'mobile')
     pairing = service.create_pairing_payload(
@@ -691,6 +902,8 @@ def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -
     assert claim['host_profile']['scopes'] == [
         'ask',
         'content',
+        'file_download',
+        'file_upload',
         'focus',
         'lifecycle',
         'message_submit',
@@ -729,6 +942,12 @@ def test_pairing_claim_creates_hashed_device_records_and_audit(tmp_path: Path) -
     with pytest.raises(MobileGatewayError) as denied:
         service.dispatch_get('/v1/devices/me', {'Authorization': f'Bearer {device_token}'})
     assert denied.value.status_code == 401
+    with pytest.raises(MobileGatewayError) as denied_view:
+        service.dispatch_get(
+            '/v1/projects/proj-demo/view',
+            {'Authorization': f'Bearer {device_token}'},
+        )
+    assert denied_view.value.status_code == 401
 
 
 def test_host_local_device_revoke_lists_devices_and_revokes_terminal_handles(tmp_path: Path) -> None:
@@ -1339,9 +1558,10 @@ def test_lifecycle_route_rejects_missing_scope_and_force_stop(tmp_path: Path) ->
     assert unsupported.value.status_code == 400
 
 
-def test_http_server_exposes_g1_get_endpoints() -> None:
+def test_http_server_exposes_g1_get_endpoints(tmp_path: Path) -> None:
     fake = _FakeCcbdClient()
-    service = _service(fake)
+    service = _service(fake, mobile_dir=tmp_path / 'mobile')
+    pairing = service.create_pairing_payload(gateway_url='http://127.0.0.1:8787')
     server = build_mobile_gateway_server(parse_listen_address('127.0.0.1:0'), service)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     try:
@@ -1353,14 +1573,32 @@ def test_http_server_exposes_g1_get_endpoints() -> None:
             health = json.loads(response.read().decode('utf-8'))
         with urlopen(f'{base}/v1/projects') as response:
             projects = json.loads(response.read().decode('utf-8'))
-        with urlopen(f'{base}/v1/projects/proj-demo/view') as response:
+        claim_request = Request(
+            f'{base}/v1/pairing/claim',
+            data=json.dumps({'pairing_code': pairing['pairing_code']}).encode('utf-8'),
+            method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urlopen(claim_request) as response:
+            claim = json.loads(response.read().decode('utf-8'))
+        token = str(claim['device_token'])
+        view_request = Request(
+            f'{base}/v1/projects/proj-demo/view',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        with urlopen(view_request) as response:
             view = json.loads(response.read().decode('utf-8'))
 
         assert health['status'] == 'ok'
         assert projects['projects'][0]['id'] == 'proj-demo'
         assert 'socket_path' not in view['view']['namespace']
         with pytest.raises(HTTPError) as excinfo:
-            urlopen(f'{base}/v1/projects/other/view')
+            urlopen(
+                Request(
+                    f'{base}/v1/projects/other/view',
+                    headers={'Authorization': f'Bearer {token}'},
+                )
+            )
         assert excinfo.value.code == 404
     finally:
         server.shutdown()

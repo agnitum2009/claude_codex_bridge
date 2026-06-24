@@ -3,11 +3,14 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import threading
 from typing import Callable, Mapping
+from uuid import uuid4
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ccbd.api_models import DeliveryScope, MessageEnvelope
@@ -35,6 +38,8 @@ _PAIRING_CAPABILITIES = (
     'terminal_open',
     'websocket_terminal',
     'terminal_history',
+    'file_upload',
+    'file_download',
 )
 _REDACTED_NAMESPACE_KEYS = ('socket_path', 'session_name')
 _DEFAULT_ROUTE_PROVIDER = 'lan'
@@ -44,9 +49,12 @@ _DEFAULT_PAIRING_SCOPES = (
     'focus',
     'ask',
     'message_submit',
+    'file_upload',
+    'file_download',
     'terminal_input',
     'lifecycle',
 )
+_MAX_MOBILE_FILE_BYTES = 25 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -92,9 +100,10 @@ class MobileGatewayService:
         self._clock = clock or _utc_now
         self._terminal_session_factory = terminal_session_factory or create_tmux_terminal_session
         self._terminal_history_factory = terminal_history_factory or create_tmux_terminal_history
+        self._mobile_dir = Path(mobile_dir) if mobile_dir is not None else None
         self._pairing_store = pairing_store
         if self._pairing_store is None and mobile_dir is not None:
-            self._pairing_store = MobileGatewayPairingStore(Path(mobile_dir))
+            self._pairing_store = MobileGatewayPairingStore(self._mobile_dir)
 
     @property
     def project_id(self) -> str:
@@ -188,6 +197,7 @@ class MobileGatewayService:
         suffix = '/view'
         if route.startswith(prefix) and route.endswith(suffix):
             project_id = unquote(route[len(prefix):-len(suffix)].strip('/'))
+            self._authenticate(headers, required_scopes=('view',))
             return 200, self.project_view_payload(project_id)
         history_suffix = '/terminal-history'
         if route.startswith(prefix) and route.endswith(history_suffix):
@@ -269,6 +279,7 @@ class MobileGatewayService:
         limit = min(200, max(1, _query_int(query, 'limit') or 50))
         items = _agent_conversation_items(
             view_payload,
+            project_id=self._project_id,
             agent=target['agent'],
             namespace_epoch=int(target['namespace_epoch']),
             limit=limit,
@@ -284,6 +295,111 @@ class MobileGatewayService:
                 'generated_at': self._clock(),
                 'items': items,
             },
+        }
+
+    def file_upload_target_from_path(self, path: str) -> tuple[str, str] | None:
+        parsed = urlparse(path)
+        route = parsed.path.rstrip('/') or '/'
+        return _parse_project_agent_files_route(route)
+
+    def file_download_target_from_path(self, path: str) -> tuple[str, str, str] | None:
+        parsed = urlparse(path)
+        route = parsed.path.rstrip('/') or '/'
+        return _parse_project_agent_file_route(route)
+
+    def dispatch_file_upload(
+        self,
+        path: str,
+        body: bytes,
+        headers: Mapping[str, object] | None = None,
+    ) -> tuple[int, dict[str, object]]:
+        target = self.file_upload_target_from_path(path)
+        if target is None:
+            raise MobileGatewayError('not found', status_code=404)
+        project_id, agent = target
+        self._require_current_project(project_id)
+        auth = self._authenticate_any_scope(
+            headers,
+            allowed_scopes=('file_upload', 'message_submit', 'ask'),
+        )
+        if len(body) > _MAX_MOBILE_FILE_BYTES:
+            raise MobileGatewayError('file too large', status_code=413)
+        view_payload = self._request_project_view()
+        view = _map(view_payload.get('view'))
+        namespace = _map(view.get('namespace'))
+        target_record = _validate_agent_conversation_target(
+            project_id=self._project_id,
+            view_payload=view_payload,
+            agent=agent,
+            namespace_epoch=_optional_int(namespace.get('epoch')),
+        )
+        file_name = _header_file_name(headers)
+        mime_type = _header_text(headers, 'content-type') or 'application/octet-stream'
+        file_id = f'mobile-file-{uuid4().hex[:16]}'
+        digest = hashlib.sha256(body).hexdigest()
+        record = {
+            'schema_version': _SCHEMA_VERSION,
+            'file_id': file_id,
+            'project_id': self._project_id,
+            'agent': target_record['agent'],
+            'device_id': auth.device_id,
+            'file_name': file_name,
+            'mime_type': mime_type,
+            'size_bytes': len(body),
+            'sha256': digest,
+            'created_at': self._clock(),
+        }
+        directory = self._mobile_file_dir(self._project_id, str(target_record['agent']), file_id)
+        directory.mkdir(parents=True, exist_ok=False)
+        (directory / 'content.bin').write_bytes(body)
+        (directory / 'metadata.json').write_text(
+            json.dumps(record, ensure_ascii=False, sort_keys=True),
+            encoding='utf-8',
+        )
+        return 201, {
+            'schema_version': _SCHEMA_VERSION,
+            'status': 'ok',
+            'file_id': file_id,
+            'file_name': file_name,
+            'mime_type': mime_type,
+            'size_bytes': len(body),
+            'sha256': digest,
+        }
+
+    def dispatch_file_download(
+        self,
+        path: str,
+        headers: Mapping[str, object] | None = None,
+    ) -> tuple[int, bytes, dict[str, str]]:
+        target = self.file_download_target_from_path(path)
+        if target is None:
+            raise MobileGatewayError('not found', status_code=404)
+        project_id, agent, file_id = target
+        self._require_current_project(project_id)
+        self._authenticate_any_scope(
+            headers,
+            allowed_scopes=('file_download', 'content', 'view'),
+        )
+        directory = self._mobile_file_dir(self._project_id, agent, file_id)
+        metadata = _read_file_metadata(directory)
+        if not metadata:
+            raise MobileGatewayError('unknown file', status_code=404)
+        if str(metadata.get('project_id') or '') != self._project_id:
+            raise MobileGatewayError('unknown file', status_code=404)
+        if str(metadata.get('agent') or '') != agent:
+            raise MobileGatewayError('unknown file', status_code=404)
+        content_path = directory / 'content.bin'
+        try:
+            body = content_path.read_bytes()
+        except FileNotFoundError as exc:
+            raise MobileGatewayError('unknown file', status_code=404) from exc
+        digest = hashlib.sha256(body).hexdigest()
+        if digest != str(metadata.get('sha256') or ''):
+            raise MobileGatewayError('file checksum mismatch', status_code=500)
+        return 200, body, {
+            'content-type': str(metadata.get('mime_type') or 'application/octet-stream'),
+            'x-ccb-file-name': str(metadata.get('file_name') or 'attachment'),
+            'x-ccb-file-sha256': digest,
         }
 
     def dispatch_post(
@@ -380,8 +496,10 @@ class MobileGatewayService:
         if not idempotency_key:
             raise MobileGatewayError('idempotency_key is required', status_code=400)
         body = str(payload.get('body') or '').strip()
-        if not body:
-            raise MobileGatewayError('body is required', status_code=400)
+        attachments = _attachment_records(payload.get('attachments'))
+        if not body and not attachments:
+            raise MobileGatewayError('body or attachments are required', status_code=400)
+        submit_body = body or _attachment_submit_body(attachments)
         message_format = str(payload.get('format') or 'markdown').strip() or 'markdown'
         view_payload = self._request_project_view(project)
         target = _validate_agent_conversation_target(
@@ -396,7 +514,7 @@ class MobileGatewayService:
                     project_id=project.project_id,
                     to_agent=target['agent'],
                     from_actor='user',
-                    body=body,
+                    body=submit_body,
                     task_id=None,
                     reply_to=None,
                     message_type='ask',
@@ -407,6 +525,8 @@ class MobileGatewayService:
                         'device_id': auth.device_id,
                         'idempotency_key': idempotency_key,
                         'format': message_format,
+                        'attachments': attachments,
+                        'mobile_files_dir': str(self._mobile_files_dir()),
                     },
                     body_artifact=None,
                 )
@@ -440,6 +560,7 @@ class MobileGatewayService:
                     'format': message_format,
                     'state': 'sent',
                     'source': 'mobile',
+                    'attachments': attachments,
                 },
             },
         }
@@ -747,6 +868,22 @@ class MobileGatewayService:
             raise MobileGatewayError('mobile pairing store is not configured', status_code=503)
         return self._pairing_store
 
+    def _mobile_file_dir(self, project_id: str, agent: str, file_id: str) -> Path:
+        return (
+            self._mobile_files_dir()
+            / _safe_path_segment(project_id)
+            / _safe_path_segment(agent)
+            / _safe_path_segment(file_id)
+        )
+
+    def _mobile_files_dir(self) -> Path:
+        root = (
+            self._mobile_dir
+            if self._mobile_dir is not None
+            else self._project_root / '.ccb' / 'ccbd' / 'mobile'
+        )
+        return root / 'files'
+
     def _capabilities(self) -> list[str]:
         values = list(_BASE_CAPABILITIES)
         if self._pairing_store is not None:
@@ -889,6 +1026,18 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
                     return
                 service.handle_terminal_websocket(terminal_id, connection)
                 return
+            if service.file_download_target_from_path(self.path) is not None:
+                try:
+                    status, body, headers = service.dispatch_file_download(self.path, self.headers)
+                except MobileGatewayError as exc:
+                    self._send_json(exc.status_code, {
+                        'schema_version': _SCHEMA_VERSION,
+                        'status': 'error',
+                        'error': _error_text(exc),
+                    })
+                    return
+                self._send_bytes(status, body, headers)
+                return
             try:
                 status, payload = service.dispatch_get(self.path, self.headers)
             except MobileGatewayError as exc:
@@ -902,7 +1051,14 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib hook
             try:
-                status, payload = service.dispatch_post(self.path, self._read_json_body(), self.headers)
+                if service.file_upload_target_from_path(self.path) is not None:
+                    status, payload = service.dispatch_file_upload(
+                        self.path,
+                        self._read_raw_body(max_bytes=_MAX_MOBILE_FILE_BYTES),
+                        self.headers,
+                    )
+                else:
+                    status, payload = service.dispatch_post(self.path, self._read_json_body(), self.headers)
             except MobileGatewayError as exc:
                 status = exc.status_code
                 payload = {
@@ -930,6 +1086,14 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_bytes(self, status: int, body: bytes, headers: dict[str, str]) -> None:
+            self.send_response(status)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.send_header('content-length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def _read_json_body(self) -> dict[str, object]:
             length_text = self.headers.get('content-length') or '0'
             try:
@@ -945,6 +1109,16 @@ def build_mobile_gateway_server(listen: ListenAddress, service: MobileGatewaySer
             if isinstance(decoded, dict):
                 return {str(key): value for key, value in decoded.items()}
             raise ValueError('request body must be a JSON object')
+
+        def _read_raw_body(self, *, max_bytes: int) -> bytes:
+            length_text = self.headers.get('content-length') or '0'
+            try:
+                length = int(length_text)
+            except ValueError as exc:
+                raise ValueError('invalid content-length') from exc
+            if length < 0 or length > max_bytes:
+                raise ValueError('request body too large')
+            return self.rfile.read(length) if length else b''
 
     return ThreadingHTTPServer((listen.host, listen.port), _Handler)
 
@@ -989,10 +1163,82 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
+def _header_text(headers: Mapping[str, object] | None, name: str) -> str:
+    if headers is None:
+        return ''
+    getter = getattr(headers, 'get', None)
+    value = getter(name) if callable(getter) else headers.get(name)
+    if value is None and name.lower() != name:
+        value = getter(name.lower()) if callable(getter) else headers.get(name.lower())
+    return str(value or '').strip()
+
+
+def _header_file_name(headers: Mapping[str, object] | None) -> str:
+    encoded = _header_text(headers, 'X-Ccb-File-Name')
+    if encoded:
+        decoded = unquote(encoded).strip()
+        if decoded:
+            return decoded
+    return 'attachment'
+
+
 def _map(value: object) -> dict[str, object]:
     if isinstance(value, Mapping):
         return {str(key): item for key, item in value.items()}
     return {}
+
+
+def _attachment_records(value: object) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    if not isinstance(value, (list, tuple)):
+        return records
+    for item in value:
+        record = _map(item)
+        file_id = _optional_text(record.get('file_id')) or _optional_text(record.get('attachment_id'))
+        if not file_id:
+            continue
+        file_name = _optional_text(record.get('file_name')) or _optional_text(record.get('filename')) or 'attachment'
+        mime_type = _optional_text(record.get('mime_type')) or 'application/octet-stream'
+        records.append(
+            {
+                'file_id': file_id,
+                'file_name': file_name,
+                'mime_type': mime_type,
+                'size_bytes': _int(record.get('size_bytes'), 0),
+                'kind': _optional_text(record.get('kind')) or ('image' if mime_type.startswith('image/') else 'document'),
+            }
+        )
+    return records
+
+
+def _attachment_submit_body(attachments: list[dict[str, object]]) -> str:
+    names = [
+        str(item.get('file_name') or 'attachment')
+        for item in attachments
+        if str(item.get('file_name') or '').strip()
+    ]
+    if not names:
+        return 'Uploaded attachment'
+    if len(names) == 1:
+        return f'Uploaded attachment: {names[0]}'
+    return f'Uploaded attachments: {", ".join(names)}'
+
+
+def _safe_path_segment(value: object) -> str:
+    text = str(value or '').strip()
+    safe = ''.join(ch if ch.isalnum() or ch in {'-', '_', '.'} else '_' for ch in text)
+    safe = safe.strip('._')
+    if not safe:
+        raise MobileGatewayError('invalid file identifier', status_code=400)
+    return safe
+
+
+def _read_file_metadata(directory: Path) -> dict[str, object]:
+    try:
+        payload = json.loads((directory / 'metadata.json').read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return _map(payload)
 
 
 def _optional_int(value: object) -> int | None:
@@ -1036,6 +1282,35 @@ def _parse_project_agent_route(route: str, *, suffix: str) -> tuple[str, str] | 
     return project_id, agent
 
 
+def _parse_project_agent_files_route(route: str) -> tuple[str, str] | None:
+    prefix = '/v1/projects/'
+    if not route.startswith(prefix):
+        return None
+    parts = route[len(prefix):].strip('/').split('/')
+    if len(parts) != 4 or parts[1] != 'agents' or parts[3] != 'files':
+        return None
+    project_id = unquote(parts[0]).strip()
+    agent = unquote(parts[2]).strip()
+    if not project_id or not agent:
+        return None
+    return project_id, agent
+
+
+def _parse_project_agent_file_route(route: str) -> tuple[str, str, str] | None:
+    prefix = '/v1/projects/'
+    if not route.startswith(prefix):
+        return None
+    parts = route[len(prefix):].strip('/').split('/')
+    if len(parts) != 5 or parts[1] != 'agents' or parts[3] != 'files':
+        return None
+    project_id = unquote(parts[0]).strip()
+    agent = unquote(parts[2]).strip()
+    file_id = unquote(parts[4]).strip()
+    if not project_id or not agent or not file_id:
+        return None
+    return project_id, agent, file_id
+
+
 def _validate_agent_conversation_target(
     *,
     project_id: str,
@@ -1068,6 +1343,7 @@ def _validate_agent_conversation_target(
 def _agent_conversation_items(
     view_payload: dict[str, object],
     *,
+    project_id: str,
     agent: str,
     namespace_epoch: int,
     limit: int,
@@ -1134,7 +1410,15 @@ def _agent_conversation_items(
             or _optional_text(comm.get('message'))
             or _optional_text(comm.get('body_preview'))
         )
-        reply = _completion_reply_for_job(project_root, _optional_text(comm.get('id')))
+        reply_dict = _completion_reply_for_job(
+            project_root,
+            _optional_text(comm.get('id')),
+            project_id=project_id,
+            agent=agent,
+        )
+        reply = str(reply_dict.get('body') or '')
+        reply_attachments = _attachment_records(reply_dict.get('attachments'))
+        attachments = _attachment_records(comm.get('attachments'))
         if reply:
             comm_id = str(comm.get('id') or f'comms-{len(items)}')
             if body:
@@ -1148,6 +1432,7 @@ def _agent_conversation_items(
                         'format': _optional_text(comm.get('format')) or 'markdown',
                         'source': 'mobile',
                         'state': 'sent',
+                        'attachments': attachments,
                     }
                 )
             items.append(
@@ -1159,6 +1444,7 @@ def _agent_conversation_items(
                     'body': reply,
                     'format': 'markdown',
                     'source': 'completion_snapshot',
+                    'attachments': reply_attachments,
                 }
             )
             continue
@@ -1174,6 +1460,7 @@ def _agent_conversation_items(
                 'body': body,
                 'format': _optional_text(comm.get('format')) or 'plain',
                 'source': _optional_text(comm.get('source')) or 'project_view',
+                'attachments': attachments,
             }
         )
     if len(items) > limit:
@@ -1196,20 +1483,78 @@ def _conversation_item_belongs_to_agent(item: dict[str, object], agent: str) -> 
     return True
 
 
-def _completion_reply_for_job(project_root: Path, job_id: str | None) -> str:
+def _completion_reply_for_job(
+    project_root: Path,
+    job_id: str | None,
+    *,
+    project_id: str,
+    agent: str,
+) -> dict[str, object]:
     if not job_id:
-        return ''
+        return {'body': '', 'attachments': []}
     path = project_root / '.ccb' / 'ccbd' / 'snapshots' / f'{job_id}.json'
     try:
         payload = json.loads(path.read_text(encoding='utf-8'))
     except Exception:
-        return ''
+        return {'body': '', 'attachments': []}
     latest_decision = _map(payload.get('latest_decision'))
-    return (
+    body = (
         _optional_text(latest_decision.get('reply'))
         or _optional_text(payload.get('latest_reply_preview'))
         or ''
     )
+    
+    attachments = []
+    payload_obj = _map(latest_decision.get('payload'))
+    if 'attachments' in payload_obj:
+        attachments = _attachment_records(payload_obj.get('attachments'))
+    if not attachments:
+        attachments = _artifact_link_attachments(
+            body,
+            project_root=project_root,
+            project_id=project_id,
+            agent=agent,
+        )
+    return {'body': body, 'attachments': attachments}
+
+
+def _artifact_link_attachments(
+    body: str,
+    *,
+    project_root: Path,
+    project_id: str,
+    agent: str,
+) -> list[dict[str, object]]:
+    attachments: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for file_id in _artifact_file_ids(body):
+        if file_id in seen:
+            continue
+        seen.add(file_id)
+        directory = (
+            project_root
+            / '.ccb'
+            / 'ccbd'
+            / 'mobile'
+            / 'files'
+            / _safe_path_segment(project_id)
+            / _safe_path_segment(agent)
+            / _safe_path_segment(file_id)
+        )
+        metadata = _read_file_metadata(directory)
+        if not metadata:
+            continue
+        attachments.extend(_attachment_records([metadata]))
+    return attachments
+
+
+def _artifact_file_ids(body: str) -> list[str]:
+    if not body:
+        return []
+    return [
+        match.group(1)
+        for match in re.finditer(r'ccb-artifact://([A-Za-z0-9._-]+)', body)
+    ]
 
 
 def _agent_status_summary(agent: dict[str, object]) -> str:

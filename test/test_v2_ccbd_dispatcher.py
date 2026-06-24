@@ -1043,6 +1043,65 @@ def test_dispatcher_persists_completion_items_and_state_updates_for_fake_provide
     assert watch_terminal['terminal'] is True
 
 
+def test_fake_provider_can_emit_deterministic_local_markdown_reply(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-fake-md'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _fake_config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('demo', project_id=ctx.project_id, layout=layout, pid=201))
+    provider_catalog = build_default_provider_catalog()
+    dispatcher = JobDispatcher(
+        layout,
+        config,
+        registry,
+        execution_service=ExecutionService(
+            build_default_execution_registry(),
+            clock=StepClock(
+                *(['2026-03-18T00:00:00Z'] * 5),
+                '2026-03-18T00:00:00.100000Z',
+                '2026-03-18T00:00:00.200000Z',
+            ),
+            state_store=ExecutionStateStore(layout),
+        ),
+        completion_tracker=CompletionTrackerService(config, provider_catalog),
+        provider_catalog=provider_catalog,
+        clock=StepClock(
+            *(['2026-03-18T00:00:00Z'] * 5),
+            '2026-03-18T00:00:00.100000Z',
+            '2026-03-18T00:00:00.200000Z',
+        ),
+    )
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='demo',
+            from_actor='user',
+            body='ccb-local-md:matrix',
+            task_id=None,
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+    dispatcher.poll_completions()
+    completed = dispatcher.poll_completions()
+
+    assert len(completed) == 1
+    snapshot = dispatcher.get_snapshot(job_id)
+    assert snapshot is not None
+    reply = snapshot.latest_decision.reply
+    assert reply is not None
+    assert reply.startswith('# CCB Local Markdown matrix')
+    assert '`ccb-local-reply:matrix`' in reply
+    assert '```text' in reply
+    assert '[blocked local link]' in reply
+
+
 def test_dispatcher_single_target_submit_keeps_stopped_agent_queued_until_tick(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     ctx = _bootstrap_test_project(project_root)

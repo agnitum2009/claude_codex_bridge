@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from ccbd.api_models import (
+    DeliveryScope,
+    JobRecord,
+    JobStatus,
+    MessageEnvelope,
+)
 from completion.models import (
     CompletionConfidence,
     CompletionCursor,
@@ -10,6 +16,7 @@ from completion.models import (
     CompletionStatus,
 )
 from provider_execution.base import ProviderSubmission
+from provider_execution.fake import FakeProviderAdapter
 from provider_execution.fake_runtime import FakeDirective, build_terminal_decision, default_script, materialize_payload
 from provider_execution.fake_runtime.parsing import parse_directive
 
@@ -117,3 +124,89 @@ def test_parse_directive_reads_latency_reason_and_script() -> None:
 def test_parse_directive_rejects_invalid_segments() -> None:
     with pytest.raises(ValueError, match='invalid fake task_id directive segment'):
         parse_directive('fake;bad-segment', default_latency_seconds=0.1)
+
+
+def test_fake_provider_generates_mobile_artifacts_from_route_file_store(tmp_path) -> None:
+    files_dir = tmp_path / 'mobile' / 'files'
+    request = MessageEnvelope(
+        project_id='proj-1',
+        to_agent='mobile',
+        from_actor='user',
+        body='ccb-local-artifact:probe',
+        task_id=None,
+        reply_to=None,
+        message_type='ask',
+        delivery_scope=DeliveryScope.SINGLE,
+        route_options={'mobile_files_dir': str(files_dir)},
+    )
+    job = JobRecord(
+        job_id='job-1',
+        submission_id=None,
+        agent_name='mobile',
+        provider='fake',
+        request=request,
+        status=JobStatus.QUEUED,
+        terminal_decision=None,
+        cancel_requested_at=None,
+        created_at='2026-06-23T00:00:00Z',
+        updated_at='2026-06-23T00:00:00Z',
+        workspace_path=None,
+    )
+
+    submission = FakeProviderAdapter(latency_seconds=0).start(
+        job,
+        context=None,
+        now='2026-06-23T00:00:00Z',
+    )
+
+    attachments = submission.runtime_state['attachments']
+    assert len(attachments) == 2
+    file_ids = {item['file_name']: item['file_id'] for item in attachments}
+    txt_file_id = file_ids['artifact-probe.txt']
+    png_file_id = file_ids['image-probe.png']
+    txt_dir = files_dir / 'proj-1' / 'mobile' / txt_file_id
+    png_dir = files_dir / 'proj-1' / 'mobile' / png_file_id
+    assert (txt_dir / 'content.bin').read_bytes() == b'Generated text artifact for probe'
+    assert (png_dir / 'content.bin').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+    assert '"file_name": "artifact-probe.txt"' in (txt_dir / 'metadata.json').read_text(
+        encoding='utf-8'
+    )
+    assert f'ccb-artifact://{txt_file_id}' in submission.reply
+    assert f'ccb-artifact://{png_file_id}' in submission.reply
+
+
+def test_fake_provider_completes_mobile_artifact_reply(tmp_path) -> None:
+    files_dir = tmp_path / 'mobile' / 'files'
+    request = MessageEnvelope(
+        project_id='proj-1',
+        to_agent='mobile',
+        from_actor='user',
+        body='ccb-local-artifact:probe',
+        task_id=None,
+        reply_to=None,
+        message_type='ask',
+        delivery_scope=DeliveryScope.SINGLE,
+        route_options={'mobile_files_dir': str(files_dir)},
+    )
+    job = JobRecord(
+        job_id='job-1',
+        submission_id=None,
+        agent_name='mobile',
+        provider='fake',
+        request=request,
+        status=JobStatus.QUEUED,
+        terminal_decision=None,
+        cancel_requested_at=None,
+        created_at='2026-06-23T00:00:00Z',
+        updated_at='2026-06-23T00:00:00Z',
+        workspace_path=None,
+    )
+    adapter = FakeProviderAdapter(latency_seconds=0)
+    submission = adapter.start(job, context=None, now='2026-06-23T00:00:00Z')
+
+    result = adapter.poll(submission, now='2026-06-23T00:00:00Z')
+
+    assert result is not None
+    assert result.decision is not None
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert 'CCB Local Artifacts probe' in result.decision.reply
