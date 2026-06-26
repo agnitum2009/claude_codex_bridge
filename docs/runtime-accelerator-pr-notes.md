@@ -38,6 +38,7 @@ CCB_RUNTIME_ACCELERATOR_STARTUP_TIMEOUT_S=0.5
 CCB_BRIDGE_IDLE_SLEEP=0.05
 CCB_CODEX_BIND_POLL_INTERVAL=0.5
 CCB_CCBD_IDLE_FULL_HEARTBEAT_INTERVAL_S=30
+CCB_CCBD_HEARTBEAT_WRITE_INTERVAL_S=5
 ```
 
 `CCB_BRIDGE_IDLE_SLEEP=0.05` and `CCB_CODEX_BIND_POLL_INTERVAL=0.5` restore the
@@ -97,6 +98,12 @@ cargo test -p ccb-runtime-accelerator -- --test-threads=1
 Live local observation after restart showed Codex bridge CPU dropping from the
 previous ~16-19% hotspot to low single digits or below for idle agents; ccbd
 still has a remaining idle thread hotspot for later P1 work.
+
+Heartbeat write debounce check:
+
+```bash
+PYTHONPATH=lib uv run --with pytest pytest -q test/test_v2_ccbd_mount_ownership.py
+```
 
 ## Known follow-up
 
