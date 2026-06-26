@@ -264,9 +264,13 @@ tmux set-window-option -t "$session" pane-active-border-style "${CCB_TMUX_RENDER
 tmux set-window-option -t "$session" pane-border-format "${CCB_TMUX_RENDERED_PANE_BORDER_FORMAT:-$default_pane_border_format}" >/dev/null 2>&1 || true
 if [[ -n "${CCB_TMUX_RENDERED_WINDOW_STYLE:-}" ]]; then
   tmux set-window-option -t "$session" window-style "$CCB_TMUX_RENDERED_WINDOW_STYLE" >/dev/null 2>&1 || true
+else
+  tmux set-window-option -u -t "$session" window-style >/dev/null 2>&1 || true
 fi
 if [[ -n "${CCB_TMUX_RENDERED_WINDOW_ACTIVE_STYLE:-}" ]]; then
   tmux set-window-option -t "$session" window-active-style "$CCB_TMUX_RENDERED_WINDOW_ACTIVE_STYLE" >/dev/null 2>&1 || true
+else
+  tmux set-window-option -u -t "$session" window-active-style >/dev/null 2>&1 || true
 fi
 
 # Dynamic active-border color based on active pane agent (per-session hook).

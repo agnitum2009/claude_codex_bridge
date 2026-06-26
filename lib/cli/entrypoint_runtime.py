@@ -16,6 +16,7 @@ from cli.phase2 import maybe_handle_phase2
 from cli.parser_runtime.constants import SUBCOMMANDS
 from cli.router import dispatch_auxiliary_command, dispatch_management_command, print_command_help, print_kill_help, print_start_help
 from cli.roles_runtime import cmd_roles
+from cli.services.theme import cmd_theme
 from cli.sidebar_click import maybe_handle_sidebar_click_command
 from cli.sidebar_resize_sync import maybe_handle_sidebar_resize_sync_command
 from cli.tools_runtime import cmd_tools
@@ -49,7 +50,7 @@ def _is_start_help(tokens: list[str]) -> bool:
         return False
     if tokens[0] in {"-h", "--help", "help"}:
         return True
-    if tokens[0] in SUBCOMMANDS or tokens[0] in {"install", "version", "update", "uninstall", "reinstall", "droid", "tools", "roles", "mail", "provider", "up", "rich", "rich-install"}:
+    if tokens[0] in SUBCOMMANDS or tokens[0] in {"install", "version", "update", "uninstall", "reinstall", "droid", "tools", "roles", "mail", "provider", "up", "rich", "rich-install", "theme"}:
         return False
     return any(token in {"-h", "--help", "help"} for token in tokens)
 
@@ -167,6 +168,12 @@ def _dispatch_tools(tokens: list[str], *, script_root: Path, stdout: TextIO, std
     return cmd_tools(tokens[1:], script_root=script_root, stdout=stdout, stderr=stderr)
 
 
+def _dispatch_theme(tokens: list[str], *, stdout: TextIO, stderr: TextIO) -> int | None:
+    if not (tokens and tokens[0] == 'theme'):
+        return None
+    return cmd_theme(tokens[1:], stdout=stdout, stderr=stderr)
+
+
 def _dispatch_rich(tokens: list[str], *, script_root: Path, cwd: Path, stdout: TextIO, stderr: TextIO) -> int | None:
     if not (tokens and tokens[0] == 'rich'):
         return None
@@ -271,6 +278,10 @@ def run_cli_entrypoint(
     tools_result = _dispatch_tools(tokens, script_root=script_root, stdout=stdout, stderr=stderr)
     if tools_result is not None:
         return tools_result
+
+    theme_result = _dispatch_theme(tokens, stdout=stdout, stderr=stderr)
+    if theme_result is not None:
+        return theme_result
 
     roles_result = _dispatch_roles(tokens, script_root=script_root, cwd=cwd, stdout=stdout, stderr=stderr)
     if roles_result is not None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from io import StringIO
 from pathlib import Path
 
@@ -282,6 +283,61 @@ def test_run_cli_entrypoint_routes_rich(monkeypatch) -> None:
     assert stdout.getvalue() == "rich launch ok\n"
     assert stderr.getvalue() == ""
     assert calls == [(Path("/tmp/ccb"), Path("/tmp/project"), stdout, stderr)]
+
+
+def test_run_cli_entrypoint_routes_theme_without_project_discovery(monkeypatch, tmp_path: Path) -> None:
+    stdout = StringIO()
+    stderr = StringIO()
+    config_home = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+    monkeypatch.setattr(
+        entrypoint_runtime,
+        "maybe_handle_phase2",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("theme should not discover a project")),
+    )
+
+    result = run_cli_entrypoint(
+        ["theme", "light"],
+        version="5.2.8",
+        script_root=Path("/tmp/ccb"),
+        cwd=Path("/tmp/not-a-project"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert result == 0
+    payload = json.loads((config_home / "ccb" / "theme.json").read_text(encoding="utf-8"))
+    assert payload == {
+        "palette": "latte",
+        "schema_version": 1,
+        "theme": "light",
+        "tmux_profile": "light",
+    }
+    assert "theme_status: ok" in stdout.getvalue()
+    assert "theme: light" in stdout.getvalue()
+    assert "tmux_refresh: skipped" in stdout.getvalue()
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_entrypoint_prints_theme_help() -> None:
+    stdout = StringIO()
+    stderr = StringIO()
+
+    result = run_cli_entrypoint(
+        ["theme", "--help"],
+        version="5.2.8",
+        script_root=Path("/tmp/ccb"),
+        cwd=Path("/tmp/project"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert result == 0
+    assert "usage: ccb theme" in stdout.getvalue()
+    assert "ccb theme +" in stdout.getvalue()
+    assert stderr.getvalue() == ""
 
 
 def test_run_cli_entrypoint_prints_rich_help() -> None:

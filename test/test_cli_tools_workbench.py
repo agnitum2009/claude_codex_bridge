@@ -72,6 +72,10 @@ def test_workbench_install_writes_independent_bundle_profiles(tmp_path: Path, mo
     assert (root / 'profiles' / 'yazi-safe' / 'plugins' / 'piper.yazi' / 'main.lua').is_file()
     assert (root / 'profiles' / 'yazi-rich' / 'plugins' / 'piper.yazi' / 'main.lua').is_file()
     assert (root / 'profiles' / 'wezterm' / 'wezterm.lua').is_file()
+    theme_config = json.loads((tmp_path / 'home' / '.config' / 'ccb' / 'theme.json').read_text(encoding='utf-8'))
+    assert theme_config['theme'] == 'dark'
+    assert theme_config['palette'] == 'dark'
+    assert theme_config['tmux_profile'] == 'default'
     assert (tmp_path / 'global-bin' / 'ccb-workbench').exists()
     assert (tmp_path / 'global-bin' / 'ccb-yazi').exists()
     assert (tmp_path / 'global-bin' / 'ccb-yazi-rich').exists()
@@ -116,10 +120,26 @@ def test_workbench_install_writes_independent_bundle_profiles(tmp_path: Path, mo
     assert 'config.line_height = 1.05' in wezterm_config
     assert 'config.initial_cols = 132' in wezterm_config
     assert 'config.initial_rows = 38' in wezterm_config
+    assert 'config.automatically_reload_config = true' in wezterm_config
+    assert 'local theme_config_path = "' in wezterm_config
+    assert 'wezterm.add_to_config_reload_watch_list(theme_config_path)' in wezterm_config
+    assert 'local themes = {' in wezterm_config
+    assert 'latte = {' in wezterm_config
+    assert 'solarized_light = {' in wezterm_config
+    assert 'tokyo_night_light = {' in wezterm_config
+    assert 'gruvbox_light = {' in wezterm_config
+    assert 'rose_pine_dawn = {' in wezterm_config
+    assert 'local function normalize_theme(value)' in wezterm_config
+    assert 'local function read_theme_file(path)' in wezterm_config
+    assert 'local requested_theme = read_theme_file(theme_config_path) or os.getenv("CCB_WORKBENCH_THEME")' in wezterm_config
+    assert 'config.enable_tab_bar = false' in wezterm_config
     assert 'config.window_padding = {' in wezterm_config
     assert 'config.hide_tab_bar_if_only_one_tab = true' in wezterm_config
     assert 'CCB_WORKBENCH_TERMINAL_PROGRAM = "WezTerm"' in wezterm_config
     assert 'CCB_WORKBENCH_TERMINAL_PROGRAM_VERSION = wezterm.version' in wezterm_config
+    assert 'CCB_WORKBENCH_THEME = theme_name' in wezterm_config
+    assert 'CCB_TMUX_THEME_PROFILE = theme.tmux_profile' in wezterm_config
+    assert 'CCB_SIDEBAR_THEME_PROFILE = theme.tmux_profile' in wezterm_config
     assert 'default_cwd' not in wezterm_config
     assert 'return config' in wezterm_config
     wrapper = (root / 'bin' / 'ccb-yazi-rich').read_text(encoding='utf-8')
@@ -145,6 +165,14 @@ def test_workbench_install_writes_independent_bundle_profiles(tmp_path: Path, mo
     assert 'start -n ' not in workbench
     assert str(root / 'profiles' / 'wezterm' / 'wezterm.lua') in workbench
     assert 'CCB_WORKBENCH_FORCE_RICH=1' in workbench
+    assert 'normalize_workbench_theme()' in workbench
+    assert 'theme_config_file=' in workbench
+    assert 'read_workbench_theme_config()' in workbench
+    assert 'available_themes: dark latte solarized_light tokyo_night_light gruvbox_light rose_pine_dawn' not in workbench
+    assert 'ccb-tmux-on.sh >/dev/null 2>&1 || true' not in workbench
+    assert 'CCB_WORKBENCH_THEME="$workbench_theme"' in workbench
+    assert 'CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme"' in workbench
+    assert 'CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme"' in workbench
     assert 'CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm' in workbench
     assert "XMODIFIERS='@im=fcitx'" in workbench
     assert 'GTK_IM_MODULE=fcitx' in workbench
@@ -407,6 +435,7 @@ def test_workbench_terminal_starts_managed_wezterm_when_current_window_is_not_cc
     monkeypatch.setenv('WEZTERM_ARGV_LOG', str(wezterm_log))
     monkeypatch.setenv('TMUX', '/tmp/tmux-1000/outer,123,0')
     monkeypatch.setenv('TMUX_PANE', '%7')
+    monkeypatch.setenv('CCB_WORKBENCH_THEME', 'gruvbox-light')
 
     env = workbench_tools._detached_terminal_env()
     env['PATH'] = f'{fake_bin}:/usr/bin:/bin'
@@ -434,8 +463,61 @@ def test_workbench_terminal_starts_managed_wezterm_when_current_window_is_not_cc
     assert str(project_root) in argv
     assert '-u' in argv
     assert 'TMUX' in argv
+    assert 'CCB_WORKBENCH_THEME=gruvbox_light' in argv
+    assert 'CCB_TMUX_THEME_PROFILE=light' in argv
+    assert 'CCB_SIDEBAR_THEME_PROFILE=light' in argv
     assert 'CCB_WORKBENCH_FORCE_RICH=1' in argv
     assert argv[-3:] == ['/bin/sh', '-lc', 'echo rich']
+
+
+def test_workbench_terminal_reads_global_theme_config(tmp_path: Path, monkeypatch) -> None:
+    fake_bin = _prepare_env(tmp_path, monkeypatch)
+    _stub_neovim(monkeypatch, tmp_path)
+    workbench_tools.provision_workbench(profile='rich')
+    wrapper = tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'workbench' / 'bin' / 'ccb-workbench'
+    theme_config = tmp_path / 'home' / '.config' / 'ccb' / 'theme.json'
+    theme_config.write_text(
+        json.dumps(
+            {
+                'schema_version': 1,
+                'theme': 'solarized',
+                'palette': 'solarized_light',
+                'tmux_profile': 'light',
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+    project_root = tmp_path / 'project'
+    project_root.mkdir()
+    wezterm_log = tmp_path / 'wezterm-argv-theme.txt'
+    (fake_bin / 'wezterm').write_text(
+        '#!/usr/bin/env sh\n'
+        'printf "%s\\n" "$@" > "$WEZTERM_ARGV_LOG"\n',
+        encoding='utf-8',
+    )
+    (fake_bin / 'wezterm').chmod(0o755)
+    monkeypatch.setenv('WEZTERM_ARGV_LOG', str(wezterm_log))
+
+    env = workbench_tools._detached_terminal_env()
+    env['PATH'] = f'{fake_bin}:/usr/bin:/bin'
+    result = workbench_tools.subprocess.run(
+        [str(wrapper), 'terminal', '/bin/sh', '-lc', 'echo themed'],
+        cwd=project_root,
+        env=env,
+        text=True,
+        stdout=workbench_tools.subprocess.PIPE,
+        stderr=workbench_tools.subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    argv = wezterm_log.read_text(encoding='utf-8').splitlines()
+    assert 'CCB_WORKBENCH_THEME=solarized_light' in argv
+    assert 'CCB_TMUX_THEME_PROFILE=light' in argv
+    assert 'CCB_SIDEBAR_THEME_PROFILE=light' in argv
 
 
 def test_workbench_terminal_reuses_current_ccb_rich_wezterm_window(tmp_path: Path, monkeypatch) -> None:

@@ -34,6 +34,9 @@ authority for the feature.
 - [topics/rich-terminal-workbench-profile.md](topics/rich-terminal-workbench-profile.md):
   optional recommended WezTerm/Yazi/LazyVim workbench profile with safe and
   rich media tiers for Markdown, PDF, image, and video preview.
+- [topics/ui-theme-preference.md](topics/ui-theme-preference.md):
+  global `ccb theme` preference model for CCB tmux/sidebar colors, with
+  optional CCB-owned rich WezTerm synchronization.
 - [history/neovim-local-plugin-lab-2026-06-13.md](history/neovim-local-plugin-lab-2026-06-13.md):
   isolated local Linux/tmux plugin lab for folder, Markdown, image, parser,
   browser-preview, opener, and clipboard capability checks.

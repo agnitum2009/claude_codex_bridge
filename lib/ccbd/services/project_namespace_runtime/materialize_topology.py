@@ -7,6 +7,7 @@ from cli.services.tmux_ui import apply_project_tmux_ui
 from agents.models import layout_tool_alias_command, layout_tool_alias_label, parse_layout_spec
 from terminal_runtime.placeholders import pane_placeholder_cmd
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
+from terminal_runtime.tmux_theme import tmux_theme_profile
 
 from .backend import (
     create_session,
@@ -808,6 +809,7 @@ def _sidebar_pane_percent_for_sidebar(width: object, pane_width: int = 0) -> int
 def _respawn_sidebar(backend, pane_id: str, launch_args: tuple[str, ...], *, cwd: str) -> None:
     args = sidebar_respawn_args(tuple(launch_args or ()))
     command = ' '.join(shlex.quote(str(part)) for part in args) if args else pane_placeholder_cmd()
+    command = f'CCB_SIDEBAR_THEME_PROFILE={shlex.quote(tmux_theme_profile())} {command}'
     respawn = getattr(backend, 'respawn_pane', None)
     if callable(respawn):
         respawn(pane_id, cmd=command, cwd=cwd, remain_on_exit=True)

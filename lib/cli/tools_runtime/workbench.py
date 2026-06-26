@@ -15,6 +15,8 @@ import urllib.request
 from typing import TextIO
 import zipfile
 
+from terminal_runtime.ui_theme import default_theme_preference, preference_for_theme, save_theme_preference, theme_config_path
+
 SCHEMA_VERSION = 1
 DEFAULT_PROFILE = 'rich'
 GENERATED_MARKER = '# CCB managed workbench file'
@@ -792,6 +794,7 @@ def provision_workbench(*, profile: str = DEFAULT_PROFILE, binary_result: dict[s
     if binary_result is None:
         binary_result = install_bundled_rich_binaries(paths=paths) if profile == 'rich' else {'status': 'skipped'}
     legacy_neovim_cleanup = cleanup_legacy_neovim_tool(remove_cache=False)
+    _ensure_theme_preference(paths)
     _write_preview_helpers(paths)
     _write_piper_plugin(paths['yazi_safe_profile'] / 'plugins' / 'piper.yazi')
     _write_piper_plugin(paths['yazi_rich_profile'] / 'plugins' / 'piper.yazi')
@@ -1061,6 +1064,7 @@ def _paths() -> dict[str, Path]:
         'manifest': root / 'manifest.json',
         'binary_manifest': root / 'binary-bundles.json',
         'state_root': state_home / 'ccb' / 'tools' / 'workbench',
+        'theme_config': theme_config_path(),
         'launches': state_home / 'ccb' / 'tools' / 'workbench' / 'launches.json',
         'cache_root': cache_home / 'ccb' / 'tools' / 'workbench',
     }
@@ -1076,6 +1080,30 @@ def _detached_terminal_env(environ: dict[str, str] | None = None) -> dict[str, s
 def _ensure_dirs(paths: dict[str, Path]) -> None:
     for key in ('bin_dir', 'bin_link_dir', 'yazi_safe_profile', 'yazi_rich_profile', 'wezterm_profile', 'state_root', 'cache_root'):
         paths[key].mkdir(parents=True, exist_ok=True)
+
+
+def _normalize_workbench_theme(value: str | None) -> str:
+    key = str(value or '').strip().lower().replace('_', '-').replace(' ', '-')
+    if key in {'', 'default', 'dark', 'nord', 'contrast'}:
+        return 'dark'
+    if key in {'light', 'latte', 'catppuccin-latte'}:
+        return 'latte'
+    if key in {'solarized', 'solarized-light'}:
+        return 'solarized_light'
+    if key in {'tokyo', 'tokyo-light', 'tokyo-night-light', 'tokyo-night-day'}:
+        return 'tokyo_night_light'
+    if key in {'gruvbox', 'gruvbox-light'}:
+        return 'gruvbox_light'
+    if key == 'rose-pine-dawn':
+        return 'rose_pine_dawn'
+    return 'dark'
+
+
+def _ensure_theme_preference(paths: dict[str, Path]) -> None:
+    if paths['theme_config'].exists():
+        return
+    requested = os.environ.get('CCB_WORKBENCH_THEME') or os.environ.get('CCB_TMUX_THEME_PROFILE') or 'dark'
+    save_theme_preference(preference_for_theme(requested) or default_theme_preference())
 
 
 def _write_preview_helpers(paths: dict[str, Path]) -> None:
@@ -1330,16 +1358,209 @@ def _write_wezterm_config(paths: dict[str, Path]) -> None:
 local wezterm = require("wezterm")
 local config = wezterm.config_builder and wezterm.config_builder() or {{}}
 
-config.automatically_reload_config = false
+config.automatically_reload_config = true
 config.check_for_updates = false
 config.window_close_confirmation = "NeverPrompt"
 config.warn_about_missing_glyphs = false
 config.use_ime = true
+local theme_config_path = "{_lua_string(str(paths['theme_config']))}"
+if wezterm.add_to_config_reload_watch_list then
+  wezterm.add_to_config_reload_watch_list(theme_config_path)
+end
 local xmodifiers = os.getenv("XMODIFIERS") or ""
 local xim_im_name = xmodifiers:match("@im=([^%s]+)")
 if xim_im_name and xim_im_name ~= "" then
   config.xim_im_name = xim_im_name
 end
+local themes = {{
+  dark = {{
+    tmux_profile = "default",
+    foreground = "#d8dee9",
+    background = "#1f2328",
+    cursor_bg = "#88c0d0",
+    cursor_fg = "#1f2328",
+    cursor_border = "#88c0d0",
+    selection_fg = "#eceff4",
+    selection_bg = "#3b4252",
+    split = "#4c566a",
+    frame_active = "#1f2328",
+    frame_inactive = "#181c22",
+    tab_bar_bg = "#1f2328",
+    active_tab_bg = "#2e3440",
+    active_tab_fg = "#eceff4",
+    inactive_tab_bg = "#242933",
+    inactive_tab_fg = "#a7b0be",
+    inactive_tab_hover_bg = "#303846",
+    inactive_tab_hover_fg = "#eceff4",
+    new_tab_bg = "#1f2328",
+    new_tab_fg = "#a7b0be",
+  }},
+  latte = {{
+    tmux_profile = "light",
+    foreground = "#4c4f69",
+    background = "#eff1f5",
+    cursor_bg = "#4c4f69",
+    cursor_fg = "#eff1f5",
+    cursor_border = "#4c4f69",
+    selection_fg = "#4c4f69",
+    selection_bg = "#ccd0da",
+    split = "#bcc0cc",
+    frame_active = "#eff1f5",
+    frame_inactive = "#e6e9ef",
+    tab_bar_bg = "#eff1f5",
+    active_tab_bg = "#ccd0da",
+    active_tab_fg = "#4c4f69",
+    inactive_tab_bg = "#e6e9ef",
+    inactive_tab_fg = "#6c6f85",
+    inactive_tab_hover_bg = "#dce0e8",
+    inactive_tab_hover_fg = "#4c4f69",
+    new_tab_bg = "#eff1f5",
+    new_tab_fg = "#6c6f85",
+  }},
+  solarized_light = {{
+    tmux_profile = "light",
+    foreground = "#657b83",
+    background = "#fdf6e3",
+    cursor_bg = "#586e75",
+    cursor_fg = "#fdf6e3",
+    cursor_border = "#586e75",
+    selection_fg = "#586e75",
+    selection_bg = "#eee8d5",
+    split = "#93a1a1",
+    frame_active = "#fdf6e3",
+    frame_inactive = "#eee8d5",
+    tab_bar_bg = "#fdf6e3",
+    active_tab_bg = "#eee8d5",
+    active_tab_fg = "#586e75",
+    inactive_tab_bg = "#f5efdc",
+    inactive_tab_fg = "#657b83",
+    inactive_tab_hover_bg = "#eee8d5",
+    inactive_tab_hover_fg = "#586e75",
+    new_tab_bg = "#fdf6e3",
+    new_tab_fg = "#657b83",
+  }},
+  tokyo_night_light = {{
+    tmux_profile = "light",
+    foreground = "#343b58",
+    background = "#d5d6db",
+    cursor_bg = "#34548a",
+    cursor_fg = "#d5d6db",
+    cursor_border = "#34548a",
+    selection_fg = "#343b58",
+    selection_bg = "#b7c1e3",
+    split = "#9699a3",
+    frame_active = "#d5d6db",
+    frame_inactive = "#c4c8da",
+    tab_bar_bg = "#d5d6db",
+    active_tab_bg = "#b7c1e3",
+    active_tab_fg = "#343b58",
+    inactive_tab_bg = "#c4c8da",
+    inactive_tab_fg = "#5a607a",
+    inactive_tab_hover_bg = "#b7c1e3",
+    inactive_tab_hover_fg = "#343b58",
+    new_tab_bg = "#d5d6db",
+    new_tab_fg = "#5a607a",
+  }},
+  gruvbox_light = {{
+    tmux_profile = "light",
+    foreground = "#3c3836",
+    background = "#fbf1c7",
+    cursor_bg = "#3c3836",
+    cursor_fg = "#fbf1c7",
+    cursor_border = "#3c3836",
+    selection_fg = "#3c3836",
+    selection_bg = "#ebdbb2",
+    split = "#928374",
+    frame_active = "#fbf1c7",
+    frame_inactive = "#f2e5bc",
+    tab_bar_bg = "#fbf1c7",
+    active_tab_bg = "#ebdbb2",
+    active_tab_fg = "#3c3836",
+    inactive_tab_bg = "#f2e5bc",
+    inactive_tab_fg = "#665c54",
+    inactive_tab_hover_bg = "#d5c4a1",
+    inactive_tab_hover_fg = "#3c3836",
+    new_tab_bg = "#fbf1c7",
+    new_tab_fg = "#665c54",
+  }},
+  rose_pine_dawn = {{
+    tmux_profile = "light",
+    foreground = "#575279",
+    background = "#faf4ed",
+    cursor_bg = "#575279",
+    cursor_fg = "#faf4ed",
+    cursor_border = "#575279",
+    selection_fg = "#575279",
+    selection_bg = "#dfdad9",
+    split = "#cecacd",
+    frame_active = "#faf4ed",
+    frame_inactive = "#f2e9e1",
+    tab_bar_bg = "#faf4ed",
+    active_tab_bg = "#dfdad9",
+    active_tab_fg = "#575279",
+    inactive_tab_bg = "#f2e9e1",
+    inactive_tab_fg = "#797593",
+    inactive_tab_hover_bg = "#e6e1e0",
+    inactive_tab_hover_fg = "#575279",
+    new_tab_bg = "#faf4ed",
+    new_tab_fg = "#797593",
+  }},
+}}
+local theme_aliases = {{
+  [""] = "dark",
+  ["default"] = "dark",
+  ["dark"] = "dark",
+  ["nord"] = "dark",
+  ["contrast"] = "dark",
+  ["light"] = "latte",
+  ["latte"] = "latte",
+  ["catppuccin-latte"] = "latte",
+  ["catppuccin_latte"] = "latte",
+  ["solarized"] = "solarized_light",
+  ["solarized-light"] = "solarized_light",
+  ["solarized_light"] = "solarized_light",
+  ["tokyo"] = "tokyo_night_light",
+  ["tokyo-light"] = "tokyo_night_light",
+  ["tokyo_light"] = "tokyo_night_light",
+  ["tokyo-night-light"] = "tokyo_night_light",
+  ["tokyo_night_light"] = "tokyo_night_light",
+  ["tokyo-night-day"] = "tokyo_night_light",
+  ["gruvbox"] = "gruvbox_light",
+  ["gruvbox-light"] = "gruvbox_light",
+  ["gruvbox_light"] = "gruvbox_light",
+  ["rose-pine-dawn"] = "rose_pine_dawn",
+  ["rose_pine_dawn"] = "rose_pine_dawn",
+}}
+local function normalize_theme(value)
+  local key = string.lower(tostring(value or "")):gsub("%s+", "-")
+  return theme_aliases[key] or "dark"
+end
+local function read_theme_file(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local value = file:read("*a")
+  file:close()
+  if value == nil or value == "" then
+    return nil
+  end
+  if wezterm.json_parse then
+    local ok, payload = pcall(wezterm.json_parse, value)
+    if ok and payload then
+      if payload.palette and payload.palette ~= "" then
+        return payload.palette
+      end
+      if payload.theme and payload.theme ~= "" then
+        return payload.theme
+      end
+    end
+  end
+  return value:match('"palette"%s*:%s*"([^"]+)"') or value:match('"theme"%s*:%s*"([^"]+)"') or value:match("^%s*([^%s]+)")
+end
+local requested_theme = read_theme_file(theme_config_path) or os.getenv("CCB_WORKBENCH_THEME") or os.getenv("CCB_TMUX_THEME_PROFILE") or "dark"
+local theme_name = normalize_theme(requested_theme)
+local theme = themes[theme_name] or themes.dark
 config.font = wezterm.font_with_fallback({{
   "JetBrains Mono",
   "Fira Code",
@@ -1361,6 +1582,7 @@ config.cell_width = 1.0
 config.initial_cols = 132
 config.initial_rows = 38
 config.enable_scroll_bar = false
+config.enable_tab_bar = false
 config.use_fancy_tab_bar = false
 config.hide_tab_bar_if_only_one_tab = true
 config.window_padding = {{
@@ -1372,41 +1594,46 @@ config.window_padding = {{
 config.window_frame = {{
   font = wezterm.font("JetBrains Mono"),
   font_size = 9.5,
+  active_titlebar_bg = theme.frame_active,
+  inactive_titlebar_bg = theme.frame_inactive,
 }}
 config.colors = {{
-  foreground = "#d8dee9",
-  background = "#1f2328",
-  cursor_bg = "#88c0d0",
-  cursor_fg = "#1f2328",
-  cursor_border = "#88c0d0",
-  selection_fg = "#eceff4",
-  selection_bg = "#3b4252",
-  split = "#4c566a",
+  foreground = theme.foreground,
+  background = theme.background,
+  cursor_bg = theme.cursor_bg,
+  cursor_fg = theme.cursor_fg,
+  cursor_border = theme.cursor_border,
+  selection_fg = theme.selection_fg,
+  selection_bg = theme.selection_bg,
+  split = theme.split,
   tab_bar = {{
-    background = "#1f2328",
+    background = theme.tab_bar_bg,
     active_tab = {{
-      bg_color = "#2e3440",
-      fg_color = "#eceff4",
+      bg_color = theme.active_tab_bg,
+      fg_color = theme.active_tab_fg,
     }},
     inactive_tab = {{
-      bg_color = "#242933",
-      fg_color = "#a7b0be",
+      bg_color = theme.inactive_tab_bg,
+      fg_color = theme.inactive_tab_fg,
     }},
     inactive_tab_hover = {{
-      bg_color = "#303846",
-      fg_color = "#eceff4",
+      bg_color = theme.inactive_tab_hover_bg,
+      fg_color = theme.inactive_tab_hover_fg,
     }},
     new_tab = {{
-      bg_color = "#1f2328",
-      fg_color = "#a7b0be",
+      bg_color = theme.new_tab_bg,
+      fg_color = theme.new_tab_fg,
     }},
   }},
 }}
 config.set_environment_variables = {{
   CCB_WORKBENCH_PROFILE = "rich",
+  CCB_WORKBENCH_THEME = theme_name,
   CCB_WORKBENCH_ROOT = "{_lua_string(str(paths['root']))}",
   CCB_WORKBENCH_TERMINAL_PROGRAM = "WezTerm",
   CCB_WORKBENCH_TERMINAL_PROGRAM_VERSION = wezterm.version,
+  CCB_TMUX_THEME_PROFILE = theme.tmux_profile,
+  CCB_SIDEBAR_THEME_PROFILE = theme.tmux_profile,
   CCB_WORKBENCH_YAZI_SAFE_CONFIG = "{_lua_string(str(paths['yazi_safe_profile']))}",
   CCB_WORKBENCH_YAZI_RICH_CONFIG = "{_lua_string(str(paths['yazi_rich_profile']))}",
 }}
@@ -1501,6 +1728,42 @@ configure_input_method_env() {{
       ;;
   esac
 }}
+normalize_workbench_theme() {{
+  key="$(printf '%s' "${{1:-}}" | tr '[:upper:]' '[:lower:]' | tr '_' '-' | tr ' ' '-')"
+  case "$key" in
+    ""|default|dark|nord|contrast) printf '%s\\n' dark ;;
+    light|latte|catppuccin-latte) printf '%s\\n' latte ;;
+    solarized|solarized-light) printf '%s\\n' solarized_light ;;
+    tokyo|tokyo-light|tokyo-night-light|tokyo-night-day) printf '%s\\n' tokyo_night_light ;;
+    gruvbox|gruvbox-light) printf '%s\\n' gruvbox_light ;;
+    rose-pine-dawn) printf '%s\\n' rose_pine_dawn ;;
+    *) printf '%s\\n' dark ;;
+  esac
+}}
+theme_config_file={_shell_quote(str(paths['theme_config']))}
+read_workbench_theme_config() {{
+  if [ ! -r "$theme_config_file" ]; then
+    return 0
+  fi
+  value="$(sed -n 's/.*"palette"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "$theme_config_file" 2>/dev/null | sed -n '1p')"
+  if [ -n "$value" ]; then
+    printf '%s\\n' "$value"
+    return 0
+  fi
+  sed -n 's/.*"theme"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "$theme_config_file" 2>/dev/null | sed -n '1p'
+}}
+requested_theme="${{CCB_WORKBENCH_THEME:-${{CCB_TMUX_THEME_PROFILE:-}}}}"
+if [ -z "$requested_theme" ]; then
+  requested_theme="$(read_workbench_theme_config)"
+fi
+workbench_theme="$(normalize_workbench_theme "${{requested_theme:-dark}}")"
+case "$workbench_theme" in
+  dark) workbench_tmux_theme=default ;;
+  *) workbench_tmux_theme=light ;;
+esac
+export CCB_WORKBENCH_THEME="$workbench_theme"
+export CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme"
+export CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme"
 case "$cmd" in
   files|yazi)
     shift || true
@@ -1591,8 +1854,11 @@ case "$cmd" in
             -u CCB_TMUX_SOCKET_PATH \
             PATH="$PATH" \
             CCB_WORKBENCH_PROFILE=rich \
+            CCB_WORKBENCH_THEME="$workbench_theme" \
             CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
             CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+            CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+            CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
             CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
             CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
             CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1605,8 +1871,11 @@ case "$cmd" in
           -u CCB_TMUX_SOCKET_PATH \
           PATH="$PATH" \
           CCB_WORKBENCH_PROFILE=rich \
+          CCB_WORKBENCH_THEME="$workbench_theme" \
           CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
           CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+          CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+          CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
           CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
           CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
           CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1621,8 +1890,11 @@ case "$cmd" in
           -u CCB_TMUX_SOCKET_PATH \
           PATH="$PATH" \
           CCB_WORKBENCH_PROFILE=rich \
+          CCB_WORKBENCH_THEME="$workbench_theme" \
           CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
           CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+          CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+          CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
           CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
           CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
           CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1636,8 +1908,11 @@ case "$cmd" in
         -u CCB_TMUX_SOCKET_PATH \
         PATH="$PATH" \
         CCB_WORKBENCH_PROFILE=rich \
+        CCB_WORKBENCH_THEME="$workbench_theme" \
         CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
         CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+        CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+        CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
         CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
         CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
         CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1650,8 +1925,11 @@ case "$cmd" in
         -u CCB_TMUX_SOCKET \
         -u CCB_TMUX_SOCKET_PATH \
         CCB_WORKBENCH_PROFILE=rich \
+        CCB_WORKBENCH_THEME="$workbench_theme" \
         CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
         CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+        CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+        CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
         CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
         CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
         CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1664,8 +1942,11 @@ case "$cmd" in
       -u CCB_TMUX_SOCKET \
       -u CCB_TMUX_SOCKET_PATH \
       CCB_WORKBENCH_PROFILE=rich \
+      CCB_WORKBENCH_THEME="$workbench_theme" \
       CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
       CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+      CCB_TMUX_THEME_PROFILE="$workbench_tmux_theme" \
+      CCB_SIDEBAR_THEME_PROFILE="$workbench_tmux_theme" \
       CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
       CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
       CCB_WORKBENCH_FORCE_RICH=1 \
@@ -1932,6 +2213,7 @@ def _status_paths(paths: dict[str, Path]) -> dict[str, object]:
         'yazi_rich_config': str(paths['yazi_rich_profile']),
         'wezterm_config': str(paths['wezterm_config']),
         'state_root': str(paths['state_root']),
+        'theme_config': str(paths['theme_config']),
         'cache_root': str(paths['cache_root']),
     }
 
