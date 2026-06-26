@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.17-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.18-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -709,6 +709,18 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.18</b> - CCB UI Theme Preference</summary>
+
+- Adds `ccb theme` as the top-level theme switch for CCB-owned tmux/sidebar UI,
+  with `+` and `-` cycling across dark and light palettes.
+- Adds readable light-mode tmux status, pane border, sidebar, activity, and
+  comms status colors for light terminal backgrounds.
+- Makes generated rich WezTerm profiles follow the same global CCB theme
+  preference on the next launch/reload.
+
+</details>
+
+<details>
 <summary><b>v7.6.17</b> - Codex Log Symlink Target Repair</summary>
 
 - Repairs managed Codex `logs_2.sqlite` temp symlink targets when

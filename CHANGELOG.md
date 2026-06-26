@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v7.6.18 (2026-06-26)
+
+### CCB UI Theme Preference
+
+- **Global Theme Command Added**: `ccb theme` now shows or changes the global
+  CCB UI theme, including `+` and `-` cycling across dark and light palettes.
+- **Light Tmux And Sidebar Themes Added**: CCB-owned tmux status, pane borders,
+  sidebar colors, and activity/status indicators now have readable light-mode
+  styling for light terminal backgrounds.
+- **Rich WezTerm Theme Sync Added**: generated rich WezTerm profiles read the
+  same CCB theme preference and export matching tmux/sidebar theme variables.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.18.
+
 ## v7.6.17 (2026-06-25)
 
 ### Codex Log Symlink Target Repair

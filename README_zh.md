@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.17-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.18-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -695,6 +695,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.6.18</b> - CCB UI 主题偏好</summary>
+
+- 新增顶层 `ccb theme` 主题切换命令，可调整 CCB 自有 tmux/sidebar UI，
+  并支持用 `+` / `-` 在深色和浅色 palette 间循环。
+- 新增适合浅色 terminal 背景的 tmux status、pane border、sidebar、agent
+  活动状态和 comms 状态配色。
+- 生成的 rich WezTerm profile 会读取同一个全局 CCB 主题偏好，并在下次
+  打开或 reload 时同步主题。
+
+</details>
+
+<details>
 <summary><b>v7.6.17</b> - Codex Log Symlink Target 修复</summary>
 
 - 当 `/tmp/ccb-codex-logs-*` 清理导致 managed Codex `logs_2.sqlite` 临时
