@@ -292,6 +292,8 @@ def test_materialize_runtime_memory_bundle_writes_generated_bundle(tmp_path: Pat
     assert 'CCB `ask` is submit-only' in text
     assert 'Do not wait, poll, or run `pend`/`watch`/`ping`' in text
     assert 'use `ask --callback` when a child result is needed' in text
+    assert 'During a CCB callback continuation, answer directly with the final result' in text
+    assert 'do not use `ask`, `--callback`, or `--silence`' in text
     assert '## CCB Shared Project Memory' in text
     assert 'shared ask rules' in text
     assert text.index('## CCB Runtime Coordination Rules') < text.index('## CCB Shared Project Memory')

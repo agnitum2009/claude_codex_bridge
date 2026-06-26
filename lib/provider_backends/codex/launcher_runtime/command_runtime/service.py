@@ -124,6 +124,7 @@ def _env_map(runtime_dir: Path, launch_session_id: str, *, spec, profile, codex_
     return {
         **provider_user_session_env(),
         **inherited_api_env,
+        'RUST_LOG': 'off',
         **explicit_env,
         'CODEX_RUNTIME_DIR': str(runtime_dir),
         'CODEX_INPUT_FIFO': str(artifacts.input_fifo),

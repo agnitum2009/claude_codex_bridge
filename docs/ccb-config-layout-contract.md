@@ -221,8 +221,6 @@ work = "worker1:codex(worktree), worker2:claude(worktree)"
 mode = "every_window"
 width = "15%"
 bottom_height = 20
-
-[ui.sidebar.view]
 agents_height = "50%"
 comms_height = "15%"
 tips_height = "35%"
@@ -279,11 +277,13 @@ Contract:
 - `entry_window` may reference either an agent window or a tool window.
 - Windows topology must not be combined with legacy `default_agents`, `layout`, or `cmd_enabled` fields.
 - `entry_window` is optional and defaults to the first declared window.
-- `[ui.sidebar]` is valid only with windows topology. Defaults are `mode = "every_window"`, `width = "15%"`, and `bottom_height = 20`; `width` accepts either a positive integer column count or a percentage string.
-- In `mode = "every_window"`, CCB treats `width` as a project-wide sidebar width. Topology refreshes must resize every managed sidebar pane to the same configured share of its tmux window so page/window switches do not leave sidebars at different widths. If the user drags a sidebar border, CCB stores that runtime column width in the project tmux session and applies it to every managed sidebar window until the session is recreated. If tmux later resizes a window because a terminal client attaches or changes size, CCB reapplies the stored runtime width instead of treating the auto-resized pane width as a new user preference.
-- `[ui.sidebar.view]` is optional and controls only the sidebar pane's internal presentation. It must not redefine managed windows, agents, pane ownership, provider runtime, or message/job authority.
-- `[ui.sidebar.view]` changes are UI-only: `agents_height`, `comms_height`, `tips_height`, `comms_limit`, `comms_compact`, `tips_enabled`, and `tips` are delivered through `project_view` and must not force namespace topology recreation. `agents_height` controls the top Tree/Agent panel, `comms_height` controls the Comms panel, and `tips_height` controls the Tips panel; all three accept a positive integer row count or a percentage string. The default split is `50%`, `15%`, and `35%`.
-- If a hot-loaded `[ui.sidebar.view]` parse fails, `project_view.namespace.sidebar.view_error` reports the config error and the sidebar displays a `config ✕` warning while retaining the daemon's last valid view config.
+- `[ui.sidebar]` is valid only with windows topology. Defaults are `mode = "every_window"`, `width = "15%"`, `bottom_height = 20`, and `position = "left"`; `width` accepts either a positive integer column count or a percentage string.
+- `position` accepts only `left` or `right`. `left` keeps the sidebar as the first horizontal pane before the user layout; `right` keeps the same vertical sidebar pane after the user layout. Bottom or horizontal sidebar placement is not part of this contract.
+- In `mode = "every_window"`, CCB treats `width` as a project-wide sidebar width regardless of left/right position. Topology refreshes must resize every managed sidebar pane to the same configured share of its tmux window so page/window switches do not leave sidebars at different widths. If the user drags a sidebar border, CCB stores that runtime column width in the project tmux session and applies it to every managed sidebar window until the session is recreated. If tmux later resizes a window because a terminal client attaches or changes size, CCB reapplies the stored runtime width instead of treating the auto-resized pane width as a new user preference.
+- Sidebar presentation fields live directly under `[ui.sidebar]`: `agents_height`, `comms_height`, `tips_height`, `comms_limit`, `comms_compact`, `tips_enabled`, and `tips`. They control only the sidebar pane's internal presentation and must not redefine managed windows, agents, pane ownership, provider runtime, or message/job authority.
+- Sidebar presentation field changes are UI-only: they are delivered through `project_view` and must not force namespace topology recreation. `agents_height` controls the top Tree/Agent panel, `comms_height` controls the Comms panel, and `tips_height` controls the Tips panel; all three accept a positive integer row count or a percentage string. The default split is `50%`, `15%`, and `35%`.
+- Legacy `[ui.sidebar.view]` remains accepted as a compatibility input, but config rendering must emit the single-table `[ui.sidebar]` form.
+- If a hot-loaded sidebar presentation parse fails, `project_view.namespace.sidebar.view_error` reports the config error and the sidebar displays a `config ✕` warning while retaining the daemon's last valid view config.
 - Agent leaves in `[windows]` provide canonical `provider` and default
   `workspace_mode` (`agent:provider` means `inplace`;
   `agent:provider(worktree)` means `git-worktree`). They may also include an
@@ -301,11 +301,21 @@ Contract:
 - `workspace_mode = "copy"` remains an advanced overlay-only mode until the
   compact leaf grammar has a first-class copy-mode spelling.
 - `[agents.<name>].role` may bind a configured agent to a reusable Role Pack
-  such as `ccb.archi`. The role id is stable package identity; the agent name
-  remains the project-local ask target. Role ids must use publisher-qualified
-  form such as `ccb.archi` or `seemseam.archi`.
+  such as `agentroles.archi`. The role id is stable package identity; the
+  agent name remains the project-local ask target. Role ids must use
+  publisher-qualified form such as `agentroles.archi` or `seemseam.archi`.
 - Role binding is not topology authority by itself. An agent with a role still
   must be referenced by `[windows]` to become configured and mounted.
+- Multiple configured agents may bind the same role id. This is the canonical
+  way to run several project-local instances of one Role Pack with distinct
+  names, providers, private memory, queues, panes, and provider homes.
+- Role id shorthand in `[windows]`, for example `agentroles.archi:codex`, is a
+  convenience for the role manifest's default agent name only. A second
+  instance of the same role must use an explicit agent leaf plus
+  `[agents.<name>].role`, or `ccb roles add <role-id>:<provider> --agent <name>`.
+- `ccb ask <role-id> ...` is only an alias when exactly one configured agent is
+  bound to that role. If multiple agents share the role, users must target the
+  project-local agent name explicitly.
 - Role assets are projected into managed provider homes as rebuildable role
   assets. Provider sessions, auth, runtime authority, mailbox state, and agent
   private memory must remain agent/project scoped.

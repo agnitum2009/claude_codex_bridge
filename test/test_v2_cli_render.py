@@ -14,6 +14,7 @@ from cli.render import (
     render_inbox,
     render_kill,
     render_logs,
+    render_mobile_serve,
     render_ps,
     render_queue,
     render_reload,
@@ -107,6 +108,145 @@ def test_render_clear_includes_agent_results() -> None:
         'clear_agent: agent=agent1 status=cleared pane_id=%1',
         'clear_agent: agent=agent2 status=skipped reason=runtime_missing',
         'clear_agent: agent=agent3 status=failed pane_id=%3 reason=send failed',
+    )
+
+
+def test_render_mobile_serve_includes_loopback_gateway_summary() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'serving',
+            'listen': '127.0.0.1:8787',
+            'gateway_url': 'http://127.0.0.1:8787',
+            'route_provider': 'lan',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mode': 'loopback_current_project',
+            'endpoints': ['/v1/health', '/v1/projects'],
+        }
+    ) == (
+        'mobile_status: serving',
+        'listen: 127.0.0.1:8787',
+        'gateway_url: http://127.0.0.1:8787',
+        'route_provider: lan',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mode: loopback_current_project',
+        'endpoints: /v1/health, /v1/projects',
+    )
+
+
+def test_render_mobile_serve_includes_pairing_summary_when_present() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'serving',
+            'listen': '127.0.0.1:8787',
+            'gateway_url': 'https://mobile.example.com',
+            'route_provider': 'cloudflare_tunnel',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mode': 'loopback_current_project',
+            'endpoints': ['/v1/health', '/v1/pairing/claim'],
+            'pairing': {
+                'pairing_code': 'pair-code',
+                'expires_at': '2026-06-18T00:10:00Z',
+                'claim_endpoint': 'http://127.0.0.1:8787/v1/pairing/claim',
+            },
+        }
+    ) == (
+        'mobile_status: serving',
+        'listen: 127.0.0.1:8787',
+        'gateway_url: https://mobile.example.com',
+        'route_provider: cloudflare_tunnel',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mode: loopback_current_project',
+        'endpoints: /v1/health, /v1/pairing/claim',
+        'pairing_code: pair-code',
+        'pairing_expires_at: 2026-06-18T00:10:00Z',
+        'pairing_claim_endpoint: http://127.0.0.1:8787/v1/pairing/claim',
+    )
+
+
+def test_render_mobile_serve_includes_relay_outbound_summary() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'serving',
+            'listen': '127.0.0.1:8787',
+            'gateway_url': 'https://relay.seemlab.top',
+            'route_provider': 'relay',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mode': 'loopback_current_project',
+            'relay_outbound': {
+                'status': 'registered',
+                'mode': 'local_harness',
+                'host_id': 'proj-1',
+            },
+        }
+    ) == (
+        'mobile_status: serving',
+        'listen: 127.0.0.1:8787',
+        'gateway_url: https://relay.seemlab.top',
+        'route_provider: relay',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mode: loopback_current_project',
+        'relay_outbound_status: registered',
+        'relay_outbound_mode: local_harness',
+        'relay_outbound_host_id: proj-1',
+    )
+
+
+def test_render_mobile_devices_lists_without_tokens() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'devices',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mobile_state_dir': '/tmp/project/.ccb/ccbd/mobile',
+            'devices': [
+                {
+                    'device_id': 'dev_1',
+                    'name': 'Pixel',
+                    'scopes': ['focus', 'view'],
+                    'route_provider': 'cloudflare_tunnel',
+                    'last_seen_at': '2026-06-18T00:00:00Z',
+                    'revoked': False,
+                }
+            ],
+        }
+    ) == (
+        'mobile_status: devices',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mobile_state_dir: /tmp/project/.ccb/ccbd/mobile',
+        'device: id=dev_1 name=Pixel revoked=false route_provider=cloudflare_tunnel scopes=focus,view last_seen_at=2026-06-18T00:00:00Z',
+    )
+
+
+def test_render_mobile_revoke_summary() -> None:
+    assert render_mobile_serve(
+        {
+            'mobile_status': 'revoked',
+            'project_id': 'proj-1',
+            'project_root': '/tmp/project',
+            'mobile_state_dir': '/tmp/project/.ccb/ccbd/mobile',
+            'device': {
+                'device_id': 'dev_1',
+                'revoked': True,
+                'revoked_at': '2026-06-18T00:00:00Z',
+            },
+            'revoked_terminal_count': 2,
+        }
+    ) == (
+        'mobile_status: revoked',
+        'project_id: proj-1',
+        'project_root: /tmp/project',
+        'mobile_state_dir: /tmp/project/.ccb/ccbd/mobile',
+        'device_id: dev_1',
+        'device_revoked: true',
+        'revoked_at: 2026-06-18T00:00:00Z',
+        'revoked_terminal_count: 2',
     )
 
 

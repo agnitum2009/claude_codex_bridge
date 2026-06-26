@@ -24,11 +24,19 @@ Date: 2026-06-07
 - Keep docs and inherited ask skill wording aligned around result-intent-first
   selection and proactive use of `--silence`, `--compact`, and
   `--artifact-reply`.
+- Coordinate callback-continuation finalization wording with
+  [callback-continuation-safety](../callback-continuation-safety/README.md).
+  That plan owns the runtime guard; this plan owns inherited ask skill wording.
 
 ## Next
 
 - Keep Codex, Claude, and Droid inherited ask skill policy wording aligned.
+- Project the callback-continuation finalization rule from
+  [topics/skill-update-draft.md](topics/skill-update-draft.md) into inherited
+  ask skill templates after the runtime guard contract is implementation-ready.
 - Add or maintain template checks for result-intent and artifact-policy text.
+- Add static assertions that each inherited ask skill template includes the
+  callback-continuation finalization rule where an ask skill is projected.
 - Run focused unit tests for ask skill templates and ask route option mapping.
 - Re-run external source-under-test validation from
   `/home/bfly/yunwei/test_ccb2` when the matrix or skill wording changes.

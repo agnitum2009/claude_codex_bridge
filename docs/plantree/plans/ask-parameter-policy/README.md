@@ -103,6 +103,7 @@ The current policy has recorded static, unit, and external runtime validation:
 - [../../../managed-provider-completion-reliability-plan.md](../../../managed-provider-completion-reliability-plan.md)
 - [../../baseline/runtime-flows.md](../../baseline/runtime-flows.md)
 - [../../baseline/test-and-release-gates.md](../../baseline/test-and-release-gates.md)
+- [../callback-continuation-safety/README.md](../callback-continuation-safety/README.md)
 - [../../../../inherit_skills/codex_skills/ask/SKILL.md](../../../../inherit_skills/codex_skills/ask/SKILL.md)
 - [../../../../inherit_skills/claude_skills/ask/SKILL.md](../../../../inherit_skills/claude_skills/ask/SKILL.md)
 - [../../../../inherit_skills/droid_skills/ask/SKILL.md](../../../../inherit_skills/droid_skills/ask/SKILL.md)

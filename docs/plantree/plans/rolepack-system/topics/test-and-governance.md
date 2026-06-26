@@ -43,6 +43,10 @@ Testing must cover both the host-neutral schema and the CCB adapter.
   agent is bound to that role id; no-match and multi-match cases fail with
   explicit guidance.
 - Multi-match ask alias errors list the matching project-local agent names.
+- Multiple project-local agents may bind the same role id through explicit
+  `[agents.<name>].role` overlays or `ccb roles add <role-id>:<provider>
+  --agent <name>`. Tests must verify the instances keep distinct agent names
+  and ask-by-role remains ambiguous until the user targets one agent name.
 
 ## Lifecycle Tests
 

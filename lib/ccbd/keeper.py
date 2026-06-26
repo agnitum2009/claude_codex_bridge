@@ -22,6 +22,7 @@ from ccbd.socket_client import CcbdClient, CcbdClientError
 from ccbd.startup_policy import STARTUP_TRANSACTION_TIMEOUT_S
 from ccbd.system import parse_utc_timestamp, process_exists, utc_now
 from cli.kill_runtime.processes import terminate_pid_tree
+from mobile_gateway.project_registry import publish_mobile_gateway_project
 from storage.paths import PathLayout
 
 
@@ -39,6 +40,7 @@ class ProjectKeeper(KeeperAppStateMixin):
         resolved_project_root = Path(project_root).expanduser().resolve()
         paths = PathLayout(resolved_project_root)
         paths.ensure_runtime_state_root()
+        _publish_mobile_gateway_project(paths.project_id, resolved_project_root, paths.ccbd_socket_path, clock=clock)
         mount_manager = MountManager(paths, clock=clock)
         self._runtime_state = KeeperAppState(
             project_root=resolved_project_root,
@@ -180,6 +182,19 @@ def _try_acquire_keeper_lock(path: Path):
 
 def _reap_child_processes(*, waitpid_fn=os.waitpid) -> tuple[int, ...]:
     return reap_child_processes(waitpid_fn=waitpid_fn)
+
+
+def _publish_mobile_gateway_project(project_id: str, project_root: Path, ccbd_socket_path: Path, *, clock) -> None:
+    try:
+        publish_mobile_gateway_project(
+            project_id=project_id,
+            project_root=project_root,
+            ccbd_socket_path=ccbd_socket_path,
+            display_name=project_root.name,
+            updated_at=clock(),
+        )
+    except Exception:
+        pass
 
 
 def _timestamp_plus_seconds(value: str, seconds: float) -> str:

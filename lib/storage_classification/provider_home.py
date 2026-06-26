@@ -18,7 +18,7 @@ _CODEX_PROJECTED_NAMES = {'config.toml'}
 _OPENCODE_PROJECTED_NAMES = {'opencode.json'}
 _MIMO_PROJECTED_NAMES = {'mimocode.json'}
 _NATIVE_CLI_PROVIDERS = {'qwen', 'cursor', 'copilot', 'crush', 'kiro', 'pi', 'zai'}
-_NATIVE_CLI_PROJECTED_ROOTS = {'inherited-skills', 'role-skills'}
+_NATIVE_CLI_PROJECTED_ROOTS = {'inherited-skills', 'role-skills', 'overlay-skills'}
 _NATIVE_CLI_CACHE_ROOTS = {'.cache', '.npm', '.tmp', 'cache', 'node_modules', 'tmp'}
 _NATIVE_CLI_SESSION_ROOTS = {
     '.config',
@@ -252,7 +252,7 @@ def _classify_kimi_home(
     agent: str,
     root_kind: str,
 ) -> StorageEntry:
-    if remainder[0] in {'inherited-skills', 'role-skills'}:
+    if remainder[0] in {'inherited-skills', 'role-skills', 'overlay-skills'}:
         return _entry(path, relative_path, StorageClass.PROJECTED_CONFIG, size, provider=provider, agent=agent, root_kind=root_kind)
     return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
 

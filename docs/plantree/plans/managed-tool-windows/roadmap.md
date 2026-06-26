@@ -97,6 +97,12 @@ Date: 2026-05-30
   dependencies, and can launch Windows-native `wezterm.exe` from WSL while
   keeping rich tools inside the current Linux distro. Evidence is recorded in
   [history/rich-binary-dependency-slice-2026-06-15.md](history/rich-binary-dependency-slice-2026-06-15.md).
+- Landed the global `ccb theme` preference slice:
+  `ccb theme [light|dark|+|-]` writes user-level
+  `$XDG_CONFIG_HOME/ccb/theme.json`, ordinary terminals only receive CCB
+  tmux/sidebar color changes, and CCB-owned rich WezTerm follows the same
+  preference through generated config reload. Design and validation evidence
+  are recorded in [topics/ui-theme-preference.md](topics/ui-theme-preference.md).
 
 ## In Progress
 

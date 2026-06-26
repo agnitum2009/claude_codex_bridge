@@ -21,6 +21,7 @@ SUBCOMMANDS = {
     'ack',
     'logs',
     'maintenance',
+    'mobile',
     'doctor',
     'repair',
     'config',

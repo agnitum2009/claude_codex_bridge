@@ -47,6 +47,9 @@ def test_shell_ask_skill_templates_use_short_ask_command() -> None:
         assert 'Automatic spill for text over 4 KiB is a fallback' in text
         assert 'In `A --silence -> B`, B still runs an active job.' in text
         assert 'In callback chains, each waiting hop uses callback' in text
+        assert 'If the current task is a CCB callback continuation' in text
+        assert 'Do not use `ask`, `--callback`, or' in text
+        assert 'continuation completion upstream' in text
         assert 'command ask "$TARGET"' in text
         assert 'command ask --callback --artifact-reply "$TARGET"' in text
         assert '[FLAGS...]' not in text
@@ -83,6 +86,9 @@ def test_powershell_ask_skill_template_uses_short_ask_command() -> None:
     assert 'Automatic spill for text over 4 KiB is a fallback' in text
     assert 'In `A --silence -> B`, B still runs an active job.' in text
     assert 'In callback chains, each waiting hop uses callback' in text
+    assert 'If the current task is a CCB callback continuation' in text
+    assert 'Do not use `ask`, `--callback`, or' in text
+    assert 'continuation completion upstream' in text
     assert '@("--callback", "--artifact-reply", "$TARGET")' in text
     assert re.search(r'[\u4e00-\u9fff]', text) is None
 

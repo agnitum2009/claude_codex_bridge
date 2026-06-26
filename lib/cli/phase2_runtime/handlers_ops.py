@@ -33,6 +33,31 @@ def handle_maintenance(context, command, out, services) -> int:
     return 0 if str(payload.get('maintenance_status') or '') in {'ok', 'degraded'} else 2
 
 
+def handle_mobile(context, command, out, services) -> int:
+    if command.action == 'devices':
+        payload = services.mobile_devices_status(context, command)
+        services.write_lines(out, services.render_mobile_serve(payload))
+        return 0
+    if command.action == 'revoke':
+        payload = services.revoke_mobile_device(context, command)
+        services.write_lines(out, services.render_mobile_serve(payload))
+        return 0
+    handle = services.prepare_mobile_gateway(context, command)
+    services.write_lines(out, services.render_mobile_serve(handle.summary))
+    flush = getattr(out, 'flush', None)
+    if callable(flush):
+        flush()
+    try:
+        handle.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        close = getattr(handle, 'close', None)
+        if callable(close):
+            close()
+    return 0
+
+
 def handle_ps(context, command, out, services) -> int:
     payload = services.ps_summary(context, command)
     services.write_lines(out, services.render_ps(payload))
@@ -98,6 +123,7 @@ __all__ = [
     'handle_kill',
     'handle_logs',
     'handle_maintenance',
+    'handle_mobile',
     'handle_ps',
     'handle_reload',
     'handle_restart',

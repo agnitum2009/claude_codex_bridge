@@ -6,15 +6,17 @@ import shlex
 from agents.models import (
     AgentSpec,
     PermissionMode,
+    ProviderProfileSpec,
     QueuePolicy,
     RestoreMode,
     RuntimeMode,
+    SkillOverlaySpec,
     WorkspaceMode,
 )
 from cli.models import ParsedStartCommand
 from provider_backends.deepseek.launcher import build_start_cmd as build_deepseek_start_cmd
 from provider_backends.kimi.launcher import build_start_cmd as build_kimi_start_cmd
-from provider_backends.kimi.skills import kimi_skill_dirs_for_launch
+from provider_backends.kimi.skills import kimi_skill_dirs_for_launch, materialize_kimi_skills
 from provider_backends.mimo.launcher import build_start_cmd as build_mimo_start_cmd
 
 
@@ -119,6 +121,40 @@ def test_kimi_start_cmd_adds_materialized_skill_dirs(monkeypatch, tmp_path: Path
         str(ccb_skill_dir),
     ]
     assert parts[-2:] == ["--model", "kimi-k2"]
+
+
+def test_materialize_kimi_skills_projects_skill_overlays(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    state_dir = tmp_path / "provider-state" / "kimi"
+    overlay_source = tmp_path / "codex-skills"
+    project.mkdir(parents=True)
+    for skill_name in ("trellis-check", "trellis-start", "unrelated"):
+        skill_dir = overlay_source / skill_name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(f"{skill_name}\n", encoding="utf-8")
+
+    active_dirs = materialize_kimi_skills(
+        project_root=project,
+        agent_name="agent1",
+        state_dir=state_dir,
+        profile=ProviderProfileSpec(
+            inherit_skills=False,
+            skill_overlays={
+                "n14_trellis": SkillOverlaySpec(
+                    source=str(overlay_source),
+                    include=("trellis-*",),
+                ),
+            },
+        ),
+    )
+
+    overlay_dir = state_dir / "overlay-skills"
+    assert overlay_dir in active_dirs
+    assert (overlay_dir / "trellis-check" / "SKILL.md").read_text(encoding="utf-8") == "trellis-check\n"
+    assert (overlay_dir / "trellis-start" / "SKILL.md").read_text(encoding="utf-8") == "trellis-start\n"
+    assert (overlay_dir / "trellis-check.ccb-projection.json").is_file()
+    assert (overlay_dir / "trellis-start.ccb-projection.json").is_file()
+    assert not (overlay_dir / "unrelated").exists()
 
 
 def test_deepseek_start_cmd_defaults_to_deepcode_and_keeps_startup_args(monkeypatch, tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from provider_core.fifo_delivery import cleanup_acks
+from provider_backends.codex.launcher_runtime.command_runtime.diagnostics import CodexDiagnosticLogFilterInstaller
 
 from .env import env_float
 from .runtime_io import process_request, read_request
@@ -22,6 +23,8 @@ class DualBridge:
             raise RuntimeError('Missing CODEX_TMUX_SESSION environment variable')
 
         self._runtime = build_bridge_runtime_state(runtime_dir, pane_id=pane_id)
+        self._diagnostic_log_filter = CodexDiagnosticLogFilterInstaller()
+        self._diagnostic_log_filter.maybe_install()
         self._running = True
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -71,6 +74,7 @@ class DualBridge:
         try:
             while self._running:
                 try:
+                    self._diagnostic_log_filter.maybe_install()
                     payload = self._read_request(timeout=poll_timeout)
                     if payload is None:
                         continue

@@ -45,7 +45,11 @@ def apply_project_tmux_ui(
         border_script=border_script,
         rendered_theme=rendered_theme,
     )
-    _apply_active_pane_border(resolved_backend, session_name=session_name)
+    _apply_active_pane_border(
+        resolved_backend,
+        session_name=session_name,
+        rendered_theme=rendered_theme,
+    )
 
 
 def _apply_session_theme(backend, *, session_name: str, rendered_theme) -> None:
@@ -184,18 +188,22 @@ def _apply_pane_theme(backend, *, session_name: str, border_script: str | None, 
         options.update(window_styles)
         for option, value in options.items():
             tmux_run(backend, ['set-window-option', '-t', target, option, value])
+        for option in ('window-style', 'window-active-style'):
+            if option not in options:
+                tmux_run(backend, ['set-window-option', '-u', '-t', target, option])
     if border_script is not None:
         hook = _border_hook_command(border_script)
         tmux_run(backend, ['set-hook', '-t', session_name, 'after-select-pane', hook])
 
 
-def _apply_active_pane_border(backend, *, session_name: str) -> None:
+def _apply_active_pane_border(backend, *, session_name: str, rendered_theme) -> None:
     active_pane_id = active_session_pane_id(backend, session_name)
     if not active_pane_id:
         return
     style = (
         pane_option_value(backend, active_pane_id, '@ccb_active_border_style')
         or pane_option_value(backend, active_pane_id, '@ccb_border_style')
+        or rendered_theme.window_options.get('pane-active-border-style')
         or 'fg=#7aa2f7,bold'
     )
     tmux_run(

@@ -707,6 +707,8 @@ def test_dispatcher_callback_routes_child_result_as_parent_continuation(tmp_path
     assert continuation_job.request.from_actor == 'user'
     assert continuation_job.request.message_type == 'callback_continuation'
     assert 'evidence found' in continuation_job.request.body
+    assert 'Finish this current response with the final result.' in continuation_job.request.body
+    assert 'Do not call ask, --callback, or --silence to the original caller' in continuation_job.request.body
 
     dispatcher.complete(edge.continuation_job_id, _decision(reply='final answer'))
     final_edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
@@ -948,6 +950,191 @@ def test_dispatcher_allows_silent_nested_ask_from_active_parent(tmp_path: Path) 
     assert CallbackEdgeStore(layout).list_all() == []
 
 
+def test_dispatcher_rejects_callback_from_continuation_to_original_caller(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-continuation-upstream-reject'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude', 'gemini')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    registry.upsert(_runtime('gemini', project_id=ctx.project_id, layout=layout, pid=103))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    parent_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='parent task',
+            task_id='task-continuation-upstream-reject',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+    child_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='gemini',
+            from_actor='claude',
+            body='child task',
+            task_id='task-continuation-upstream-reject',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+    edge = CallbackEdgeStore(layout).get_latest_for_child_job(child_job_id)
+    assert edge is not None
+    assert edge.original_caller == 'codex'
+    dispatcher.complete(parent_job_id, _decision(reply='delegated'))
+    dispatcher.tick()
+    dispatcher.complete(child_job_id, _decision(reply='child result'))
+
+    edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
+    assert edge is not None
+    assert edge.continuation_job_id
+    dispatcher.tick()
+
+    with pytest.raises(DispatchError, match='callback continuation job .* original caller codex'):
+        dispatcher.submit(
+            MessageEnvelope(
+                project_id=ctx.project_id,
+                to_agent='codex',
+                from_actor='claude',
+                body='incorrect final delivery',
+                task_id='task-continuation-upstream-reject',
+                reply_to=None,
+                message_type='ask',
+                delivery_scope=DeliveryScope.SINGLE,
+                route_options={'mode': 'callback'},
+            )
+        )
+
+    assert dispatcher._job_store.list_agent('codex') == []
+    assert not [
+        current
+        for current in CallbackEdgeStore(layout).list_all()
+        if current.parent_job_id == edge.continuation_job_id
+    ]
+    assert CallbackEdgeStore(layout).get_latest(edge.edge_id).state is CallbackEdgeState.CONTINUATION_SUBMITTED
+
+
+def test_dispatcher_allows_callback_from_continuation_to_different_child(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-continuation-different-child'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude', 'gemini', 'droid')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    registry.upsert(_runtime('gemini', project_id=ctx.project_id, layout=layout, pid=103))
+    registry.upsert(_runtime('droid', project_id=ctx.project_id, layout=layout, pid=104))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    parent_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='parent task',
+            task_id='task-continuation-different-child',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+    child_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='gemini',
+            from_actor='claude',
+            body='child task',
+            task_id='task-continuation-different-child',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+    edge = CallbackEdgeStore(layout).get_latest_for_child_job(child_job_id)
+    assert edge is not None
+    dispatcher.complete(parent_job_id, _decision(reply='delegated'))
+    dispatcher.tick()
+    dispatcher.complete(child_job_id, _decision(reply='child result'))
+
+    edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
+    assert edge is not None and edge.continuation_job_id
+    dispatcher.tick()
+    followup_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='droid',
+            from_actor='claude',
+            body='follow-up child task',
+            task_id='task-continuation-different-child',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+
+    followup_edge = CallbackEdgeStore(layout).get_latest_for_child_job(followup_job_id)
+    assert followup_edge is not None
+    assert followup_edge.parent_job_id == edge.continuation_job_id
+    assert followup_edge.original_caller == 'codex'
+
+
+def test_dispatcher_rejects_callback_from_continuation_with_missing_edge(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-continuation-missing-edge'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude', 'droid')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    registry.upsert(_runtime('droid', project_id=ctx.project_id, layout=layout, pid=103))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='orphan continuation',
+            task_id='task-continuation-missing-edge',
+            reply_to=None,
+            message_type='callback_continuation',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback_continuation', 'callback_edge_id': 'cb_missing'},
+        )
+    )
+    dispatcher.tick()
+
+    with pytest.raises(DispatchError, match='could not resolve callback edge cb_missing'):
+        dispatcher.submit(
+            MessageEnvelope(
+                project_id=ctx.project_id,
+                to_agent='droid',
+                from_actor='claude',
+                body='child task',
+                task_id='task-continuation-missing-edge',
+                reply_to=None,
+                message_type='ask',
+                delivery_scope=DeliveryScope.SINGLE,
+                route_options={'mode': 'callback'},
+            )
+        )
+
+    assert dispatcher._job_store.list_agent('droid') == []
+    assert CallbackEdgeStore(layout).list_all() == []
+
+
 def test_dispatcher_callback_child_failure_still_continues_parent(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-callback-child-failure'
     ctx = _bootstrap_test_project(project_root)
@@ -1090,6 +1277,117 @@ def test_dispatcher_callback_chain_waits_for_nested_child_message(tmp_path: Path
     continuation_a = dispatcher.get(edge_ab.continuation_job_id)
     assert continuation_a is not None
     assert 'middle final' in continuation_a.request.body
+
+
+def test_dispatcher_three_hop_callback_chain_propagates_sequential_continuations(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-callback-chain-three-hop'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude', 'gemini', 'droid')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    registry.upsert(_runtime('gemini', project_id=ctx.project_id, layout=layout, pid=103))
+    registry.upsert(_runtime('droid', project_id=ctx.project_id, layout=layout, pid=104))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    a_job = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='user',
+            body='root task',
+            task_id='task-chain-three-hop',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+
+    b_job = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='middle task b',
+            task_id='task-chain-three-hop',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+    edge_ab = CallbackEdgeStore(layout).get_latest_for_child_job(b_job)
+    assert edge_ab is not None
+    dispatcher.complete(a_job, _decision(reply='delegated to b'))
+    dispatcher.tick()
+
+    c_job = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='gemini',
+            from_actor='claude',
+            body='middle task c',
+            task_id='task-chain-three-hop',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+    edge_bc = CallbackEdgeStore(layout).get_latest_for_child_job(c_job)
+    assert edge_bc is not None
+    dispatcher.complete(b_job, _decision(reply='delegated to c'))
+    dispatcher.tick()
+
+    d_job = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='droid',
+            from_actor='gemini',
+            body='leaf task d',
+            task_id='task-chain-three-hop',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'callback'},
+        )
+    ).jobs[0].job_id
+    edge_cd = CallbackEdgeStore(layout).get_latest_for_child_job(d_job)
+    assert edge_cd is not None
+    dispatcher.complete(c_job, _decision(reply='delegated to d'))
+    dispatcher.tick()
+    dispatcher.complete(d_job, _decision(reply='leaf result'))
+
+    edge_cd = CallbackEdgeStore(layout).get_latest(edge_cd.edge_id)
+    assert edge_cd is not None and edge_cd.continuation_job_id
+    dispatcher.tick()
+    dispatcher.complete(edge_cd.continuation_job_id, _decision(reply='c final with leaf result'))
+    edge_cd = CallbackEdgeStore(layout).get_latest(edge_cd.edge_id)
+    assert edge_cd is not None
+    assert edge_cd.state is CallbackEdgeState.DONE
+
+    edge_bc = CallbackEdgeStore(layout).get_latest(edge_bc.edge_id)
+    assert edge_bc is not None and edge_bc.continuation_job_id
+    dispatcher.tick()
+    dispatcher.complete(edge_bc.continuation_job_id, _decision(reply='b final with c final'))
+    edge_bc = CallbackEdgeStore(layout).get_latest(edge_bc.edge_id)
+    assert edge_bc is not None
+    assert edge_bc.state is CallbackEdgeState.DONE
+
+    edge_ab = CallbackEdgeStore(layout).get_latest(edge_ab.edge_id)
+    assert edge_ab is not None and edge_ab.continuation_job_id
+    dispatcher.tick()
+    dispatcher.complete(edge_ab.continuation_job_id, _decision(reply='a final with b final'))
+    edge_ab = CallbackEdgeStore(layout).get_latest(edge_ab.edge_id)
+    assert edge_ab is not None
+    assert edge_ab.state is CallbackEdgeState.DONE
+
+    root_snapshot = dispatcher.watch(a_job, start_line=0)
+    assert root_snapshot['reply'] == 'a final with b final'
+    assert root_snapshot['visible_reply_source'] == 'message_bureau_reply'
+    assert root_snapshot['completion_reason'] == 'task_complete'
 
 
 def test_dispatcher_callback_repair_submits_missing_continuation_once(tmp_path: Path) -> None:

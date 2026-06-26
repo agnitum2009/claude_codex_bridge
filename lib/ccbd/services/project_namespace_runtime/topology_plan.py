@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 @dataclass(frozen=True)
 class SidebarPanePlan:
     mode: str
     width: str | int
     bottom_height: int
+    position: str
     launch_args: tuple[str, ...] = ()
 
     def to_record(self) -> dict[str, object]:
@@ -15,6 +15,7 @@ class SidebarPanePlan:
             'mode': self.mode,
             'width': self.width,
             'bottom_height': self.bottom_height,
+            'position': self.position,
             'launch_args': list(self.launch_args),
         }
 
@@ -109,7 +110,7 @@ def _window_plan(window, *, sidebar, ccbd_socket_path: str | None, project_root:
         kind='agents',
         label=window.name,
         user_layout=window.layout_spec,
-        realized_layout=_realized_layout(window.layout_spec, sidebar_enabled=sidebar_plan is not None),
+        realized_layout=_realized_layout(window.layout_spec, sidebar=sidebar_plan),
         agent_names=window.agent_names,
         tool_names=tuple(getattr(window, 'tool_names', ()) or ()),
         sidebar=sidebar_plan,
@@ -130,7 +131,7 @@ def _tool_window_plan(tool, *, order_offset: int, sidebar, ccbd_socket_path: str
         label=tool.label,
         command=tool.command,
         user_layout=tool.command,
-        realized_layout='sidebar; (tool)' if sidebar_plan is not None else 'tool',
+        realized_layout=_realized_layout('tool', sidebar=sidebar_plan),
         agent_names=(),
         sidebar=sidebar_plan,
     )
@@ -142,6 +143,7 @@ def _sidebar_plan(sidebar, *, window_name: str, ccbd_socket_path: str | None, pr
             mode=sidebar.mode,
             width=sidebar.width,
             bottom_height=sidebar.bottom_height,
+            position=sidebar.position,
             launch_args=_sidebar_launch_args(ccbd_socket_path=ccbd_socket_path, project_root=project_root, window_name=window_name),
         )
         if sidebar is not None
@@ -149,9 +151,11 @@ def _sidebar_plan(sidebar, *, window_name: str, ccbd_socket_path: str | None, pr
     )
 
 
-def _realized_layout(user_layout: str, *, sidebar_enabled: bool) -> str:
-    if not sidebar_enabled:
+def _realized_layout(user_layout: str, *, sidebar: SidebarPanePlan | None) -> str:
+    if sidebar is None:
         return user_layout
+    if sidebar.position == 'right':
+        return f'({user_layout}); sidebar'
     return f'sidebar; ({user_layout})'
 
 

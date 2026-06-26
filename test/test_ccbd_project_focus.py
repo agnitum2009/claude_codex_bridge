@@ -317,10 +317,25 @@ def test_project_focus_reports_missing_agent_pane(tmp_path: Path) -> None:
         service.focus_agent(agent='agent2')
 
 
-def test_project_focus_reports_missing_window(tmp_path: Path) -> None:
+def test_project_focus_agent_uses_pane_options_when_tmux_window_name_differs(tmp_path: Path) -> None:
+    backend = _FakeTmuxBackend()
+    backend.missing_windows.add('ops')
+    service = _service(tmp_path, backend)
+
+    result = service.focus_agent(agent='agent2')
+
+    assert result['focused'] is True
+    assert result['kind'] == 'agent'
+    assert backend.calls[:2] == [
+        ['select-window', '-t', 'ccb-test:ops'],
+        ['select-pane', '-t', '%2'],
+    ]
+
+
+def test_project_focus_window_reports_missing_window(tmp_path: Path) -> None:
     backend = _FakeTmuxBackend()
     backend.missing_windows.add('ops')
     service = _service(tmp_path, backend)
 
     with pytest.raises(ProjectFocusError, match='target_missing'):
-        service.focus_agent(agent='agent2')
+        service.focus_window(window='ops')

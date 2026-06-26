@@ -110,6 +110,30 @@ class CcbdMountPathMixin:
         return self.ccbd_dir / 'project-view-state.json'
 
     @property
+    def ccbd_mobile_dir(self):
+        return self.ccbd_dir / 'mobile'
+
+    @property
+    def ccbd_mobile_gateway_path(self):
+        return self.ccbd_mobile_dir / 'gateway.json'
+
+    @property
+    def ccbd_mobile_devices_path(self):
+        return self.ccbd_mobile_dir / 'devices.json'
+
+    @property
+    def ccbd_mobile_pairing_tokens_path(self):
+        return self.ccbd_mobile_dir / 'pairing-tokens.jsonl'
+
+    @property
+    def ccbd_mobile_terminal_tokens_path(self):
+        return self.ccbd_mobile_dir / 'terminal-tokens.jsonl'
+
+    @property
+    def ccbd_mobile_audit_path(self):
+        return self.ccbd_mobile_dir / 'audit.jsonl'
+
+    @property
     def ccbd_start_policy_path(self):
         return self.ccbd_dir / 'start-policy.json'
 

@@ -9,12 +9,38 @@ _VALID_PROFILE_MODES = {"inherit", "overlay", "isolated"}
 
 
 @dataclass(frozen=True)
+class SkillOverlaySpec:
+    source: str
+    include: tuple[str, ...] = ("*",)
+    exclude: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        source = str(self.source or '').strip()
+        if not source:
+            raise ValueError('skill overlay source cannot be empty')
+        object.__setattr__(self, 'source', source)
+        object.__setattr__(self, 'include', _normalize_patterns(self.include, default=("*",)))
+        object.__setattr__(self, 'exclude', _normalize_patterns(self.exclude, default=()))
+
+    def to_record(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {'source': self.source}
+        if self.include != ("*",):
+            payload['include'] = list(self.include)
+        if self.exclude:
+            payload['exclude'] = list(self.exclude)
+        return payload
+
+
+@dataclass(frozen=True)
 class ProviderProfileSpec:
     mode: str = "inherit"
     home: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+    inherited_skill_include: tuple[str, ...] = ()
+    inherited_skill_exclude: tuple[str, ...] = ()
+    skill_overlays: dict[str, SkillOverlaySpec] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -32,6 +58,17 @@ class ProviderProfileSpec:
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
         object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
         object.__setattr__(self, 'plugins', _normalize_plugins(self.plugins))
+        object.__setattr__(
+            self,
+            'inherited_skill_include',
+            _normalize_patterns(self.inherited_skill_include, default=()),
+        )
+        object.__setattr__(
+            self,
+            'inherited_skill_exclude',
+            _normalize_patterns(self.inherited_skill_exclude, default=()),
+        )
+        object.__setattr__(self, 'skill_overlays', _normalize_skill_overlays(self.skill_overlays))
 
     def to_record(self) -> dict[str, Any]:
         payload = {
@@ -49,6 +86,14 @@ class ProviderProfileSpec:
             payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
         if self.plugins:
             payload['plugins'] = _clone_jsonish_mapping(self.plugins)
+        if self.inherited_skill_include:
+            payload['inherited_skill_include'] = list(self.inherited_skill_include)
+        if self.inherited_skill_exclude:
+            payload['inherited_skill_exclude'] = list(self.inherited_skill_exclude)
+        if self.skill_overlays:
+            payload['skill_overlays'] = {
+                name: overlay.to_record() for name, overlay in self.skill_overlays.items()
+            }
         return payload
 
 
@@ -62,6 +107,9 @@ class ResolvedProviderProfile:
     env: dict[str, str] = field(default_factory=dict)
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+    inherited_skill_include: tuple[str, ...] = ()
+    inherited_skill_exclude: tuple[str, ...] = ()
+    skill_overlays: dict[str, SkillOverlaySpec] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -87,6 +135,17 @@ class ResolvedProviderProfile:
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
         object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
         object.__setattr__(self, 'plugins', _normalize_plugins(self.plugins))
+        object.__setattr__(
+            self,
+            'inherited_skill_include',
+            _normalize_patterns(self.inherited_skill_include, default=()),
+        )
+        object.__setattr__(
+            self,
+            'inherited_skill_exclude',
+            _normalize_patterns(self.inherited_skill_exclude, default=()),
+        )
+        object.__setattr__(self, 'skill_overlays', _normalize_skill_overlays(self.skill_overlays))
 
     @property
     def profile_root_path(self) -> Path | None:
@@ -119,6 +178,14 @@ class ResolvedProviderProfile:
             payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
         if self.plugins:
             payload['plugins'] = _clone_jsonish_mapping(self.plugins)
+        if self.inherited_skill_include:
+            payload['inherited_skill_include'] = list(self.inherited_skill_include)
+        if self.inherited_skill_exclude:
+            payload['inherited_skill_exclude'] = list(self.inherited_skill_exclude)
+        if self.skill_overlays:
+            payload['skill_overlays'] = {
+                name: overlay.to_record() for name, overlay in self.skill_overlays.items()
+            }
         return payload
 
     @classmethod
@@ -132,6 +199,9 @@ class ResolvedProviderProfile:
             env=dict(record.get('env') or {}),
             mcp_servers=dict(record.get('mcp_servers') or {}),
             plugins=dict(record.get('plugins') or {}),
+            inherited_skill_include=tuple(record.get('inherited_skill_include') or ()),
+            inherited_skill_exclude=tuple(record.get('inherited_skill_exclude') or ()),
+            skill_overlays=dict(record.get('skill_overlays') or {}),
             inherit_api=bool(record.get('inherit_api', True)),
             inherit_auth=bool(record.get('inherit_auth', True)),
             inherit_config=bool(record.get('inherit_config', True)),
@@ -154,6 +224,45 @@ def _normalize_path_text(value: object) -> str | None:
         return str(path)
     except Exception:
         return raw
+
+
+def _normalize_patterns(value: object, *, default: tuple[str, ...]) -> tuple[str, ...]:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        raw_items = (value,)
+    else:
+        try:
+            raw_items = tuple(value)  # type: ignore[arg-type]
+        except TypeError:
+            raw_items = ()
+    items: list[str] = []
+    for raw in raw_items:
+        text = str(raw or '').strip()
+        if text:
+            items.append(text)
+    return tuple(items) if items else default
+
+
+def _normalize_skill_overlays(value: object) -> dict[str, SkillOverlaySpec]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, SkillOverlaySpec] = {}
+    for raw_name, raw_payload in value.items():
+        name = str(raw_name or '').strip()
+        if not name:
+            continue
+        if isinstance(raw_payload, SkillOverlaySpec):
+            normalized[name] = raw_payload
+            continue
+        if not isinstance(raw_payload, dict):
+            continue
+        normalized[name] = SkillOverlaySpec(
+            source=str(raw_payload.get('source') or ''),
+            include=tuple(raw_payload.get('include') or ("*",)),
+            exclude=tuple(raw_payload.get('exclude') or ()),
+        )
+    return normalized
 
 
 def _normalize_mcp_servers(value: object) -> dict[str, dict[str, Any]]:
@@ -195,4 +304,4 @@ def _clone_jsonish(value: object) -> Any:
     return value
 
 
-__all__ = ['ProviderProfileSpec', 'ResolvedProviderProfile']
+__all__ = ['ProviderProfileSpec', 'ResolvedProviderProfile', 'SkillOverlaySpec']

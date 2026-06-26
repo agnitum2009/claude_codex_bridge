@@ -52,7 +52,6 @@ class ProjectFocusService:
         namespace = _namespace(self._deps.namespace_controller)
         _validate_epoch(namespace_epoch, namespace.namespace_epoch)
         backend = backend_for_namespace(self._deps.namespace_controller._backend_factory, namespace)
-        select_window(backend, session_name=namespace.tmux_session_name, window_name=window.name)
         pane_id = find_agent_pane(
             backend,
             project_id=self._deps.project_id,
@@ -61,6 +60,7 @@ class ProjectFocusService:
         )
         if pane_id is None:
             raise ProjectFocusError(FocusErrorCode.TARGET_MISSING, f'agent pane {agent_name} is not available')
+        _select_window_if_available(backend, session_name=namespace.tmux_session_name, window_name=window.name)
         select_pane(backend, pane_id=pane_id)
         _invalidate_and_refresh_project_view(self._deps, backend, namespace)
         return focus_success(
@@ -104,6 +104,15 @@ def _invalidate_and_refresh_project_view(deps: ProjectFocusDependencies, backend
         )
     except Exception:
         return
+
+
+def _select_window_if_available(backend, *, session_name: str, window_name: str) -> None:
+    try:
+        select_window(backend, session_name=session_name, window_name=window_name)
+    except ProjectFocusError as exc:
+        if exc.code == FocusErrorCode.TARGET_MISSING:
+            return
+        raise
 
 
 def _request_project_view_sidebar_refresh(project_view_service: object | None) -> bool:

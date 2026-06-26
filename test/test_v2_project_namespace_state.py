@@ -247,6 +247,8 @@ class _FakeTmuxBackend:
             return SimpleNamespace(returncode=0, stdout='', stderr='')
         if args[:2] == ['set-option', '-g']:
             return SimpleNamespace(returncode=0, stdout='', stderr='')
+        if args[:2] == ['set-environment', '-g']:
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
         if len(args) >= 3 and args[:2] == ['has-session', '-t']:
             return SimpleNamespace(returncode=0 if args[2] in self.sessions else 1, stdout='', stderr='')
         if len(args) >= 9 and args[:2] == ['new-session', '-d']:
@@ -435,7 +437,8 @@ def test_project_namespace_controller_creates_state_and_lifecycle_event(tmp_path
     assert latest_event.details['reason'] == 'initial_create'
 
 
-def test_project_namespace_controller_materializes_explicit_windows_and_sidebar(tmp_path: Path) -> None:
+def test_project_namespace_controller_materializes_explicit_windows_and_sidebar(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     project_root = tmp_path / 'repo-topology'
     (project_root / '.ccb').mkdir(parents=True)
     (project_root / '.ccb' / 'ccb.config').write_text(
@@ -482,6 +485,10 @@ bottom_height = 20
     assert backend.pane_options['%1']['@ccb_sidebar_instance'] == 'main'
     assert backend.pane_options['%3']['@ccb_role'] == 'sidebar'
     assert backend.pane_options['%3']['@ccb_sidebar_instance'] == 'review'
+    assert backend.pane_options['%1']['@respawn_cmd'].startswith('CCB_SIDEBAR_THEME_PROFILE=default ')
+    assert '--theme' not in backend.pane_options['%1']['@respawn_cmd']
+    assert backend.pane_options['%3']['@respawn_cmd'].startswith('CCB_SIDEBAR_THEME_PROFILE=default ')
+    assert '--theme' not in backend.pane_options['%3']['@respawn_cmd']
     assert backend.pane_options['%2']['@ccb_slot'] == 'agent1'
     assert backend.pane_options['%4']['@ccb_slot'] == 'agent2'
     assert backend.pane_options['%5']['@ccb_slot'] == 'agent3'
@@ -500,6 +507,48 @@ bottom_height = 20
     ]['pane-border-status'] == 'top'
     assert 'pane-border-format' in backend.window_options[f'{layout.ccbd_tmux_session_name}:main']
     assert 'pane-border-format' in backend.window_options[f'{layout.ccbd_tmux_session_name}:review']
+
+
+def test_project_namespace_controller_materializes_right_sidebar(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-topology-right-sidebar'
+    (project_root / '.ccb').mkdir(parents=True)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "agent1:codex"
+
+[ui.sidebar]
+position = "right"
+""",
+        encoding='utf-8',
+    )
+    config = load_project_config(project_root).config
+    layout = PathLayout(project_root)
+    backend = _FakeTmuxBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        'proj-topology-right-sidebar',
+        clock=lambda: '2026-04-03T02:17:00Z',
+        backend_factory=lambda socket_path=None: backend,
+    )
+
+    controller.ensure(
+        topology_plan=build_namespace_topology_plan(
+            config,
+            ccbd_socket_path=str(layout.ccbd_socket_path),
+            project_root=str(project_root),
+        )
+    )
+
+    assert backend.split_calls == [('%1', 'right', 15)]
+    assert backend.pane_options['%1']['@ccb_slot'] == 'agent1'
+    assert backend.pane_options['%2']['@ccb_role'] == 'sidebar'
+    assert backend.pane_options['%2']['@ccb_sidebar_instance'] == 'main'
+    assert backend.pane_widths['%1'] == 136
+    assert backend.pane_widths['%2'] == 24
+    assert controller._last_materialized_agent_panes == {'agent1': '%1'}
 
 
 def test_project_namespace_sidebar_width_preserves_agent_grid_area(tmp_path: Path) -> None:

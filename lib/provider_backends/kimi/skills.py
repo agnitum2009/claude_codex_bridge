@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import fnmatch
+import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
 
 from provider_core.inherited_skills import inherits_skills, route_packaged_inherited_skills_dir
+from provider_core.projected_assets import remove_projected_path, route_projected_tree
 from rolepacks.projection import project_role_skills_to_home
 
 
 _KIMI_INHERITED_SKILLS_LABEL = 'kimi-inherited-skills'
+_KIMI_SKILL_OVERLAY_LABEL_PREFIX = 'kimi-skill-overlay:'
 
 
-def kimi_skill_dirs_for_state_dir(state_dir: Path) -> tuple[Path, Path]:
+def kimi_skill_dirs_for_state_dir(state_dir: Path) -> tuple[Path, Path, Path]:
     root = Path(state_dir)
-    return root / 'inherited-skills', root / 'role-skills'
+    return root / 'inherited-skills', root / 'role-skills', root / 'overlay-skills'
 
 
 def kimi_skill_dirs_for_launch(
@@ -77,7 +81,7 @@ def materialize_kimi_skills(
     state_dir: Path,
     profile,
 ) -> tuple[Path, ...]:
-    inherited_dir, role_dir = kimi_skill_dirs_for_state_dir(state_dir)
+    inherited_dir, role_dir, overlay_dir = kimi_skill_dirs_for_state_dir(state_dir)
     active_dirs: list[Path] = []
     if route_packaged_inherited_skills_dir(
         provider='kimi',
@@ -94,7 +98,104 @@ def materialize_kimi_skills(
     )
     if role_dir.is_dir():
         active_dirs.append(role_dir)
+    if _materialize_skill_overlays(overlay_dir, profile=profile, project_root=project_root):
+        active_dirs.append(overlay_dir)
     return tuple(active_dirs)
+
+
+def _materialize_skill_overlays(target: Path, *, profile, project_root: Path | None) -> bool:
+    overlays = getattr(profile, 'skill_overlays', {}) if profile is not None else {}
+    if not isinstance(overlays, dict):
+        overlays = {}
+    target = Path(target).expanduser()
+    desired_labels: set[str] = set()
+    materialized = False
+    for overlay_name, overlay in sorted(overlays.items(), key=lambda item: str(item[0])):
+        source = _resolve_skill_overlay_source(getattr(overlay, 'source', ''), project_root=project_root)
+        include = _profile_skill_patterns(overlay, 'include', default=('*',))
+        exclude = _profile_skill_patterns(overlay, 'exclude')
+        if not source.is_dir():
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(source.iterdir(), key=lambda item: item.name):
+            if not entry.is_dir():
+                continue
+            skill_name = entry.name
+            if not _matches_skill_patterns(skill_name, include=include, exclude=exclude):
+                continue
+            label = f'{_KIMI_SKILL_OVERLAY_LABEL_PREFIX}{overlay_name}:{skill_name}'
+            desired_labels.add(label)
+            if route_projected_tree(
+                entry,
+                target / skill_name,
+                enabled=True,
+                label=label,
+                allow_unmarked_replace=False,
+            ):
+                materialized = True
+    _remove_stale_skill_projection_markers(
+        target,
+        label_prefix=_KIMI_SKILL_OVERLAY_LABEL_PREFIX,
+        desired_labels=desired_labels,
+    )
+    if not materialized:
+        _remove_empty_dir(target)
+    return materialized
+
+
+def _resolve_skill_overlay_source(source: object, *, project_root: Path | None) -> Path:
+    path = Path(str(source or '')).expanduser()
+    if not path.is_absolute() and project_root is not None:
+        path = Path(project_root).expanduser() / path
+    return path
+
+
+def _profile_skill_patterns(profile, attribute: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw = getattr(profile, attribute, default) if profile is not None else default
+    if isinstance(raw, str):
+        candidates = (raw,)
+    else:
+        try:
+            candidates = tuple(raw)
+        except TypeError:
+            candidates = ()
+    patterns = tuple(str(item or '').strip() for item in candidates if str(item or '').strip())
+    return patterns or default
+
+
+def _matches_skill_patterns(skill_name: str, *, include: tuple[str, ...], exclude: tuple[str, ...]) -> bool:
+    if include and not any(fnmatch.fnmatchcase(skill_name, pattern) for pattern in include):
+        return False
+    if exclude and any(fnmatch.fnmatchcase(skill_name, pattern) for pattern in exclude):
+        return False
+    return True
+
+
+def _remove_stale_skill_projection_markers(target: Path, *, label_prefix: str, desired_labels: set[str]) -> None:
+    target = Path(target).expanduser()
+    if not target.is_dir() or target.is_symlink():
+        return
+    for marker in sorted(target.glob('*.ccb-projection.json')):
+        try:
+            payload = json.loads(marker.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get('record_type') != 'ccb_projected_asset':
+            continue
+        label = str(payload.get('label') or '')
+        if not label.startswith(label_prefix) or label in desired_labels:
+            continue
+        skill_name = marker.name.removesuffix('.ccb-projection.json')
+        remove_projected_path(target / skill_name, label=label, marker_path=marker)
+
+
+def _remove_empty_dir(path: Path) -> None:
+    try:
+        Path(path).rmdir()
+    except OSError:
+        pass
 
 
 def _project_skill_roots(*, project_root: Path | None, workspace_path: Path | None) -> tuple[Path, ...]:

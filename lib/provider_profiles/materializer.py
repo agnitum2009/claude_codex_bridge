@@ -83,6 +83,7 @@ def materialize_provider_profile(
             env=dict(profile_spec.env),
             mcp_servers=dict(profile_spec.mcp_servers),
             plugins=dict(profile_spec.plugins),
+            **_skill_profile_fields(profile_spec),
             inherit_api=profile_spec.inherit_api,
             inherit_auth=profile_spec.inherit_auth,
             inherit_config=profile_spec.inherit_config,
@@ -191,6 +192,7 @@ def _materialize_codex_profile(
         env=dict(profile_spec.env),
         mcp_servers=dict(profile_spec.mcp_servers),
         plugins=dict(profile_spec.plugins),
+        **_skill_profile_fields(profile_spec),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,
@@ -217,6 +219,7 @@ def _materialize_api_profile(
         env=env,
         mcp_servers=dict(profile_spec.mcp_servers),
         plugins=dict(profile_spec.plugins),
+        **_skill_profile_fields(profile_spec),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,
@@ -245,6 +248,8 @@ def _materialize_claude_profile(
         runtime_home=None,
         env=env,
         mcp_servers=dict(profile_spec.mcp_servers),
+        plugins=dict(profile_spec.plugins),
+        **_skill_profile_fields(profile_spec),
         inherit_api=profile_spec.inherit_api,
         inherit_auth=profile_spec.inherit_auth,
         inherit_config=profile_spec.inherit_config,
@@ -252,6 +257,14 @@ def _materialize_claude_profile(
         inherit_commands=profile_spec.inherit_commands,
         inherit_memory=profile_spec.inherit_memory,
     )
+
+
+def _skill_profile_fields(profile_spec: ProviderProfileSpec) -> dict[str, object]:
+    return {
+        'inherited_skill_include': tuple(profile_spec.inherited_skill_include),
+        'inherited_skill_exclude': tuple(profile_spec.inherited_skill_exclude),
+        'skill_overlays': dict(profile_spec.skill_overlays),
+    }
 
 
 def _resolve_profile_root(layout: PathLayout, spec: AgentSpec, profile_spec: ProviderProfileSpec) -> Path:

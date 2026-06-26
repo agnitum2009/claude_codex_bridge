@@ -11,7 +11,7 @@ from .config_runtime.topology import (
     layout_tool_alias_label,
     normalize_layout_tool_alias,
 )
-from provider_profiles.models import ProviderProfileSpec
+from provider_profiles.models import ProviderProfileSpec, SkillOverlaySpec
 
 from .enums import (
     AgentState,
@@ -60,6 +60,7 @@ __all__ = [
     'RuntimeBindingSource',
     'RuntimeMode',
     'SCHEMA_VERSION',
+    'SkillOverlaySpec',
     'SidebarSpec',
     'SidebarViewSpec',
     'ToolWindowSpec',

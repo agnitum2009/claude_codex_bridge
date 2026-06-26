@@ -107,6 +107,7 @@ def validate_callback_request(dispatcher, request: MessageEnvelope) -> None:
         raise dispatcher._dispatch_error('ask --callback requires an active parent job for the sender')
     if _message_for_job(dispatcher, parent) is None:
         raise dispatcher._dispatch_error('ask --callback could not resolve parent message')
+    _validate_callback_continuation_target(dispatcher, parent=parent, child_agent=request.to_agent)
     if dispatcher._message_bureau.callback_edge_for_parent_job(parent.job_id) is not None:
         raise dispatcher._dispatch_error('ask --callback allows one outstanding callback per parent job')
     _validate_callback_chain(dispatcher, parent=parent, child_agent=request.to_agent)
@@ -489,6 +490,34 @@ def _validate_callback_chain(dispatcher, *, parent, child_agent: str) -> None:
         raise dispatcher._dispatch_error('ask --callback cycle detected')
 
 
+def _validate_callback_continuation_target(dispatcher, *, parent, child_agent: str) -> None:
+    request = getattr(parent, 'request', None)
+    options = dict(getattr(request, 'route_options', None) or {})
+    message_type = str(getattr(request, 'message_type', '') or '').strip().lower()
+    mode = str(options.get('mode') or '').strip().lower()
+    if message_type != CALLBACK_CONTINUATION_MESSAGE_TYPE and mode != 'callback_continuation':
+        return
+    edge_id = str(options.get('callback_edge_id') or '').strip()
+    if not edge_id:
+        raise dispatcher._dispatch_error(
+            f'ask --callback from callback continuation job {parent.job_id} cannot resolve callback edge; '
+            'finish the current continuation directly or report the metadata error'
+        )
+    edge = dispatcher._message_bureau.callback_edge(edge_id)
+    if edge is None:
+        raise dispatcher._dispatch_error(
+            f'ask --callback from callback continuation job {parent.job_id} could not resolve callback edge {edge_id}; '
+            'finish the current continuation directly or report the metadata error'
+        )
+    target = str(child_agent or '').strip().lower()
+    upstream = str(edge.original_caller or '').strip().lower()
+    if target and upstream and target == upstream:
+        raise dispatcher._dispatch_error(
+            f'ask --callback from callback continuation job {parent.job_id} to original caller {edge.original_caller} '
+            f'is not allowed for callback edge {edge.edge_id}; finish the current response and CCB will deliver it upstream'
+        )
+
+
 def _callback_chain_for_parent(dispatcher, parent_message_id: str) -> tuple[CallbackEdgeRecord, ...]:
     chain: list[CallbackEdgeRecord] = []
     seen: set[str] = set()
@@ -631,7 +660,9 @@ def _continuation_body(*, edge: CallbackEdgeRecord, child_job, decision: Complet
             'Child result:',
             child_reply or '(no reply body)',
             '',
-            'Continue the original task using the child result. Reply to the original caller with the final result.',
+            'Continue the original task using the child result.',
+            'Finish this current response with the final result.',
+            'Do not call ask, --callback, or --silence to the original caller; CCB will deliver this continuation result upstream.',
         ]
     )
     return '\n'.join(parts)

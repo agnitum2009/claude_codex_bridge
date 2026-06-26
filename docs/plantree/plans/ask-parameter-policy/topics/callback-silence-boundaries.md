@@ -19,6 +19,18 @@ B --callback -> C
 The B-to-C callback continues B. A receives a continuation only after B later
 finishes its own callback continuation.
 
+## Callback Continuation Finalization Boundary
+
+When an agent receives a CCB callback continuation, that continuation is not a
+new delegation request to the original caller. The agent should finish the
+current task directly with the final result. CCB owns delivery of that
+continuation result upstream.
+
+Do not use `ask`, `--callback`, or `--silence` to send the final continuation
+result to the original caller. The runtime safety plan for this boundary lives
+in
+[callback-continuation-safety](../../callback-continuation-safety/README.md).
+
 ## Silence Boundary
 
 `--silence` is silent-on-success delivery. It does not mean the task is

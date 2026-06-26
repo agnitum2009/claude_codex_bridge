@@ -46,6 +46,15 @@ cmd | agentroles.archi:codex
 
 加载时，CCB 会把 \cfg{agentroles.archi} 展开为 role 默认 agent name，并在 agent spec 中保留 role id。最终 daemon 按普通 agent 挂载它。
 
+同一个 role 可以在一个项目里开多个本地 agent 实例。使用 \cmd{--agent NAME} 指定不同名字：
+
+\begin{lstlisting}
+ccb roles add agentroles.archi:codex --agent archi_review
+ccb roles add agentroles.archi:claude --agent archi_qa
+\end{lstlisting}
+
+这种情况下，\cmd{ccb ask agentroles.archi ...} 会因为目标不唯一而失败；应直接 ask \src{archi_review} 或 \src{archi_qa}。
+
 \section{role spec}
 
 \cmd{roles add} 接受单个 role leaf。常见格式：
@@ -61,7 +70,7 @@ agentroles.archi:codex
   \item role id 应使用 publisher.role 形式。
   \item role spec 可以带 provider。
   \item role spec 不接受 workspace mode；workspace 需要在配置中单独设置。
-  \item 可以用 \cmd{--agent NAME} 指定 agent 名。
+  \item 可以用 \cmd{--agent NAME} 指定 agent 名；这是为同一个 role 创建第二个项目本地实例的正式方式。
   \item 可以用 \cmd{--provider PROVIDER} 覆盖 provider。
   \item 可以用 \cmd{--window WINDOW} 指定窗口。
 \end{itemize}

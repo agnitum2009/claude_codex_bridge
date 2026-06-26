@@ -7,6 +7,7 @@ from cli.services.tmux_ui import apply_project_tmux_ui
 from agents.models import layout_tool_alias_command, layout_tool_alias_label, parse_layout_spec
 from terminal_runtime.placeholders import pane_placeholder_cmd
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
+from terminal_runtime.tmux_theme import tmux_theme_profile
 
 from .backend import (
     create_session,
@@ -273,6 +274,33 @@ def _materialize_sidebar(
 ) -> str:
     sidebar = getattr(window, 'sidebar', None)
     if sidebar is None:
+        return root_pane
+    if getattr(sidebar, 'position', 'left') == 'right':
+        sidebar_pane = split_pane(
+            context.backend,
+            target=root_pane,
+            direction='right',
+            percent=_sidebar_pane_percent_for_sidebar(
+                sidebar.width,
+                pane_width=_pane_width_cells(context.backend, root_pane),
+            ),
+            project_root=controller._layout.project_root,
+            timeout_s=timeout_s,
+        )
+        _respawn_sidebar(context.backend, sidebar_pane, sidebar.launch_args, cwd=str(controller._layout.project_root))
+        apply_ccb_pane_identity(
+            context.backend,
+            sidebar_pane,
+            title='sidebar',
+            agent_label='sidebar',
+            project_id=controller._project_id,
+            role='sidebar',
+            slot_key=f'sidebar:{window.name}',
+            window_name=window.name,
+            sidebar_instance=window.name,
+            namespace_epoch=epoch,
+            managed_by='ccbd',
+        )
         return root_pane
     user_root = split_pane(
         context.backend,
@@ -771,9 +799,17 @@ def _user_pane_percent_for_sidebar(width: object, pane_width: int = 0) -> int:
     return max(10, min(99, 100 - _sidebar_percent(width)))
 
 
+def _sidebar_pane_percent_for_sidebar(width: object, pane_width: int = 0) -> int:
+    if pane_width > 0:
+        sidebar_cells = _sidebar_width_cells(width, pane_width)
+        return max(1, min(99, round((sidebar_cells * 100) / int(pane_width))))
+    return _sidebar_percent(width)
+
+
 def _respawn_sidebar(backend, pane_id: str, launch_args: tuple[str, ...], *, cwd: str) -> None:
     args = sidebar_respawn_args(tuple(launch_args or ()))
     command = ' '.join(shlex.quote(str(part)) for part in args) if args else pane_placeholder_cmd()
+    command = f'CCB_SIDEBAR_THEME_PROFILE={shlex.quote(tmux_theme_profile())} {command}'
     respawn = getattr(backend, 'respawn_pane', None)
     if callable(respawn):
         respawn(pane_id, cmd=command, cwd=cwd, remain_on_exit=True)

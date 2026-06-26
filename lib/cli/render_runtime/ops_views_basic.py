@@ -265,6 +265,98 @@ def render_maintenance(payload) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def render_mobile_serve(summary) -> tuple[str, ...]:
+    payload = summary if isinstance(summary, Mapping) else {}
+    status = str(payload.get('mobile_status') or 'unknown')
+    if status == 'devices':
+        lines = [
+            'mobile_status: devices',
+            f'project_id: {payload.get("project_id", "")}',
+            f'project_root: {payload.get("project_root", "")}',
+            f'mobile_state_dir: {payload.get("mobile_state_dir", "")}',
+        ]
+        devices = payload.get('devices')
+        if not isinstance(devices, (list, tuple)) or not devices:
+            lines.append('devices: none')
+            return tuple(lines)
+        for device in devices:
+            if not isinstance(device, Mapping):
+                continue
+            scopes = device.get('scopes')
+            scope_text = ','.join(str(item) for item in scopes) if isinstance(scopes, (list, tuple)) else ''
+            lines.append(
+                'device: '
+                f'id={device.get("device_id", "")} '
+                f'name={device.get("name", "")} '
+                f'revoked={str(bool(device.get("revoked"))).lower()} '
+                f'route_provider={device.get("route_provider", "")} '
+                f'scopes={scope_text} '
+                f'last_seen_at={device.get("last_seen_at", "")}'
+            )
+        return tuple(lines)
+    if status == 'revoked':
+        device = payload.get('device') if isinstance(payload.get('device'), Mapping) else {}
+        return (
+            'mobile_status: revoked',
+            f'project_id: {payload.get("project_id", "")}',
+            f'project_root: {payload.get("project_root", "")}',
+            f'mobile_state_dir: {payload.get("mobile_state_dir", "")}',
+            f'device_id: {device.get("device_id", "")}',
+            f'device_revoked: {str(bool(device.get("revoked"))).lower()}',
+            f'revoked_at: {device.get("revoked_at", "")}',
+            f'revoked_terminal_count: {payload.get("revoked_terminal_count", 0)}',
+        )
+    lines = [
+        f'mobile_status: {status}',
+        f'listen: {payload.get("listen", "")}',
+        f'gateway_url: {payload.get("gateway_url", "")}',
+        f'route_provider: {payload.get("route_provider", "")}',
+        f'project_id: {payload.get("project_id", "")}',
+        f'project_root: {payload.get("project_root", "")}',
+        f'mode: {payload.get("mode", "")}',
+    ]
+    if payload.get('host_id'):
+        lines.insert(4, f'host_id: {payload.get("host_id", "")}')
+    if payload.get('mobile_state_dir'):
+        lines.append(f'mobile_state_dir: {payload.get("mobile_state_dir", "")}')
+    if 'project_count' in payload:
+        lines.append(f'project_count: {payload.get("project_count", 0)}')
+    projects = payload.get('projects')
+    if isinstance(projects, (list, tuple)):
+        for project in projects:
+            if not isinstance(project, Mapping):
+                continue
+            lines.append(
+                'project: '
+                f'id={project.get("id", "")} '
+                f'name={project.get("display_name", "")} '
+                f'health={project.get("health", "")} '
+                f'root={project.get("root", "")}'
+            )
+    endpoints = payload.get('endpoints')
+    if isinstance(endpoints, (list, tuple)):
+        lines.append(f'endpoints: {", ".join(str(item) for item in endpoints)}')
+    pairing = payload.get('pairing')
+    if isinstance(pairing, Mapping):
+        lines.extend(
+            [
+                f'pairing_code: {pairing.get("pairing_code", "")}',
+                f'pairing_expires_at: {pairing.get("expires_at", "")}',
+                f'pairing_claim_endpoint: {pairing.get("claim_endpoint", "")}',
+            ]
+        )
+    relay_outbound = payload.get('relay_outbound')
+    if isinstance(relay_outbound, Mapping):
+        lines.extend(
+            [
+                f'relay_outbound_status: {relay_outbound.get("status", "")}',
+                f'relay_outbound_mode: {relay_outbound.get("mode", "")}',
+                f'relay_outbound_host_id: {relay_outbound.get("host_id", "")}',
+            ]
+        )
+    return tuple(lines)
+
+
 def _maintenance_record_lines(prefix: str, payload: Mapping[str, object]) -> list[str]:
     lines = [
         f'{prefix}_state: {payload.get("state")}',
@@ -458,6 +550,7 @@ __all__ = [
     'render_kill',
     'render_logs',
     'render_maintenance',
+    'render_mobile_serve',
     'render_ps',
     'render_restart',
     'render_start',

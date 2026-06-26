@@ -349,6 +349,15 @@ ops = "agentroles.ccb_self:codex"
 `agentroles.ccb_self` 是稳定 package identity。运行时 agent name 通常是
 `ccb_self`，除非用户显式绑定成其他名字。
 
+同一个 role id 可以绑定到多个项目本地 agent 名。显式写法类似：
+
+```bash
+ccb roles add agentroles.ccb_self:codex --agent ccb_self_ops
+```
+
+多实例时不要用 role id 做 ask 目标；应直接指定本地 agent 名，例如
+`ccb_self` 或 `ccb_self_ops`。
+
 ### 5.7 Validate、Dry Run、Reload、Restart
 
 配置变更使用这个顺序：
@@ -592,6 +601,8 @@ Callback 需要：
 - parent message；
 - message-bureau support；
 - parent 没有未完成 callback。
+- 如果当前 active job 是 callback continuation，不能再 `--callback` 回该
+  continuation 的 original caller；应直接完成当前回复，由 CCB 向上游投递。
 
 Child 完成后：
 
@@ -599,6 +610,8 @@ Child 完成后：
 2. Child reply 不直接投递给 original caller。
 3. CCB 把 continuation 提交回 parent agent。
 4. CCB 更新 callback edge。
+5. Parent agent 直接完成 continuation；不要再用 ask 把 final result 发给
+   original caller。
 
 当 parent 需要 child result 才能完成原任务时用 callback。当 parent 不需要 child
 result 时用 silence。

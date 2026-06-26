@@ -791,6 +791,8 @@ The first supported callback model is intentionally narrow:
 - no fan-out / fan-in aggregation
 - nested callback chains are supported because each level is a normal
   delegated parent plus later continuation
+- a `callback_continuation` job must finish in its current turn; it may not
+  create a new `--callback` edge back to that continuation's original caller
 
 Durability is owned by callback edge records under the ccbd mailbox state. A
 callback edge records the parent job/message, child job/message, original
@@ -804,6 +806,10 @@ Edges must carry a timeout deadline, and dispatcher maintenance must transition
 expired pending edges to a terminal timeout state, persist a failed reply on the
 parent message, and deliver that failure to the original caller when the caller
 owns a mailbox. Callback submission must enforce a bounded chain depth and
-reject actor cycles before creating the child job. If continuation submission
-fails after the child has completed, the edge must transition to a terminal
-failed state and the parent message must not remain indefinitely running.
+reject actor cycles before creating the child job. Callback submission from a
+continuation job must resolve `route_options.callback_edge_id` through callback
+edge storage and reject attempts to `--callback` the edge's original caller; the
+continuation completion itself is the upstream delivery path. If continuation
+submission fails after the child has completed, the edge must transition to a
+terminal failed state and the parent message must not remain indefinitely
+running.

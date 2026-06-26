@@ -179,8 +179,7 @@ sidebar 配置示例：
 mode = "every_window"
 width = "15%"
 bottom_height = 20
-
-[ui.sidebar.view]
+position = "right"
 agents_height = "50%"
 comms_height = "15%"
 tips_height = "35%"
@@ -189,6 +188,8 @@ comms_compact = true
 tips_enabled = true
 tips = ["Run ccb doctor when status is degraded."]
 \end{lstlisting}
+
+\cfg{position} 可选 \cfg{left} 或 \cfg{right}，默认 \cfg{left}。当前 sidebar 仍是纵向 pane；底部横排布局不属于该配置。旧的 \cfg{ui.sidebar.view} 子表仍可读取，但新配置建议把 sidebar 字段放在同一个 \cfg{ui.sidebar} 表中。
 
 \section{agent spec}
 

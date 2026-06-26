@@ -153,6 +153,35 @@ main = "agentroles.mother:codex"
     assert str(account_home / '.roles' / 'installed') in message
 
 
+def test_load_project_config_allows_multiple_agents_bound_to_same_role(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-role-multi-instance'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        '''
+version = 2
+entry_window = "main"
+
+[windows]
+main = "archi_review:codex, archi_qa:claude"
+
+[agents.archi_review]
+role = "agentroles.archi"
+
+[agents.archi_qa]
+role = "agentroles.archi"
+''',
+    )
+
+    result = load_project_config(project_root)
+
+    assert result.config.windows[0].agent_names == ('archi_review', 'archi_qa')
+    assert result.config.agents['archi_review'].role == 'agentroles.archi'
+    assert result.config.agents['archi_qa'].role == 'agentroles.archi'
+    assert result.config.agents['archi_review'].provider == 'codex'
+    assert result.config.agents['archi_qa'].provider == 'claude'
+
+
 def test_load_project_config_accepts_kimi_and_deepseek_providers(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-native-providers'
     config_path = project_root / '.ccb' / 'ccb.config'
@@ -311,10 +340,12 @@ def test_render_default_project_config_text_omits_optional_tool_windows(tmp_path
     assert '[agents.ccb_self]' in rendered
     assert 'role = "agentroles.ccb_self"' in rendered
     assert '[tool_windows.' not in rendered
-    assert '[ui.sidebar.view]' in rendered
+    assert '[ui.sidebar]' in rendered
+    assert '[ui.sidebar.view]' not in rendered
     assert 'agents_height = "50%"' in rendered
-    assert 'comms_height = "23%"' in rendered
-    assert 'tips_height = "27%"' in rendered
+    assert 'comms_height = "15%"' in rendered
+    assert 'tips_height = "35%"' in rendered
+    assert 'position = "left"' not in rendered
     config_path = tmp_path / 'repo-render-default' / '.ccb' / 'ccb.config'
     _write(config_path, rendered)
     loaded = load_project_config(config_path.parents[1]).config
@@ -509,6 +540,8 @@ permission = "manual"
 [agents.agent1.provider_profile]
 mode = "isolated"
 home = ".ccb/provider-profiles/agent1/codex"
+inherited_skill_include = ["*"]
+inherited_skill_exclude = ["trellis-*"]
 inherit_api = false
 inherit_auth = true
 inherit_config = true
@@ -531,6 +564,11 @@ enabled = false
 
 [agents.agent1.provider_profile.plugins."agentmemory@agentmemory"]
 enabled = true
+
+[agents.agent1.provider_profile.skill_overlays.n14_trellis]
+source = "/root/.codex/skills"
+include = ["trellis-*"]
+exclude = ["trellis-meta"]
 """,
     )
 
@@ -544,6 +582,8 @@ enabled = true
     assert spec.provider_profile.inherit_skills is False
     assert spec.provider_profile.inherit_commands is False
     assert spec.provider_profile.inherit_memory is False
+    assert spec.provider_profile.inherited_skill_include == ('*',)
+    assert spec.provider_profile.inherited_skill_exclude == ('trellis-*',)
     assert spec.provider_profile.env == {'OPENAI_API_KEY': 'sk-test'}
     assert spec.provider_profile.mcp_servers == {
         'codegraph': {'command': '/usr/local/bin/codegraph', 'args': ['serve', '--mcp']},
@@ -553,6 +593,10 @@ enabled = true
         'github@openai-curated': {'enabled': False},
         'agentmemory@agentmemory': {'enabled': True},
     }
+    overlay = spec.provider_profile.skill_overlays['n14_trellis']
+    assert overlay.source == '/root/.codex/skills'
+    assert overlay.include == ('trellis-*',)
+    assert overlay.exclude == ('trellis-meta',)
 
 
 def test_load_project_config_supports_workspace_path_and_group_fields(tmp_path: Path) -> None:
@@ -1288,13 +1332,100 @@ bottom_height = 20
     assert result.config.sidebar.mode == 'every_window'
     assert result.config.sidebar.width == '15%'
     assert result.config.sidebar.bottom_height == 20
+    assert result.config.sidebar.position == 'left'
     assert result.config.sidebar_view.agents_height == '50%'
-    assert result.config.sidebar_view.comms_height == '23%'
-    assert result.config.sidebar_view.tips_height == '27%'
+    assert result.config.sidebar_view.comms_height == '15%'
+    assert result.config.sidebar_view.tips_height == '35%'
     assert result.config.sidebar_view.comms_limit == 5
     assert result.config.sidebar_view.tips[0] == 'C-b d  detach'
     assert 'C-b h/j/k/l pane' in result.config.sidebar_view.tips
     assert 'copy: y yank' in result.config.sidebar_view.tips
+
+
+def test_load_project_config_supports_right_sidebar_position(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-right-sidebar'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "agent1:codex"
+
+[ui.sidebar]
+position = "right"
+""",
+    )
+
+    loaded = load_project_config(project_root).config
+    rendered = render_project_config_text(loaded)
+
+    assert loaded.sidebar.position == 'right'
+    assert 'position = "right"' in rendered
+    assert '[ui.sidebar.view]' not in rendered
+    assert 'mode = "every_window"' not in rendered
+    assert 'width = "15%"' not in rendered
+    assert 'bottom_height = 20' not in rendered
+
+
+def test_load_project_config_rejects_invalid_sidebar_position(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-invalid-sidebar-position'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "agent1:codex"
+
+[ui.sidebar]
+position = "bottom"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='ui\\.sidebar\\.position must be left or right'):
+        load_project_config(project_root)
+
+
+def test_load_project_config_supports_inline_sidebar_view_options(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-inline-sidebar-view'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "agent1:codex"
+
+[ui.sidebar]
+agents_height = "40%"
+comms_height = "15%"
+tips_height = "45%"
+comms_limit = 4
+comms_compact = true
+tips_enabled = true
+tips = ["C-b d detach", "C-b z zoom"]
+""",
+    )
+
+    loaded = load_project_config(project_root).config
+    rendered = render_project_config_text(loaded)
+
+    assert loaded.sidebar_view.agents_height == '40%'
+    assert loaded.sidebar_view.comms_height == '15%'
+    assert loaded.sidebar_view.tips_height == '45%'
+    assert loaded.sidebar_view.comms_limit == 4
+    assert loaded.sidebar_view.comms_compact is True
+    assert loaded.sidebar_view.tips_enabled is True
+    assert loaded.sidebar_view.tips == ('C-b d detach', 'C-b z zoom')
+    assert '[ui.sidebar]' in rendered
+    assert '[ui.sidebar.view]' not in rendered
+    assert 'agents_height = "40%"' in rendered
+    assert 'comms_height = "15%"' in rendered
+    assert 'tips_height = "45%"' in rendered
 
 
 def test_load_project_config_supports_sidebar_view_options_without_topology_signature_drift(tmp_path: Path) -> None:
@@ -1861,8 +1992,13 @@ permission = "manual"
 
 [agents.agent1.provider_profile]
 mode = "isolated"
+inherited_skill_exclude = ["trellis-*"]
 inherit_api = false
 inherit_auth = false
+
+[agents.agent1.provider_profile.skill_overlays.n14_trellis]
+source = "/root/.codex/skills"
+include = ["trellis-*"]
 
 [agents.agent1.provider_profile.env]
 ANTHROPIC_API_KEY = "claude-key"
@@ -1876,6 +2012,8 @@ ANTHROPIC_BASE_URL = "https://claude.example.test"
     assert rendered.startswith('cmd; agent1:claude(worktree)\n')
     assert '[agents.agent1.provider_profile]' in rendered
     assert '[agents.agent1.provider_profile.env]' in rendered
+    assert '[agents.agent1.provider_profile.skill_overlays.n14_trellis]' in rendered
+    assert 'inherited_skill_exclude = ["trellis-*"]' in rendered
     assert 'ANTHROPIC_API_KEY = "claude-key"' in rendered
 
     rewritten_path = tmp_path / 'repo-render-provider-profile-roundtrip' / '.ccb' / 'ccb.config'
@@ -1887,6 +2025,9 @@ ANTHROPIC_BASE_URL = "https://claude.example.test"
     assert spec.provider_profile.mode == 'isolated'
     assert spec.provider_profile.inherit_api is False
     assert spec.provider_profile.inherit_auth is False
+    assert spec.provider_profile.inherited_skill_exclude == ('trellis-*',)
+    assert spec.provider_profile.skill_overlays['n14_trellis'].source == '/root/.codex/skills'
+    assert spec.provider_profile.skill_overlays['n14_trellis'].include == ('trellis-*',)
     assert spec.provider_profile.env == {
         'ANTHROPIC_API_KEY': 'claude-key',
         'ANTHROPIC_BASE_URL': 'https://claude.example.test',

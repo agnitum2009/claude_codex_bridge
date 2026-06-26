@@ -19,6 +19,7 @@ from cli.models import (
     ParsedInboxCommand,
     ParsedKillCommand,
     ParsedLogsCommand,
+    ParsedMobileCommand,
     ParsedPendCommand,
     ParsedPsCommand,
     ParsedQueueCommand,
@@ -384,6 +385,60 @@ def test_parse_logs(parser: CliParser) -> None:
     assert parser.parse(['logs', 'agent1']) == ParsedLogsCommand(project=None, agent_name='agent1')
     assert parser.parse(['doctor', 'logs', 'agent1']) == ParsedLogsCommand(project=None, agent_name='agent1')
     assert parser.parse(['doctor', '--logs', 'agent1']) == ParsedLogsCommand(project=None, agent_name='agent1')
+
+
+def test_parse_mobile_serve(parser: CliParser) -> None:
+    assert parser.parse(['mobile', 'serve']) == ParsedMobileCommand(
+        project=None,
+        action='serve',
+        listen='127.0.0.1:8787',
+    )
+    assert parser.parse(['mobile', 'devices']) == ParsedMobileCommand(
+        project=None,
+        action='devices',
+    )
+    assert parser.parse(['mobile', 'revoke', 'dev_1234']) == ParsedMobileCommand(
+        project=None,
+        action='revoke',
+        device_id='dev_1234',
+    )
+    assert parser.parse(
+        [
+            '--project',
+            '/tmp/demo',
+            'mobile',
+            'serve',
+            '--listen',
+            '127.0.0.1:0',
+            '--public-url',
+            'https://mobile.example.com',
+            '--route-provider',
+            'cloudflare_tunnel',
+        ]
+    ) == (
+        ParsedMobileCommand(
+            project='/tmp/demo',
+            action='serve',
+            listen='127.0.0.1:0',
+            public_url='https://mobile.example.com',
+            route_provider='cloudflare_tunnel',
+        )
+    )
+
+
+def test_parse_mobile_rejects_invalid_forms(parser: CliParser) -> None:
+    with pytest.raises(CliUsageError, match='mobile requires one of'):
+        parser.parse(['mobile'])
+    with pytest.raises(CliUsageError, match='mobile only supports'):
+        parser.parse(['mobile', 'pair'])
+    with pytest.raises(CliUsageError, match='invalid mobile revoke command'):
+        parser.parse(['mobile', 'revoke'])
+    with pytest.raises(CliUsageError, match='mobile devices does not accept extra arguments'):
+        parser.parse(['mobile', 'devices', '--extra'])
+    with pytest.raises(CliUsageError, match='invalid mobile serve command'):
+        parser.parse(['mobile', 'serve', '--extra'])
+    with pytest.raises(CliUsageError, match='invalid mobile serve command'):
+        parser.parse(['mobile', 'serve', '--route-provider', 'unknown'])
 
 
 def test_parse_doctor_bundle(parser: CliParser) -> None:

@@ -18,6 +18,8 @@ from provider_backends.codex.start_cmd import strip_resume_start_cmd
 from provider_sessions.files import safe_write_session
 from provider_profiles.codex_home_config import materialize_codex_home_config, repair_codex_activity_hooks
 
+from .diagnostics import ensure_codex_diagnostic_log_filter
+
 from ..session_paths import read_session_payload, session_file_for_runtime_dir, state_dir_for_runtime_dir
 
 
@@ -95,6 +97,7 @@ def prepare_codex_home_overrides(
         'CODEX_HOME': str(layout.codex_home),
         'CODEX_SESSION_ROOT': str(layout.session_root),
     }
+    ensure_codex_diagnostic_log_filter(layout.codex_home, runtime_dir=runtime_dir)
 
     if "WSL_DISTRO_NAME" in os.environ:
         # We are running inside WSL. The target executable might be a Windows binary (via interop).

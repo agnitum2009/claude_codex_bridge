@@ -8,7 +8,7 @@ from textwrap import dedent
 AuxiliaryHandler = Callable[[Sequence[str]], int]
 ManagementHandler = Callable[[argparse.Namespace], int]
 
-_MANAGEMENT_COMMANDS = {"update", "version", "uninstall", "reinstall"}
+_MANAGEMENT_COMMANDS = {"install", "update", "version", "uninstall", "reinstall"}
 
 
 def dispatch_auxiliary_command(
@@ -25,6 +25,7 @@ def dispatch_auxiliary_command(
 def dispatch_management_command(
     argv: Sequence[str],
     *,
+    install_handler: ManagementHandler,
     update_handler: ManagementHandler,
     version_handler: ManagementHandler,
     uninstall_handler: ManagementHandler,
@@ -36,6 +37,8 @@ def dispatch_management_command(
 
     parser = _build_management_parser()
     args = parser.parse_args(tokens)
+    if args.command == "install":
+        return install_handler(args)
     if args.command == "update":
         return update_handler(args)
     if args.command == "version":
@@ -68,9 +71,14 @@ def print_start_help(*, file=None) -> None:
               ccb reload --dry-run  Validate and plan config reload without mutation.
               ccb maintenance status Show maintenance heartbeat config and stored status.
               ccb maintenance tick   Run one maintenance heartbeat diagnosis tick.
+              ccb mobile serve       Start the loopback CCB Mobile gateway for the current project.
+              ccb mobile devices     List paired mobile devices for the current project.
+              ccb mobile revoke <id> Revoke one paired mobile device locally.
               ccb kill             Stop the current project's background runtime.
               ccb kill -f          Force cleanup project-owned runtime residue.
               ccb cleanup          Prune safe provider rebuildable caches after ccbd is stopped.
+              ccb theme [light|dark|+|-]
+                                    Set or show the global CCB UI theme.
 
             Core commands:
               ccb ask <agent> [from <sender>] <message>
@@ -93,6 +101,7 @@ def print_start_help(*, file=None) -> None:
               ccb repair <ack|retry|resubmit> ...
 
             Management:
+              ccb install mobile    Start the server-wide CCB Mobile gateway and pairing QR.
               ccb version | ccb update [rich|VERSION] | ccb uninstall [rich] | ccb reinstall
 
             Tools:
@@ -196,6 +205,22 @@ _COMMAND_HELP = {
         Advanced lineage view:
           ccb trace <id>   Show the full job/message/reply lineage for one id.
     """,
+    "theme": """
+        usage: ccb theme [dark|light|+|-|solarized|tokyo|gruvbox|rose-pine]
+
+        CCB UI theme:
+          ccb theme          Show current CCB theme preference.
+          ccb theme +        Switch to the next CCB theme.
+          ccb theme -        Switch to the previous CCB theme.
+          ccb theme light    Use a light CCB tmux/sidebar theme.
+          ccb theme dark     Use the dark CCB tmux/sidebar theme.
+
+        Notes:
+          - Ordinary terminals keep their own terminal theme; CCB only updates
+            CCB-owned tmux/sidebar colors.
+          - CCB-owned rich WezTerm follows this preference through its
+            generated config.
+    """,
     "inbox": """
         usage: ccb inbox [--detail] <agent_name>
 
@@ -293,6 +318,59 @@ _COMMAND_HELP = {
           - runner is an internal project-scoped schedule consumer used by startup ensure.
           - enable and disable are config-authority in v1; edit [maintenance.heartbeat].enabled.
           - Status reads `.ccb/ccbd/maintenance-heartbeat/`, not `.ccb/ccbd/heartbeats/`.
+    """,
+    "mobile": """
+        usage: ccb mobile <serve|devices|revoke>
+
+        CCB Mobile gateway:
+          ccb mobile serve
+              Start the loopback, current-project HTTP gateway and emit a
+              short-lived pairing code.
+          ccb mobile serve --listen 127.0.0.1:0
+              Start on a dynamic loopback port.
+          ccb mobile serve --listen 127.0.0.1:8787 --public-url https://mobile.example.com --route-provider cloudflare_tunnel
+              Keep the gateway loopback-bound but emit Cloudflare route
+              metadata in the pairing payload.
+          ccb mobile devices
+              List paired devices from the current project's local mobile
+              state.
+          ccb mobile revoke dev_1234
+              Revoke a paired device locally, without exposing a public admin
+              route.
+
+        Endpoints:
+          GET /v1/health
+          GET /v1/projects
+          GET /v1/projects/{project_id}/view
+          POST /v1/pairing/claim
+          GET /v1/devices/me
+          POST /v1/devices/{device_id}/revoke
+          POST /v1/projects/{project_id}/lifecycle
+          POST /v1/projects/{project_id}/focus-agent
+          POST /v1/projects/{project_id}/focus-window
+          POST /v1/projects/{project_id}/terminals
+          GET /v1/terminals/{terminal_id}  WebSocket terminal frames
+
+        Safety:
+          - The gateway still only accepts loopback listen addresses.
+          - --public-url changes pairing metadata only; it does not bind a
+            public listener.
+          - Device listing and host-side revocation are local CLI actions,
+            not public HTTP endpoints.
+          - Revoking a device also revokes its still-open terminal handles.
+          - It exposes current-project data only.
+          - Pairing and device tokens are hashed under `.ccb/ccbd/mobile`.
+          - Lifecycle stop requests go through ccbd `stop-all`, not raw tmux.
+          - Lifecycle routes require a valid device token with `lifecycle` scope.
+          - Focus routes require a valid device token with `focus` scope.
+          - Terminal-open routes require `terminal_input` scope and mint
+            short-lived terminal tokens.
+          - Terminal WebSocket streams validate terminal tokens and monotonic
+            input sequence numbers before forwarding input to a tmux attach
+            client.
+          - It does not configure Cloudflare Tunnel, lifecycle, or
+            multi-project registry.
+          - Stopping the gateway does not stop ccbd, provider panes, or tmux.
     """,
     "doctor": """
         usage: ccb doctor [ps|logs <agent>|storage] [--output [PATH]]
@@ -419,6 +497,16 @@ _COMMAND_HELP = {
 def _build_management_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ccb", description="Claude AI unified launcher", add_help=True)
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
+
+    install_parser = subparsers.add_parser("install", help="Install or activate optional CCB capabilities")
+    install_parser.add_argument("target", nargs="?", help="'mobile' to start the server-wide CCB Mobile gateway")
+    install_parser.add_argument("--listen", default="127.0.0.1:8787")
+    install_parser.add_argument("--public-url", default=None)
+    install_parser.add_argument(
+        "--route-provider",
+        default="lan",
+        choices=("lan", "tailnet", "cloudflare_tunnel", "relay"),
+    )
 
     update_parser = subparsers.add_parser("update", help="Update CCB or the optional rich bundle")
     update_parser.add_argument("target", nargs="?", help="version like '4', '4.1', '4.1.3', or 'rich'")

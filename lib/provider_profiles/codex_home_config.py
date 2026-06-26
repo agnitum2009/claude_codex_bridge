@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import importlib
 import json
@@ -37,6 +38,11 @@ _CODEX_PLUGIN_SHA_RELATIVE = Path('.tmp') / 'plugins.sha'
 _CODEX_SKILLS_PROJECTION_LABEL = 'codex-inherited-skills'
 _CODEX_COMMANDS_PROJECTION_LABEL = 'codex-inherited-commands'
 _CODEX_PLUGIN_PROJECTION_LABEL = 'codex-plugin-bundle'
+_CODEX_MANAGED_SKILL_ENTRY_LABEL_PREFIXES = (
+    f'{_CODEX_SKILLS_PROJECTION_LABEL}:',
+    'codex-skill-overlay:',
+    'codex-role-skill:',
+)
 _CODEX_OWNED_SKILL_NAMES = ('ask',)
 _CODEX_LEGACY_OWNED_SKILL_NAMES = ('ccb_config', 'ccb-config')
 _CODEX_PLUGIN_REQUIRED_RELATIVE_PATHS = (
@@ -152,11 +158,15 @@ def materialize_codex_home_config(
         profile=profile,
         authority=authority,
     )
-    _copy_inherited_tree(
+    _materialize_inherited_skills(
         source_home / 'skills',
         target_home / 'skills',
-        enabled=_inherits_skills(profile),
-        label=_CODEX_SKILLS_PROJECTION_LABEL,
+        profile=profile,
+    )
+    _materialize_skill_overlays(
+        target_home / 'skills',
+        profile=profile,
+        project_root=project_root,
     )
     project_role_skills_to_home(
         project_root=project_root,
@@ -316,6 +326,7 @@ def _write_managed_config_stub(
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {}
+    _merge_codex_plugin_overrides(payload, profile=profile)
     _merge_codex_mcp_server_overrides(payload, profile=profile)
     _trust_managed_codex_project_paths(payload, project_root=project_root, workspace_path=workspace_path)
     rendered = _render_toml_document(payload) if payload else '# ccb agent-local codex config\n'
@@ -545,11 +556,10 @@ def _merge_codex_plugin_overrides(payload: dict[str, object], *, profile) -> Non
 
 
 def _profile_plugins(profile) -> dict[str, dict[str, object]]:
-    env_overrides = _profile_plugin_overrides_from_env(profile)
     raw = getattr(profile, 'plugins', {}) if profile is not None else {}
     if not isinstance(raw, dict):
-        return env_overrides
-    normalized: dict[str, dict[str, object]] = dict(env_overrides)
+        return _profile_plugin_overrides_from_env(profile)
+    normalized: dict[str, dict[str, object]] = {}
     for raw_name, raw_plugin in raw.items():
         name = str(raw_name or '').strip()
         if not name:
@@ -558,6 +568,12 @@ def _profile_plugins(profile) -> dict[str, dict[str, object]]:
             normalized[name] = _clone_mapping(raw_plugin)
         else:
             normalized[name] = {'enabled': bool(raw_plugin)}
+    for name, plugin in _profile_plugin_overrides_from_env(profile).items():
+        existing = normalized.get(name)
+        merged = _clone_mapping(existing) if isinstance(existing, dict) else {}
+        for key, value in plugin.items():
+            merged[str(key)] = _clone_payload(value)
+        normalized[name] = merged
     return normalized
 
 
@@ -766,15 +782,194 @@ def _copy_inherited_tree(source: Path, target: Path, *, enabled: bool, label: st
         return
     marker = Path(f'{target}.ccb-projection.json')
     if (target.exists() or target.is_symlink()) and not marker.is_file():
-        if target.is_symlink():
+        if _is_managed_skill_projection_dir(target):
+            _remove_path(target)
+        elif target.is_symlink():
             _repair_owned_codex_skill_entries(source, target)
             return
-        if not target.is_dir() or tree_content_fingerprint(target) != tree_content_fingerprint(source):
+        elif not target.is_dir() or tree_content_fingerprint(target) != tree_content_fingerprint(source):
             _repair_owned_codex_skill_entries(source, target)
             return
     if copy_projected_tree_to_cache(source, target, label=label):
         return
     remove_projected_path(target, label=label)
+
+
+def _is_managed_skill_projection_dir(target: Path) -> bool:
+    if not target.is_dir() or target.is_symlink():
+        return False
+    marker_labels: dict[str, str] = {}
+    try:
+        entries = tuple(target.iterdir())
+    except Exception:
+        return False
+    for entry in entries:
+        if not entry.name.endswith('.ccb-projection.json'):
+            continue
+        try:
+            payload = json.loads(entry.read_text(encoding='utf-8'))
+        except Exception:
+            return False
+        if not isinstance(payload, dict) or payload.get('record_type') != 'ccb_projected_asset':
+            return False
+        label = str(payload.get('label') or '')
+        if not any(label.startswith(prefix) for prefix in _CODEX_MANAGED_SKILL_ENTRY_LABEL_PREFIXES):
+            return False
+        marker_labels[entry.stem.removesuffix('.ccb-projection')] = label
+    for entry in entries:
+        if entry.name.endswith('.ccb-projection.json'):
+            continue
+        if entry.name not in marker_labels:
+            return False
+    return bool(entries)
+
+
+def _materialize_inherited_skills(source: Path, target: Path, *, profile) -> None:
+    include = _profile_skill_patterns(profile, 'inherited_skill_include')
+    exclude = _profile_skill_patterns(profile, 'inherited_skill_exclude')
+    if not include and not exclude:
+        _copy_inherited_tree(
+            source,
+            target,
+            enabled=_inherits_skills(profile),
+            label=_CODEX_SKILLS_PROJECTION_LABEL,
+        )
+        _remove_stale_skill_projection_markers(
+            target,
+            label_prefix=f'{_CODEX_SKILLS_PROJECTION_LABEL}:',
+            desired_labels=set(),
+        )
+        return
+    _route_filtered_skill_entries(
+        source,
+        target,
+        enabled=_inherits_skills(profile),
+        include=include,
+        exclude=exclude,
+        label_prefix=f'{_CODEX_SKILLS_PROJECTION_LABEL}:',
+    )
+
+
+def _route_filtered_skill_entries(
+    source: Path,
+    target: Path,
+    *,
+    enabled: bool,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    label_prefix: str,
+) -> None:
+    source = Path(source).expanduser()
+    target = Path(target).expanduser()
+    remove_projected_path(target, label=_CODEX_SKILLS_PROJECTION_LABEL)
+    if not enabled or not source.is_dir():
+        _remove_stale_skill_projection_markers(target, label_prefix=label_prefix, desired_labels=set())
+        return
+    desired_labels: set[str] = set()
+    target.mkdir(parents=True, exist_ok=True)
+    for entry in sorted(source.iterdir(), key=lambda item: item.name):
+        if not entry.is_dir():
+            continue
+        skill_name = entry.name
+        if not _matches_skill_patterns(skill_name, include=include, exclude=exclude):
+            continue
+        label = f'{label_prefix}{skill_name}'
+        desired_labels.add(label)
+        route_projected_tree(
+            entry,
+            target / skill_name,
+            enabled=True,
+            label=label,
+            allow_unmarked_replace=False,
+        )
+    _remove_stale_skill_projection_markers(target, label_prefix=label_prefix, desired_labels=desired_labels)
+
+
+def _materialize_skill_overlays(target: Path, *, profile, project_root: Path | None) -> None:
+    overlays = getattr(profile, 'skill_overlays', {}) if profile is not None else {}
+    if not isinstance(overlays, dict):
+        overlays = {}
+    desired_labels: set[str] = set()
+    target = Path(target).expanduser()
+    for overlay_name, overlay in sorted(overlays.items(), key=lambda item: str(item[0])):
+        source = _resolve_skill_overlay_source(getattr(overlay, 'source', ''), project_root=project_root)
+        include = _profile_skill_patterns(overlay, 'include', default=('*',))
+        exclude = _profile_skill_patterns(overlay, 'exclude')
+        if not source.is_dir():
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(source.iterdir(), key=lambda item: item.name):
+            if not entry.is_dir():
+                continue
+            skill_name = entry.name
+            if not _matches_skill_patterns(skill_name, include=include, exclude=exclude):
+                continue
+            label = f'codex-skill-overlay:{overlay_name}:{skill_name}'
+            desired_labels.add(label)
+            route_projected_tree(
+                entry,
+                target / skill_name,
+                enabled=True,
+                label=label,
+                allow_unmarked_replace=False,
+            )
+    _remove_stale_skill_projection_markers(
+        target,
+        label_prefix='codex-skill-overlay:',
+        desired_labels=desired_labels,
+    )
+
+
+def _resolve_skill_overlay_source(source: object, *, project_root: Path | None) -> Path:
+    path = Path(str(source or '')).expanduser()
+    if not path.is_absolute() and project_root is not None:
+        path = Path(project_root).expanduser() / path
+    return path
+
+
+def _profile_skill_patterns(profile, attribute: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw = getattr(profile, attribute, default) if profile is not None else default
+    if isinstance(raw, str):
+        candidates = (raw,)
+    else:
+        try:
+            candidates = tuple(raw)
+        except TypeError:
+            candidates = ()
+    patterns = tuple(str(item or '').strip() for item in candidates if str(item or '').strip())
+    return patterns or default
+
+
+def _matches_skill_patterns(skill_name: str, *, include: tuple[str, ...], exclude: tuple[str, ...]) -> bool:
+    if include and not any(fnmatch.fnmatchcase(skill_name, pattern) for pattern in include):
+        return False
+    if exclude and any(fnmatch.fnmatchcase(skill_name, pattern) for pattern in exclude):
+        return False
+    return True
+
+
+def _remove_stale_skill_projection_markers(target: Path, *, label_prefix: str, desired_labels: set[str]) -> None:
+    target = Path(target).expanduser()
+    if not target.is_dir() or target.is_symlink():
+        return
+    for marker in sorted(target.glob('*.ccb-projection.json')):
+        try:
+            payload = json.loads(marker.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get('record_type') != 'ccb_projected_asset':
+            continue
+        label = str(payload.get('label') or '')
+        if not label.startswith(label_prefix) or label in desired_labels:
+            continue
+        skill_name = marker.name.removesuffix('.ccb-projection.json')
+        remove_projected_path(
+            target / skill_name,
+            label=label,
+            marker_path=marker,
+        )
 
 
 def _repair_owned_codex_skill_entries(source: Path, target: Path) -> None:

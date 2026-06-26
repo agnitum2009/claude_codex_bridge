@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.12-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.18-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -31,7 +31,7 @@
 
 **English** | [中文](README_zh.md)
 
-[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Rich Mode](#rich-mode-new) · [Configure Agents](#configure-your-agent-team) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Rich Mode](#rich-mode-new) · [Configure Agents](#configure-your-agent-team) · [Mobile Gateway Alpha](docs/mobile-cloudflare-alpha.md) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-en.png" alt="CCB v7 visible multi-agent CLI workspace" width="960">
@@ -147,8 +147,6 @@ review = "reviewer:claude, qa:gemini"
 mode = "every_window"
 width = "15%"
 bottom_height = 20
-
-[ui.sidebar.view]
 agents_height = "50%"
 comms_height = "15%"
 tips_height = "35%"
@@ -219,6 +217,7 @@ CCB supports the [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec
 ### Contact
 
 - Email: `bfly123@126.com`
+- **[Telegram group & contact](https://t.me/+BKn03v8I_ehmYzRk)**
 - WeChat: `seemseam-com`
 
 <p align="center">
@@ -395,7 +394,7 @@ The built-in default is a v2 `[windows]` config with `agent1`, `agent2`, `agent3
 | Window grouping | `[windows]` | Group agents into tmux windows such as `main`, `work`, `review`, or `research`. |
 | Agent name and provider | `main:codex`, `reviewer:claude` | Names are used by the UI, ask routing, and memory files; provider decides which CLI starts. |
 | Workspace isolation | `worker1:codex(worktree)` | Gives implementation agents isolated git worktrees to reduce accidental overlap. |
-| Sidebar behavior | `[ui.sidebar]` | Controls whether the sidebar appears in every window, plus width and Comms height. |
+| Sidebar behavior | `[ui.sidebar]` | Controls whether the sidebar appears in every window, its left/right position, width, and Comms height. |
 | Tool windows | `[tool_windows.<name>]` | Add managed non-agent windows such as the rich workbench; they appear as one sidebar row and are not `ask` targets. |
 | Per-agent model/API | `[agents.<name>]` | Configure `model`, `key`, `url`, and related agent-local overrides. |
 | Role Pack binding | `agentroles.archi:codex` | Bind a reusable role package through a window leaf; role assets are installed once and projected into the derived agent. |
@@ -500,8 +499,6 @@ review = "reviewer:claude, qa:gemini"
 mode = "every_window"
 width = "15%"
 bottom_height = 20
-
-[ui.sidebar.view]
 agents_height = "50%"
 comms_height = "15%"
 tips_height = "35%"
@@ -712,6 +709,88 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.18</b> - CCB UI Theme Preference</summary>
+
+- Adds `ccb theme` as the top-level theme switch for CCB-owned tmux/sidebar UI,
+  with `+` and `-` cycling across dark and light palettes.
+- Adds readable light-mode tmux status, pane border, sidebar, activity, and
+  comms status colors for light terminal backgrounds.
+- Makes generated rich WezTerm profiles follow the same global CCB theme
+  preference on the next launch/reload.
+
+</details>
+
+<details>
+<summary><b>v7.6.17</b> - Codex Log Symlink Target Repair</summary>
+
+- Repairs managed Codex `logs_2.sqlite` temp symlink targets when
+  `/tmp/ccb-codex-logs-*` cleanup removes the target directory between starts.
+- Falls back by removing an unrecoverable broken symlink and restoring the local
+  backup before Codex initializes its SQLite databases.
+- Adds regression coverage for the missing symlink target parent startup path.
+
+</details>
+
+<details>
+<summary><b>v7.6.16</b> - Codex SQLite Migration Recovery</summary>
+
+- Fixes the managed Codex `logs_2.sqlite` redirect so CCB no longer
+  pre-creates Codex-owned SQLite schema; Codex runs its own migrations first.
+- Installs the CCB diagnostic insert-block trigger only after Codex has created
+  the log database and `_sqlx_migrations` records.
+- Repairs bad temporary log databases left by the intermediate policy by moving
+  them aside and letting Codex recreate them through the normal migration path.
+
+</details>
+
+<details>
+<summary><b>v7.6.15</b> - Codex Diagnostics And Sidebar Focus</summary>
+
+- Redirects managed Codex `logs_2.sqlite` diagnostic writes to temporary
+  storage by default and blocks diagnostic log inserts, while diagnostics mode
+  can restore the original database path for troubleshooting.
+- Falls back to the in-place diagnostic trigger path when the temporary SQLite
+  symlink cannot be installed.
+- Fixes sidebar clicks for agents in other tmux windows by selecting the target
+  window before selecting the pane, with pane-id fallback when window metadata
+  is missing.
+
+</details>
+
+<details>
+<summary><b>v7.6.14</b> - Mobile Gateway Alpha And Codex Diagnostics</summary>
+
+- Adds the mobile gateway alpha surface: authenticated pairing, focus routes,
+  terminal open/resume/history routes, websocket terminal frames, public route
+  metadata, and device revocation commands.
+- Adds right-side sidebar placement and flattened `[ui.sidebar]` rendering while
+  keeping legacy `[ui.sidebar.view]` input compatible.
+- Supports multiple local agents sharing one Role Pack role id without
+  collapsing them into a single runtime identity.
+- Reduces Codex diagnostic SQLite churn by filtering TRACE/DEBUG log rows by
+  default while preserving INFO/ERROR rows; `CCB_CODEX_DIAGNOSTIC_LOGS=1`
+  disables the filter.
+
+</details>
+
+<details>
+<summary><b>v7.6.13</b> - Provider Profile Overlay Fixes</summary>
+
+- Codex plugin overrides now resolve in the intended order: inherited source
+  config, `provider_profile.plugins`, then `CCB_CODEX_PLUGIN_OVERRIDES_JSON` /
+  `CCB_CODEX_PLUGIN_OVERRIDES`.
+- Codex agents without an inherited `config.toml` now still materialize
+  `provider_profile.plugins` into managed `config.toml`.
+- Claude `provider_profile.mcp_servers` now works even when the source
+  `.claude.json` does not exist, and `enabled = false` clears stale managed MCP
+  servers from the agent trust file.
+- Callback continuations now preserve the upstream finalization target, and
+  inherited ask skills remind agents not to answer callback continuations before
+  upstream results are available.
+
+</details>
+
+<details>
 <summary><b>v7.6.12</b> - Claude MCP And Hook Inheritance</summary>
 
 - Managed Claude agents now inherit Claude Code MCP configuration from the

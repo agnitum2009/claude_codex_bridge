@@ -170,13 +170,13 @@ def _sidebar_payload(config) -> dict[str, object]:
         payload['width'] = sidebar.width
     if int(sidebar.bottom_height) != 20:
         payload['bottom_height'] = int(sidebar.bottom_height)
+    if getattr(sidebar, 'position', 'left') != 'left':
+        payload['position'] = sidebar.position
     sidebar_view = getattr(config, 'sidebar_view', None)
     if sidebar_view is not None:
-        payload['view'] = {
-            'agents_height': sidebar_view.agents_height,
-            'comms_height': sidebar_view.comms_height,
-            'tips_height': sidebar_view.tips_height,
-        }
+        payload['agents_height'] = sidebar_view.agents_height
+        payload['comms_height'] = sidebar_view.comms_height
+        payload['tips_height'] = sidebar_view.tips_height
     return payload
 
 

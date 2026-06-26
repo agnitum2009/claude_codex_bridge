@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.models import ProviderProfileSpec
+from agents.models import ProviderProfileSpec, SkillOverlaySpec
 
 from ..common import ALLOWED_PROVIDER_PROFILE_KEYS, ConfigValidationError
-from .expectations import expect_bool, expect_mapping, expect_string, expect_string_mapping
+from .expectations import expect_bool, expect_mapping, expect_string, expect_string_list, expect_string_mapping
 
 
 def parse_provider_profile(agent_name: str, value: Any) -> ProviderProfileSpec:
@@ -38,6 +38,18 @@ def parse_provider_profile(agent_name: str, value: Any) -> ProviderProfileSpec:
             plugins=expect_mapping(
                 raw.get('plugins', {}),
                 field_name=f'agents.{agent_name}.provider_profile.plugins',
+            ),
+            inherited_skill_include=expect_string_list(
+                raw.get('inherited_skill_include', []),
+                field_name=f'agents.{agent_name}.provider_profile.inherited_skill_include',
+            ),
+            inherited_skill_exclude=expect_string_list(
+                raw.get('inherited_skill_exclude', []),
+                field_name=f'agents.{agent_name}.provider_profile.inherited_skill_exclude',
+            ),
+            skill_overlays=_parse_skill_overlays(
+                agent_name,
+                raw.get('skill_overlays', {}),
             ),
             inherit_api=(
                 expect_bool(raw['inherit_api'], field_name=f'agents.{agent_name}.provider_profile.inherit_api')
@@ -75,6 +87,46 @@ def parse_provider_profile(agent_name: str, value: Any) -> ProviderProfileSpec:
         )
     except ValueError as exc:
         raise ConfigValidationError(f'agents.{agent_name}.provider_profile: {exc}') from exc
+
+
+def _parse_skill_overlays(agent_name: str, value: Any) -> dict[str, SkillOverlaySpec]:
+    raw = expect_mapping(value, field_name=f'agents.{agent_name}.provider_profile.skill_overlays')
+    overlays: dict[str, SkillOverlaySpec] = {}
+    for raw_name, raw_payload in raw.items():
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ConfigValidationError(
+                f'agents.{agent_name}.provider_profile.skill_overlays keys must be non-empty strings'
+            )
+        name = raw_name.strip()
+        payload = expect_mapping(
+            raw_payload,
+            field_name=f'agents.{agent_name}.provider_profile.skill_overlays.{name}',
+        )
+        unknown = sorted(set(payload) - {'source', 'include', 'exclude'})
+        if unknown:
+            raise ConfigValidationError(
+                f'agents.{agent_name}.provider_profile.skill_overlays.{name} contains unknown fields: '
+                f'{", ".join(unknown)}'
+            )
+        if payload.get('source') is None:
+            raise ConfigValidationError(
+                f'agents.{agent_name}.provider_profile.skill_overlays.{name}.source is required'
+            )
+        overlays[name] = SkillOverlaySpec(
+            source=expect_string(
+                payload['source'],
+                field_name=f'agents.{agent_name}.provider_profile.skill_overlays.{name}.source',
+            ),
+            include=expect_string_list(
+                payload.get('include', ['*']),
+                field_name=f'agents.{agent_name}.provider_profile.skill_overlays.{name}.include',
+            ),
+            exclude=expect_string_list(
+                payload.get('exclude', []),
+                field_name=f'agents.{agent_name}.provider_profile.skill_overlays.{name}.exclude',
+            ),
+        )
+    return overlays
 
 
 __all__ = ['parse_provider_profile']

@@ -250,9 +250,11 @@ Observed topology rules:
   overlays and reported as style warnings.
 - `tool_windows` entries require `command`; `label` and `show_in_sidebar` are
   optional.
-- `ui.sidebar` supports `mode`, `width`, `bottom_height`, and `view`.
-- `ui.sidebar.view` supports `agents_height`, `comms_height`, `tips_height`,
-  `comms_limit`, `comms_compact`, `tips_enabled`, and `tips`.
+- `ui.sidebar` supports `mode`, `width`, `bottom_height`, `position`,
+  `agents_height`, `comms_height`, `tips_height`, `comms_limit`,
+  `comms_compact`, `tips_enabled`, and `tips`.
+- `ui.sidebar.view` remains a legacy-compatible input for the presentation
+  fields above; canonical rendering uses one `ui.sidebar` table.
 
 Observed agent keys:
 

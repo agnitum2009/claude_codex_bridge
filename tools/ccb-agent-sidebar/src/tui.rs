@@ -29,14 +29,15 @@ use crate::model::{
     AgentView, CommsItem, ProjectView, ProjectViewResponse, RowTarget, SidebarViewInfo, WindowView,
     row_targets,
 };
-use crate::status::{activity_color, activity_symbol};
+use crate::status::{activity_color_with_theme, activity_symbol};
+use crate::theme::SidebarTheme;
 
 const PROJECT_VIEW_REFRESH_MIN_MS: u64 = 100;
 const PROJECT_VIEW_REFRESH_MAX_MS: u64 = 5000;
 const PROJECT_VIEW_REFRESH_DEFAULT_MS: u64 = 1000;
 const DEFAULT_TREE_HEIGHT_PERCENT: u16 = 50;
-const DEFAULT_COMMS_HEIGHT_PERCENT: u16 = 23;
-const DEFAULT_TIPS_HEIGHT_PERCENT: u16 = 27;
+const DEFAULT_COMMS_HEIGHT_PERCENT: u16 = 15;
+const DEFAULT_TIPS_HEIGHT_PERCENT: u16 = 35;
 const TREE_CONTROL_CONTENT_WIDTH: u16 = 3;
 const TREE_REFRESH_SYMBOL: &str = "↻";
 const TREE_KILL_SYMBOL: &str = "×";
@@ -66,7 +67,10 @@ fn run_tui(args: &Args) -> io::Result<ExitAction> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let client = CcbdClient::new(args.ccbd_socket.clone());
-    let mut app = SidebarApp::new(args.pane_window.clone());
+    let mut app = SidebarApp::with_theme(
+        args.pane_window.clone(),
+        SidebarTheme::from_profile(&args.theme),
+    );
 
     loop {
         if app.needs_refresh() {
@@ -197,10 +201,15 @@ pub struct SidebarApp {
     dragging_divider: Option<SidebarResizeDivider>,
     selection_follows_focus: bool,
     refresh_after: Instant,
+    theme: SidebarTheme,
 }
 
 impl SidebarApp {
     pub fn new(pane_window: String) -> Self {
+        Self::with_theme(pane_window, SidebarTheme::default_dark())
+    }
+
+    pub fn with_theme(pane_window: String, theme: SidebarTheme) -> Self {
         Self {
             pane_window,
             response: None,
@@ -216,7 +225,12 @@ impl SidebarApp {
             dragging_divider: None,
             selection_follows_focus: true,
             refresh_after: Instant::now(),
+            theme,
         }
+    }
+
+    fn theme(&self) -> SidebarTheme {
+        self.theme
     }
 
     pub fn apply_response(&mut self, response: ProjectViewResponse) {
@@ -446,6 +460,7 @@ impl SidebarApp {
             comms_body_capacity(areas.comms, prefix_lines),
             content_width,
             self.sidebar_view().comms_compact,
+            self.theme(),
         ));
         let visible_items = items.into_iter().skip(scroll).collect::<Vec<_>>();
         comms_action_at_area(
@@ -456,6 +471,7 @@ impl SidebarApp {
             content_width,
             self.sidebar_view().comms_compact,
             prefix_lines,
+            self.theme(),
         )
         .map(|(index, action)| (index + scroll, action))
     }
@@ -469,6 +485,7 @@ impl SidebarApp {
             comms_body_capacity(area, prefix_lines),
             usize::from(area.width.saturating_sub(2)),
             self.sidebar_view().comms_compact,
+            self.theme(),
         )
     }
 
@@ -1044,6 +1061,7 @@ fn comms_action_at_area(
     width: usize,
     compact: bool,
     prefix_lines: u16,
+    theme: SidebarTheme,
 ) -> Option<(usize, CommsMouseAction)> {
     if items.is_empty() || area.width < 3 || area.height < 3 {
         return None;
@@ -1060,7 +1078,9 @@ fn comms_action_at_area(
     }
     let mut current = top.saturating_add(prefix_lines);
     for (index, item) in items.iter().enumerate() {
-        let height = comms_lines(item, width, compact).len().max(1) as u16;
+        let height = comms_lines_with_theme(item, width, compact, theme)
+            .len()
+            .max(1) as u16;
         if row >= current && row < current.saturating_add(height) {
             if row != current {
                 return Some((index, CommsMouseAction::Select));
@@ -1115,7 +1135,7 @@ fn draw_tree(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
         .take(usize::from(content_height.max(1)))
         .map(|(index, item)| {
             if index == app.selected {
-                item.style(Style::default().add_modifier(Modifier::REVERSED))
+                item.style(app.theme().selection_style())
             } else {
                 item
             }
@@ -1124,17 +1144,17 @@ fn draw_tree(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
     let list = List::new(items).block(
         Block::default()
             .title_top(Line::from(title).style(focus_style).left_aligned())
-            .title_top(tree_controls_line().right_aligned())
+            .title_top(tree_controls_line(app.theme()).right_aligned())
             .borders(Borders::ALL)
             .border_style(focus_style),
     );
     frame.render_widget(list, area);
     if needs_scrollbar {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
+        let scrollbar = sidebar_scrollbar(app.theme());
+        let scrollbar_position =
+            scrollbar_position_for_scroll(scroll, row_count, usize::from(content_height));
         let mut scrollbar_state = ScrollbarState::new(row_count)
-            .position(scroll)
+            .position(scrollbar_position)
             .viewport_content_length(usize::from(content_height));
         frame.render_stateful_widget(
             scrollbar,
@@ -1160,7 +1180,7 @@ fn tree_rows(app: &SidebarApp) -> Vec<ListItem<'static>> {
                 .iter()
                 .filter(|agent| agent.window == window.name)
             {
-                rows.push(agent_row(agent));
+                rows.push(agent_row(agent, app.theme()));
             }
         }
     }
@@ -1190,18 +1210,20 @@ fn tree_title_width(width: u16) -> u16 {
     width.saturating_sub(TREE_CONTROL_CONTENT_WIDTH + 1)
 }
 
-fn tree_controls_line() -> Line<'static> {
+fn tree_controls_line(theme: SidebarTheme) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             TREE_REFRESH_SYMBOL,
             Style::default()
-                .fg(Color::Green)
+                .fg(theme.success)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
         Span::styled(
             TREE_KILL_SYMBOL,
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.danger)
+                .add_modifier(Modifier::BOLD),
         ),
     ])
 }
@@ -1249,8 +1271,8 @@ fn tree_title_from_parts(
     }
 }
 
-fn tree_focus_style(_app: &SidebarApp) -> Style {
-    Style::default().fg(Color::DarkGray)
+fn tree_focus_style(app: &SidebarApp) -> Style {
+    Style::default().fg(app.theme().focus)
 }
 
 fn window_row(window: &WindowView) -> ListItem<'static> {
@@ -1266,7 +1288,7 @@ fn window_row(window: &WindowView) -> ListItem<'static> {
     ]))
 }
 
-fn agent_row(agent: &AgentView) -> ListItem<'static> {
+fn agent_row(agent: &AgentView, theme: SidebarTheme) -> ListItem<'static> {
     let state = if agent.activity_state.is_empty() {
         "offline"
     } else {
@@ -1281,7 +1303,11 @@ fn agent_row(agent: &AgentView) -> ListItem<'static> {
         Span::raw("  "),
         Span::styled(
             symbol.to_string(),
-            Style::default().fg(activity_color(state, agent.activity_color.as_deref())),
+            Style::default().fg(activity_color_with_theme(
+                state,
+                agent.activity_color.as_deref(),
+                theme,
+            )),
         ),
         Span::raw(format!("{active} ")),
         Span::raw(agent.name.clone()),
@@ -1298,7 +1324,7 @@ fn draw_comms(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
             } else {
                 "ccbd unavailable"
             },
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(app.theme().warning),
         )));
     }
     if let Some(error) = app.sidebar_config_error() {
@@ -1307,7 +1333,7 @@ fn draw_comms(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
                 &format!("config error: {error}"),
                 usize::from(area.width.saturating_sub(2)),
             ),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(app.theme().warning),
         )));
     }
     let prefix_lines = lines.len() as u16;
@@ -1316,8 +1342,13 @@ fn draw_comms(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
         let compact = app.sidebar_view().comms_compact;
         let body_capacity = comms_body_capacity(area, prefix_lines);
         let full_width = usize::from(area.width.saturating_sub(2));
-        let visible_capacity =
-            comms_visible_item_capacity(&visible_comms, body_capacity, full_width, compact);
+        let visible_capacity = comms_visible_item_capacity(
+            &visible_comms,
+            body_capacity,
+            full_width,
+            compact,
+            app.theme(),
+        );
         let needs_scrollbar = body_capacity > 0 && visible_comms.len() > visible_capacity;
         let content_width =
             usize::from(
@@ -1329,10 +1360,11 @@ fn draw_comms(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
             body_capacity,
             content_width,
             compact,
+            app.theme(),
         ));
         let mut body_lines_used = 0usize;
         for item in visible_comms.iter().skip(scroll) {
-            let item_lines = comms_lines(item, content_width, compact);
+            let item_lines = comms_lines_with_theme(item, content_width, compact, app.theme());
             if body_lines_used + item_lines.len() > body_capacity {
                 if body_lines_used == 0 && body_capacity > 0 {
                     lines.extend(item_lines.into_iter().take(body_capacity));
@@ -1343,11 +1375,11 @@ fn draw_comms(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
             lines.extend(item_lines);
         }
         if needs_scrollbar {
-            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(Some("↑"))
-                .end_symbol(Some("↓"));
+            let scrollbar = sidebar_scrollbar(app.theme());
+            let scrollbar_position =
+                scrollbar_position_for_scroll(scroll, visible_comms.len(), visible_capacity);
             let mut scrollbar_state = ScrollbarState::new(visible_comms.len())
-                .position(scroll)
+                .position(scrollbar_position)
                 .viewport_content_length(visible_capacity);
             let paragraph =
                 Paragraph::new(lines).block(Block::default().title("Comms").borders(Borders::ALL));
@@ -1382,6 +1414,7 @@ fn comms_visible_item_capacity(
     body_capacity: usize,
     width: usize,
     compact: bool,
+    theme: SidebarTheme,
 ) -> usize {
     if items.is_empty() {
         return 0;
@@ -1389,7 +1422,9 @@ fn comms_visible_item_capacity(
     let mut used = 0usize;
     let mut count = 0usize;
     for item in items {
-        let height = comms_lines(item, width, compact).len().max(1);
+        let height = comms_lines_with_theme(item, width, compact, theme)
+            .len()
+            .max(1);
         if count > 0 && used.saturating_add(height) > body_capacity {
             break;
         }
@@ -1407,12 +1442,14 @@ fn comms_scroll_max_for_items(
     body_capacity: usize,
     width: usize,
     compact: bool,
+    theme: SidebarTheme,
 ) -> usize {
     items.len().saturating_sub(comms_visible_item_capacity(
         items,
         body_capacity,
         width,
         compact,
+        theme,
     ))
 }
 
@@ -1439,16 +1476,19 @@ fn draw_tips(frame: &mut Frame<'_>, area: Rect, app: &SidebarApp) {
     let scroll = app
         .tips_scroll
         .min(lines.len().saturating_sub(content_height.max(1)));
-    let paragraph = Paragraph::new(lines.clone())
-        .scroll((scroll as u16, 0))
-        .block(Block::default().title("Tips").borders(Borders::ALL));
+    let visible_lines = lines
+        .into_iter()
+        .skip(scroll)
+        .take(content_height.max(1))
+        .collect::<Vec<_>>();
+    let paragraph =
+        Paragraph::new(visible_lines).block(Block::default().title("Tips").borders(Borders::ALL));
     frame.render_widget(paragraph, area);
     if needs_scrollbar {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
-        let mut scrollbar_state = ScrollbarState::new(lines.len())
-            .position(scroll)
+        let scrollbar = sidebar_scrollbar(app.theme());
+        let scrollbar_position = scrollbar_position_for_scroll(scroll, tips_count, content_height);
+        let mut scrollbar_state = ScrollbarState::new(tips_count)
+            .position(scrollbar_position)
             .viewport_content_length(content_height);
         frame.render_stateful_widget(
             scrollbar,
@@ -1465,6 +1505,34 @@ fn tips_scroll_max(view: &SidebarViewInfo, viewport_height: u16) -> usize {
     view.tips
         .len()
         .saturating_sub(usize::from(viewport_height.max(1)))
+}
+
+fn sidebar_scrollbar(theme: SidebarTheme) -> Scrollbar<'static> {
+    let track_style = Style::default().fg(theme.scrollbar_track);
+    let thumb_style = Style::default().fg(theme.scrollbar_thumb);
+    Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("↑"))
+        .end_symbol(Some("↓"))
+        .begin_style(track_style)
+        .end_style(track_style)
+        .track_style(track_style)
+        .thumb_style(thumb_style)
+}
+
+fn scrollbar_position_for_scroll(
+    scroll: usize,
+    content_length: usize,
+    viewport_content_length: usize,
+) -> usize {
+    if content_length == 0 || viewport_content_length == 0 {
+        return 0;
+    }
+    let max_scroll = content_length.saturating_sub(viewport_content_length);
+    if max_scroll == 0 {
+        return 0;
+    }
+    let max_position = content_length.saturating_sub(1);
+    scroll.min(max_scroll).saturating_mul(max_position) / max_scroll
 }
 
 fn empty_dash(value: &str) -> &str {
@@ -1485,9 +1553,19 @@ fn comms_line_text(item: &CommsItem) -> String {
         .join("\n")
 }
 
+#[cfg(test)]
 fn comms_lines(item: &CommsItem, width: usize, compact: bool) -> Vec<Line<'static>> {
+    comms_lines_with_theme(item, width, compact, SidebarTheme::default_dark())
+}
+
+fn comms_lines_with_theme(
+    item: &CommsItem,
+    width: usize,
+    compact: bool,
+    theme: SidebarTheme,
+) -> Vec<Line<'static>> {
     if compact {
-        return compact_comms_lines(item, width);
+        return compact_comms_lines(item, width, theme);
     }
     let status = if item.status_label.trim().is_empty() {
         empty_dash(&item.status)
@@ -1498,7 +1576,7 @@ fn comms_lines(item: &CommsItem, width: usize, compact: bool) -> Vec<Line<'stati
     let reason = comms_reason(item)
         .map(|value| format!(" {value}"))
         .unwrap_or_default();
-    let mut first_line_spans = comms_action_spans(item);
+    let mut first_line_spans = comms_action_spans(item, theme);
     first_line_spans.push(Span::raw(format!(
         "{} > {} ",
         empty_dash(&item.sender),
@@ -1506,7 +1584,7 @@ fn comms_lines(item: &CommsItem, width: usize, compact: bool) -> Vec<Line<'stati
     )));
     first_line_spans.push(Span::styled(
         compact_comms_status(status).to_string(),
-        Style::default().fg(comms_status_color(item)),
+        Style::default().fg(comms_status_color_with_theme(item, theme)),
     ));
     let mut lines = vec![Line::from(first_line_spans)];
     if !preview.is_empty() {
@@ -1518,7 +1596,7 @@ fn comms_lines(item: &CommsItem, width: usize, compact: bool) -> Vec<Line<'stati
     lines
 }
 
-fn compact_comms_lines(item: &CommsItem, width: usize) -> Vec<Line<'static>> {
+fn compact_comms_lines(item: &CommsItem, width: usize, theme: SidebarTheme) -> Vec<Line<'static>> {
     let status = if item.status_label.trim().is_empty() {
         empty_dash(&item.status)
     } else {
@@ -1530,11 +1608,11 @@ fn compact_comms_lines(item: &CommsItem, width: usize) -> Vec<Line<'static>> {
         empty_dash(&item.target)
     );
     let compact_status = compact_comms_status(status).to_string();
-    let mut spans = comms_action_spans(item);
+    let mut spans = comms_action_spans(item, theme);
     spans.push(Span::raw(route.clone()));
     spans.push(Span::styled(
         compact_status.clone(),
-        Style::default().fg(comms_status_color(item)),
+        Style::default().fg(comms_status_color_with_theme(item, theme)),
     ));
     vec![Line::from(spans), compact_comms_detail_line(item, width)]
 }
@@ -1563,11 +1641,13 @@ fn compact_comms_detail(item: &CommsItem) -> String {
     }
 }
 
-fn comms_action_spans(_item: &CommsItem) -> Vec<Span<'static>> {
+fn comms_action_spans(_item: &CommsItem, theme: SidebarTheme) -> Vec<Span<'static>> {
     let retry_style = Style::default()
-        .fg(Color::Yellow)
+        .fg(theme.warning)
         .add_modifier(Modifier::BOLD);
-    let cancel_style = Style::default().fg(Color::Red).add_modifier(Modifier::BOLD);
+    let cancel_style = Style::default()
+        .fg(theme.danger)
+        .add_modifier(Modifier::BOLD);
     vec![
         Span::styled("↻ ", retry_style),
         Span::raw(" "),
@@ -1576,7 +1656,7 @@ fn comms_action_spans(_item: &CommsItem) -> Vec<Span<'static>> {
         Span::styled(
             "⌫ ",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.clear)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
@@ -1650,19 +1730,24 @@ fn comms_cancel_enabled(item: &CommsItem) -> bool {
     )
 }
 
+#[cfg(test)]
 fn comms_status_color(item: &CommsItem) -> Color {
+    comms_status_color_with_theme(item, SidebarTheme::default_dark())
+}
+
+fn comms_status_color_with_theme(item: &CommsItem, theme: SidebarTheme) -> Color {
     match item.business_status.trim() {
-        "sending" | "delivering" | "blocked" => Color::Yellow,
-        "replying" => Color::Green,
-        "replied" | "completed" => Color::Blue,
-        "failed" | "delivery_failed" | "incomplete" | "cancelled" => Color::Red,
+        "sending" | "delivering" | "blocked" => theme.warning,
+        "replying" => theme.success,
+        "replied" | "completed" => theme.info,
+        "failed" | "delivery_failed" | "incomplete" | "cancelled" => theme.danger,
         _ => match item.status_label.trim() {
-            "send" | "back" => Color::Yellow,
-            "stuck" => Color::Yellow,
-            "work" => Color::Green,
-            "done" => Color::Blue,
-            "fail" => Color::Red,
-            _ => Color::Gray,
+            "send" | "back" => theme.warning,
+            "stuck" => theme.warning,
+            "work" => theme.success,
+            "done" => theme.info,
+            "fail" => theme.danger,
+            _ => theme.neutral,
         },
     }
 }
@@ -1913,7 +1998,7 @@ mod tests {
 
     #[test]
     fn tree_controls_render_as_right_aligned_symbol_pair() {
-        let line = tree_controls_line();
+        let line = tree_controls_line(SidebarTheme::default_dark());
         let text = line
             .spans
             .iter()
@@ -1924,6 +2009,28 @@ mod tests {
         assert_eq!(
             tree_controls_area(Rect::new(0, 0, 23, 24)),
             Rect::new(19, 0, 3, 1)
+        );
+    }
+
+    #[test]
+    fn light_theme_uses_readable_sidebar_semantic_colors() {
+        let theme = SidebarTheme::light();
+        let app = SidebarApp::with_theme("main".into(), theme);
+        let item = crate::model::CommsItem {
+            business_status: "replying".into(),
+            status_label: "work".into(),
+            ..Default::default()
+        };
+        let controls = tree_controls_line(theme);
+        let action_spans = comms_action_spans(&item, theme);
+
+        assert_eq!(tree_focus_style(&app).fg, Some(Color::Rgb(108, 111, 133)));
+        assert_eq!(controls.spans[0].style.fg, Some(Color::Rgb(64, 160, 43)));
+        assert_eq!(controls.spans[2].style.fg, Some(Color::Rgb(210, 15, 57)));
+        assert_eq!(action_spans[0].style.fg, Some(Color::Rgb(223, 142, 29)));
+        assert_eq!(
+            comms_status_color_with_theme(&item, theme),
+            Color::Rgb(64, 160, 43)
         );
     }
 
@@ -2012,7 +2119,8 @@ mod tests {
         terminal.draw(|frame| draw(frame, &app)).unwrap();
 
         let rendered = terminal.backend().to_string();
-        assert!(rendered.contains("↻  X  ⌫  agent3 > agent1 ok"));
+        assert!(rendered.contains("↻  X  ⌫  agent2 > agent1 ok"));
+        assert!(!rendered.contains("agent3 > agent1"));
         assert!(!rendered.contains("agent4 > agent1"));
         assert!(!rendered.contains("agent5 > agent1"));
         assert!(!rendered.contains("agent6 > agent1"));
@@ -2020,12 +2128,12 @@ mod tests {
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(0, 18)].symbol(), "┌");
         assert_eq!(buffer[(1, 18)].symbol(), "C");
-        assert_eq!(buffer[(0, 27)].symbol(), "┌");
-        assert_eq!(buffer[(1, 27)].symbol(), "T");
+        assert_eq!(buffer[(0, 24)].symbol(), "┌");
+        assert_eq!(buffer[(1, 24)].symbol(), "T");
     }
 
     #[test]
-    fn tall_sidebar_uses_default_half_twenty_three_and_twenty_seven_split() {
+    fn tall_sidebar_uses_default_fifty_fifteen_and_thirty_five_split() {
         let mut app = SidebarApp::new("main".into());
         app.apply_response(sample_response_with_comms(6));
         let area = Rect::new(0, 0, 24, 40);
@@ -2033,8 +2141,8 @@ mod tests {
         let areas = sidebar_areas(area, app.sidebar_view());
 
         assert_eq!(areas.tree.height, 20);
-        assert_eq!(areas.comms.height, 10);
-        assert_eq!(areas.tips.map(|area| area.height), Some(10));
+        assert_eq!(areas.comms.height, 6);
+        assert_eq!(areas.tips.map(|area| area.height), Some(14));
     }
 
     #[test]
@@ -2114,8 +2222,8 @@ mod tests {
         let areas = app.sidebar_areas(area);
 
         assert_eq!(areas.tree.height, 20);
-        assert_eq!(areas.comms.height, 10);
-        assert_eq!(areas.tips.map(|area| area.height), Some(10));
+        assert_eq!(areas.comms.height, 6);
+        assert_eq!(areas.tips.map(|area| area.height), Some(14));
         assert_eq!(
             app.resize_divider_at(1, areas.comms.y, area),
             Some(SidebarResizeDivider::TreeComms)
@@ -2124,9 +2232,9 @@ mod tests {
         assert!(app.handle_mouse_drag(1, areas.comms.y + 4, area));
 
         let resized = app.sidebar_areas(area);
-        assert_eq!(resized.tree.height, 24);
-        assert_eq!(resized.comms.height, 6);
-        assert_eq!(resized.tips.map(|area| area.height), Some(10));
+        assert_eq!(resized.tree.height, 23);
+        assert_eq!(resized.comms.height, 3);
+        assert_eq!(resized.tips.map(|area| area.height), Some(14));
 
         app.handle_mouse_up();
         let tips = resized.tips.expect("tips area should render");
@@ -2135,12 +2243,12 @@ mod tests {
             Some(SidebarResizeDivider::CommsTips)
         );
         assert!(app.start_resize_at(1, tips.y, area));
-        assert!(app.handle_mouse_drag(1, tips.y - 3, area));
+        assert!(app.handle_mouse_drag(1, tips.y + 4, area));
 
         let resized = app.sidebar_areas(area);
-        assert_eq!(resized.tree.height, 24);
-        assert_eq!(resized.comms.height, 3);
-        assert_eq!(resized.tips.map(|area| area.height), Some(13));
+        assert_eq!(resized.tree.height, 23);
+        assert_eq!(resized.comms.height, 7);
+        assert_eq!(resized.tips.map(|area| area.height), Some(10));
     }
 
     #[test]
@@ -2439,29 +2547,75 @@ mod tests {
             ..Default::default()
         };
         let area = Rect::new(0, 10, 24, 10);
+        let theme = SidebarTheme::default_dark();
 
         assert_eq!(
-            comms_action_at_area(&[item], area, 1, 11, 22, true, 0),
+            comms_action_at_area(&[item], area, 1, 11, 22, true, 0, theme),
             Some((0, CommsMouseAction::Retry))
         );
         assert_eq!(
-            comms_action_at_area(&[sample_comms_item("msg1")], area, 3, 11, 22, true, 0),
+            comms_action_at_area(
+                &[sample_comms_item("msg1")],
+                area,
+                3,
+                11,
+                22,
+                true,
+                0,
+                theme
+            ),
             Some((0, CommsMouseAction::Select))
         );
         assert_eq!(
-            comms_action_at_area(&[sample_comms_item("msg1")], area, 4, 11, 22, true, 0),
+            comms_action_at_area(
+                &[sample_comms_item("msg1")],
+                area,
+                4,
+                11,
+                22,
+                true,
+                0,
+                theme
+            ),
             Some((0, CommsMouseAction::Cancel))
         );
         assert_eq!(
-            comms_action_at_area(&[sample_comms_item("msg1")], area, 7, 11, 22, true, 0),
+            comms_action_at_area(
+                &[sample_comms_item("msg1")],
+                area,
+                7,
+                11,
+                22,
+                true,
+                0,
+                theme
+            ),
             Some((0, CommsMouseAction::Clear))
         );
         assert_eq!(
-            comms_action_at_area(&[sample_comms_item("msg1")], area, 10, 11, 22, true, 0),
+            comms_action_at_area(
+                &[sample_comms_item("msg1")],
+                area,
+                10,
+                11,
+                22,
+                true,
+                0,
+                theme
+            ),
             Some((0, CommsMouseAction::Select))
         );
         assert_eq!(
-            comms_action_at_area(&[sample_comms_item("msg1")], area, 4, 12, 22, true, 0),
+            comms_action_at_area(
+                &[sample_comms_item("msg1")],
+                area,
+                4,
+                12,
+                22,
+                true,
+                0,
+                theme
+            ),
             Some((0, CommsMouseAction::Select))
         );
     }
@@ -2484,6 +2638,14 @@ mod tests {
 
         assert!(!rendered.contains("tip one"));
         assert!(rendered.contains("tip three"));
+    }
+
+    #[test]
+    fn scrollbar_position_reaches_visual_end_at_max_scroll() {
+        assert_eq!(scrollbar_position_for_scroll(0, 20, 10), 0);
+        assert_eq!(scrollbar_position_for_scroll(10, 20, 10), 19);
+        assert_eq!(scrollbar_position_for_scroll(5, 20, 10), 9);
+        assert_eq!(scrollbar_position_for_scroll(0, 4, 10), 0);
     }
 
     #[cfg(unix)]

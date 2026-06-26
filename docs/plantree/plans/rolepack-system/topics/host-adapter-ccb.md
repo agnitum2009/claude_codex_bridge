@@ -57,6 +57,23 @@ owner, job target, pane label, and primary ask target are `archi`, not
 `agentroles.archi`. The role id may be shown only as secondary diagnostic
 metadata.
 
+Multiple project-local agents may bind the same role id when they need
+separate names, providers, queues, panes, private memory, or provider homes:
+
+```toml
+[windows]
+main = "archi_review:codex, archi_qa:claude"
+
+[agents.archi_review]
+role = "agentroles.archi"
+
+[agents.archi_qa]
+role = "agentroles.archi"
+```
+
+The role package store still has one current package for `agentroles.archi`.
+The per-agent runtime boundary comes from the project-local agent name.
+
 ## CLI Surface
 
 ```bash
@@ -64,6 +81,7 @@ ccb roles list
 ccb roles show agentroles.archi
 ccb roles install agentroles.archi
 ccb roles add agentroles.archi:codex
+ccb roles add agentroles.archi:codex --agent archi_review
 ccb roles doctor agentroles.archi
 ```
 
@@ -78,6 +96,14 @@ CCB-specific policy and diagnostics. `add` mutates project config and lock.
 `ccb update` should refresh the `agent-roles-spec` catalog, update already
 installed roles when newer catalog content exists, and prompt before installing
 newly available roles that are not yet in the local CCB role store.
+
+`ccb roles add <role-id>:<provider>` without `--agent` uses the role manifest's
+default agent name and may write shorthand. `--agent <name>` writes an explicit
+project-local instance binding. If the default agent is already bound, the
+command remains idempotent but should tell the user to use `--agent <name>` to
+add another instance. If the selected agent already exists without a role,
+`roles add` may attach the role through an explicit overlay instead of
+rewriting topology.
 
 `ccb ask agentroles.archi ...` is a convenience alias. It resolves to the
 single configured agent bound to `agentroles.archi`; if there is no match or

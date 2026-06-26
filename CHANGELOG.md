@@ -1,5 +1,118 @@
 # Changelog
 
+## Unreleased
+
+## v7.6.18 (2026-06-26)
+
+### CCB UI Theme Preference
+
+- **Global Theme Command Added**: `ccb theme` now shows or changes the global
+  CCB UI theme, including `+` and `-` cycling across dark and light palettes.
+- **Light Tmux And Sidebar Themes Added**: CCB-owned tmux status, pane borders,
+  sidebar colors, and activity/status indicators now have readable light-mode
+  styling for light terminal backgrounds.
+- **Rich WezTerm Theme Sync Added**: generated rich WezTerm profiles read the
+  same CCB theme preference and export matching tmux/sidebar theme variables.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.18.
+
+## v7.6.17 (2026-06-25)
+
+### Codex Log Symlink Target Repair
+
+- **Codex Temp Log Symlink Repaired**: managed Codex startup now recreates the
+  `logs_2.sqlite` symlink target parent when `/tmp/ccb-codex-logs-*` cleanup
+  removes it between launches.
+- **Bad Symlink Fallback Hardened**: if the symlink target cannot be repaired,
+  CCB removes the broken symlink and restores the local backup before Codex
+  starts, avoiding startup failures in Codex-owned SQLite initialization.
+- **Regression Coverage Added**: focused tests cover missing temp target
+  parents and preserve the existing diagnostic-log redirect and restore paths.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.17.
+
+## v7.6.16 (2026-06-23)
+
+### Codex SQLite Migration Recovery
+
+- **Codex Log Redirect Migration Fixed**: managed Codex `logs_2.sqlite`
+  redirect now leaves Codex-owned SQLite schema creation to Codex itself and
+  waits for `_sqlx_migrations` before installing the CCB diagnostic insert
+  trigger.
+- **Bad Intermediate Temp DBs Repaired**: temporary log databases left by the
+  bad intermediate policy are detected when `logs` exists without a successful
+  Codex migration record, backed up, and recreated by Codex on the normal
+  migration path.
+- **Diagnostic Fallbacks Preserved**: diagnostics restore and symlink fallback
+  behavior remain covered while the default path avoids precreating Codex's log
+  schema.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.16.
+
+## v7.6.15 (2026-06-23)
+
+### Codex Diagnostics And Sidebar Focus
+
+- **Codex Diagnostic Logs Redirected**: managed Codex homes now redirect
+  `logs_2.sqlite` diagnostic writes to a temporary database by default and
+  block diagnostic log inserts, while diagnostics mode restores the original
+  database behavior for troubleshooting.
+- **Codex Diagnostic Fallback Hardened**: when the temporary SQLite symlink
+  path cannot be installed, CCB falls back to the in-place diagnostic trigger
+  path instead of failing startup.
+- **Sidebar Cross-Window Focus Fixed**: sidebar agent clicks now first select
+  the target tmux window and then select the pane, preserving pane-id fallback
+  when window metadata is missing.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.15.
+
+## v7.6.14 (2026-06-23)
+
+### Mobile Gateway Alpha And Codex Diagnostics
+
+- **Mobile Gateway Alpha Added**: authenticated pairing, focus routes, terminal
+  open/resume/history routes, websocket terminal frames, public route metadata,
+  and device revocation commands now provide the first mobile control surface.
+- **Sidebar Layout Extended**: canonical rendering now keeps sidebar topology
+  and presentation fields in one `[ui.sidebar]` table, accepts legacy
+  `[ui.sidebar.view]` compatibility input, and supports `position = "right"`
+  for right-side sidebar placement.
+- **Multiple Local Agents Per Role Fixed**: local agents can share one Role Pack
+  role id while retaining distinct agent names and runtime identities.
+- **Codex Diagnostic SQLite Churn Reduced**: managed Codex homes now install a
+  stable diagnostic log filter that drops TRACE/DEBUG rows by default, keeps
+  INFO/ERROR rows, avoids unnecessary trigger recreation, and can be disabled
+  with `CCB_CODEX_DIAGNOSTIC_LOGS=1`.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.14.
+
+## v7.6.13 (2026-06-22)
+
+### Provider Profile Overlay Fixes
+
+- **Codex Plugin Overlay Precedence Fixed**: Codex plugin overrides now apply
+  in the intended order of inherited source config, `provider_profile.plugins`,
+  then `CCB_CODEX_PLUGIN_OVERRIDES_JSON` / `CCB_CODEX_PLUGIN_OVERRIDES` env
+  overrides.
+- **Codex Stub Config Plugin Overlays Fixed**: Codex agents without an
+  inherited `config.toml`, or with config inheritance disabled, now still
+  materialize `provider_profile.plugins` into the managed `config.toml`.
+- **Claude Profile MCP Without Source Trust Fixed**: Claude
+  `provider_profile.mcp_servers` now materializes even when the source
+  `.claude.json` does not exist, and `enabled = false` clears stale managed MCP
+  servers from the agent trust file.
+- **Callback Continuation Guarded**: callback continuations now keep the
+  upstream finalization target explicit, and inherited ask skills warn agents
+  not to answer a callback continuation before the upstream result is available.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and npm
+  packaging metadata are aligned for 7.6.13.
+
 ## v7.6.12 (2026-06-18)
 
 ### Claude MCP And Hook Inheritance

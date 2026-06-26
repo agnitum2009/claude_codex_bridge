@@ -74,6 +74,24 @@ Alias errors use one format:
 - multiple matches: `role agentroles.archi is bound to multiple agents: archi,
   archi-review; target one agent name explicitly`
 
+Multiple project-local instances of one role use explicit agent names:
+
+```toml
+[windows]
+main = "archi_review:codex, archi_qa:claude"
+
+[agents.archi_review]
+role = "agentroles.archi"
+
+[agents.archi_qa]
+role = "agentroles.archi"
+```
+
+`ccb roles add agentroles.archi:codex --agent archi_review` is the CLI form for
+that explicit binding. The plain shorthand remains a single-default-name
+convenience; running it again after `archi` already exists is idempotent and
+should point the user to `--agent <name>` for another instance.
+
 ## Consequences
 
 - Config can be short for common fixed roles while preserving clean runtime
@@ -81,7 +99,7 @@ Alias errors use one format:
 - Sidebar rows stay ergonomic and match actual ask targets such as `archi`.
 - Role ids remain stable package identities and are not admitted as general
   agent names.
-- Multiple instances of one role remain possible through explicit agent names.
+- Multiple instances of one role are supported through explicit agent names.
 - Config loading and ask routing need role-id alias resolution with clear
   ambiguity errors.
 - Role-store lookup failures need distinct user-facing categories: not

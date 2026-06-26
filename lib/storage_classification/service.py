@@ -540,7 +540,12 @@ def _is_marked_projected_symlink(path: Path) -> bool:
         'droid-inherited-skills',
         'kimi-inherited-skills',
         'mimo-inherited-skills',
-    } and not label.startswith(('codex-role-skill:', 'claude-role-skill:', 'kimi-role-skill:')):
+    } and not label.startswith((
+        'codex-role-skill:',
+        'claude-role-skill:',
+        'kimi-role-skill:',
+        'kimi-skill-overlay:',
+    )):
         return False
     source = str(payload.get('source') or '').strip()
     if not source:

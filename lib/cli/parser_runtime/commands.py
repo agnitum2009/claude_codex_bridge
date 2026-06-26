@@ -13,6 +13,7 @@ from cli.models import (
     ParsedKillCommand,
     ParsedLogsCommand,
     ParsedMaintenanceCommand,
+    ParsedMobileCommand,
     ParsedPendCommand,
     ParsedPingCommand,
     ParsedPsCommand,
@@ -66,6 +67,42 @@ def parse_maintenance(tokens: list[str], *, project: str | None, error_type) -> 
     if action not in {'status', 'tick', 'schedule', 'runner', 'enable', 'disable'}:
         raise error_type('maintenance supports: status, tick, schedule, runner, enable, disable')
     return ParsedMaintenanceCommand(project=project, action=action, args=tuple(tokens[1:]))
+
+
+def parse_mobile(tokens: list[str], *, project: str | None, error_type) -> ParsedMobileCommand:
+    if not tokens:
+        raise error_type('mobile requires one of: serve, devices, revoke')
+    action = str(tokens[0] or '').strip().lower()
+    if action == 'devices':
+        require_no_extra(tokens[1:], command='mobile devices', error_type=error_type)
+        return ParsedMobileCommand(project=project, action=action)
+    if action == 'revoke':
+        parser = argparse.ArgumentParser(prog='ccb mobile revoke', add_help=False)
+        parser.add_argument('device_id')
+        namespace = parse_args(parser, tokens[1:], error_message='invalid mobile revoke command', error_type=error_type)
+        device_id = str(namespace.device_id or '').strip()
+        if not device_id:
+            raise error_type('mobile revoke requires <device_id>')
+        return ParsedMobileCommand(project=project, action=action, device_id=device_id)
+    if action != 'serve':
+        raise error_type('mobile only supports: serve, devices, revoke')
+    parser = argparse.ArgumentParser(prog='ccb mobile serve', add_help=False)
+    parser.add_argument('--listen', default='127.0.0.1:8787')
+    parser.add_argument('--public-url', default=None)
+    parser.add_argument(
+        '--route-provider',
+        default='lan',
+        choices=('lan', 'tailnet', 'cloudflare_tunnel', 'relay'),
+    )
+    namespace = parse_args(parser, tokens[1:], error_message='invalid mobile serve command', error_type=error_type)
+    public_url = str(namespace.public_url).strip() if namespace.public_url is not None else None
+    return ParsedMobileCommand(
+        project=project,
+        action=action,
+        listen=str(namespace.listen),
+        public_url=public_url or None,
+        route_provider=str(namespace.route_provider),
+    )
 
 
 def parse_kill(tokens: list[str], *, project: str | None, error_type) -> ParsedKillCommand:
@@ -269,6 +306,7 @@ __all__ = [
     'parse_kill',
     'parse_logs',
     'parse_maintenance',
+    'parse_mobile',
     'parse_pend',
     'parse_ping',
     'parse_ps',

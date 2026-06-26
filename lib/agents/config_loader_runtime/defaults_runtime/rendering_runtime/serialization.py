@@ -105,6 +105,14 @@ def _provider_profile_config_dict(spec) -> dict[str, object] | None:
         payload['mcp_servers'] = dict(profile.mcp_servers)
     if profile.plugins:
         payload['plugins'] = dict(profile.plugins)
+    if profile.inherited_skill_include:
+        payload['inherited_skill_include'] = list(profile.inherited_skill_include)
+    if profile.inherited_skill_exclude:
+        payload['inherited_skill_exclude'] = list(profile.inherited_skill_exclude)
+    if profile.skill_overlays:
+        payload['skill_overlays'] = {
+            name: overlay.to_record() for name, overlay in profile.skill_overlays.items()
+        }
     if profile.inherit_auth != default_profile.inherit_auth:
         payload['inherit_auth'] = profile.inherit_auth
     if profile.inherit_config != default_profile.inherit_config:

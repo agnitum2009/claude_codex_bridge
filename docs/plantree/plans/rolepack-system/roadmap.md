@@ -101,6 +101,10 @@ Date: 2026-06-01
 - Removed the CCB-private installed role writer and
   `CCB_AGENT_ROLES_MANAGER` rollback switch so role payload writes have one
   owner.
+- Documented and tested multiple project-local agents bound to the same role
+  id. The shorthand path remains a single-default-agent convenience, while
+  `ccb roles add <role-id>:<provider> --agent <name>` creates explicit
+  additional instances.
 
 ## In Progress
 

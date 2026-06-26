@@ -618,6 +618,7 @@ def add_role_to_project_config(
         if role is None:
             raise RolePackError(f'role is not installed; run `ccb roles install {role_id}`')
     selected_agent = normalize_agent_name(agent_name or role.default_agent_name)
+    requested_provider = str(provider or '').strip().lower()
     selected_provider = str(provider or (role.providers[0] if role.providers else 'codex')).strip().lower()
     if role.providers and selected_provider not in role.providers:
         raise RolePackError(
@@ -633,14 +634,37 @@ def add_role_to_project_config(
     before = config_path.read_text(encoding='utf-8')
     after = before
     use_shorthand = selected_agent == normalize_agent_name(role.default_agent_name)
-    if selected_agent not in current_config.agents:
+    existing_spec = current_config.agents.get(selected_agent)
+    existing_role = ''
+    if existing_spec is not None:
+        existing_provider = str(getattr(existing_spec, 'provider', '') or '').strip().lower()
+        existing_role = normalize_role_id(str(getattr(existing_spec, 'role', '') or '')) if getattr(existing_spec, 'role', None) else ''
+        if requested_provider and requested_provider != existing_provider:
+            raise RolePackError(
+                f'agent {selected_agent!r} already exists with provider {existing_provider}; '
+                f'cannot add it as provider {requested_provider}'
+            )
+        if role.providers and existing_provider not in role.providers:
+            raise RolePackError(
+                f'role {role_id} does not support existing agent {selected_agent!r} provider '
+                f'{existing_provider}; supported: {", ".join(role.providers)}'
+            )
+        if existing_role and existing_role != role_id:
+            raise RolePackError(
+                f'agent {selected_agent!r} is already bound to role {existing_role}; '
+                f'use --agent <name> to create a separate {role_id} instance'
+            )
+        selected_provider = existing_provider
+
+    if existing_spec is None:
         after = _append_agent_to_window_layout(
             after,
             window_name=target_window,
             agent_name=role_id if use_shorthand else selected_agent,
             provider=selected_provider,
         )
-    if not use_shorthand:
+    overlay_binding = existing_spec is not None and not existing_role
+    if not use_shorthand or overlay_binding:
         after = _upsert_agent_role_overlay(
             after,
             agent_name=selected_agent,
@@ -661,10 +685,36 @@ def add_role_to_project_config(
         'provider': selected_provider,
         'window': target_window,
         'config': str(config_path),
-        'config_binding': 'shorthand' if use_shorthand else 'explicit',
+        'config_binding': 'shorthand' if use_shorthand and not overlay_binding else 'explicit',
         'install': 'snapshotted_from_system_source' if auto_installed else '',
-        'note': 'run ccb reload to mount new role agent' if after != before else '',
+        'note': _roles_add_note(
+            changed=after != before,
+            role_id=role_id,
+            agent_name=selected_agent,
+            provider=selected_provider,
+            default_agent=normalize_agent_name(role.default_agent_name),
+            custom_agent_requested=agent_name is not None,
+        ),
     }
+
+
+def _roles_add_note(
+    *,
+    changed: bool,
+    role_id: str,
+    agent_name: str,
+    provider: str,
+    default_agent: str,
+    custom_agent_requested: bool,
+) -> str:
+    if changed:
+        return 'run ccb reload to mount new role agent'
+    if not custom_agent_requested and agent_name == default_agent:
+        return (
+            f'agent {agent_name} is already bound to {role_id}; '
+            f'use `ccb roles add {role_id}:{provider} --agent <name>` to add another project-local instance'
+        )
+    return ''
 
 
 def _find_builtin_role(role_id: str, *, script_root: Path | None) -> Path | None:

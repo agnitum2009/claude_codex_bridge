@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 import hashlib
 import json
 import re
@@ -14,6 +14,8 @@ from ..names import AgentValidationError, normalize_agent_name
 _WINDOW_NAME_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_-]*$')
 SIDEBAR_MODE_EVERY_WINDOW = 'every_window'
 SIDEBAR_MODE_OFF = 'off'
+SIDEBAR_POSITION_LEFT = 'left'
+SIDEBAR_POSITION_RIGHT = 'right'
 DEFAULT_SIDEBAR_VIEW_TIPS = (
     'C-b d  detach',
     'C-b h/j/k/l pane',
@@ -40,12 +42,17 @@ class SidebarSpec:
     mode: str = SIDEBAR_MODE_EVERY_WINDOW
     width: str | int = '15%'
     bottom_height: int = 20
+    position: str = SIDEBAR_POSITION_LEFT
 
     def __post_init__(self) -> None:
         mode = str(self.mode or '').strip()
         if mode not in {SIDEBAR_MODE_EVERY_WINDOW, SIDEBAR_MODE_OFF}:
             raise AgentValidationError('ui.sidebar.mode must be every_window or off')
+        position = str(self.position or '').strip()
+        if position not in {SIDEBAR_POSITION_LEFT, SIDEBAR_POSITION_RIGHT}:
+            raise AgentValidationError('ui.sidebar.position must be left or right')
         object.__setattr__(self, 'mode', mode)
+        object.__setattr__(self, 'position', position)
         object.__setattr__(self, 'width', normalize_sidebar_width(self.width))
         try:
             bottom_height = int(self.bottom_height)
@@ -60,26 +67,29 @@ class SidebarSpec:
             'mode': self.mode,
             'width': self.width,
             'bottom_height': self.bottom_height,
+            'position': self.position,
         }
 
 
 @dataclass(frozen=True)
 class SidebarViewSpec:
     agents_height: str | int = '50%'
-    comms_height: str | int = '23%'
-    tips_height: str | int = '27%'
+    comms_height: str | int = '15%'
+    tips_height: str | int = '35%'
     comms_limit: int = 5
     comms_compact: bool = True
     tips_enabled: bool = True
     tips: tuple[str, ...] = DEFAULT_SIDEBAR_VIEW_TIPS
+    field_prefix: InitVar[str] = 'ui.sidebar.view'
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, field_prefix: str) -> None:
+        prefix = str(field_prefix or 'ui.sidebar.view').rstrip('.')
         object.__setattr__(
             self,
             'agents_height',
             normalize_sidebar_view_height(
                 self.agents_height,
-                field_name='ui.sidebar.view.agents_height',
+                field_name=f'{prefix}.agents_height',
             ),
         )
         object.__setattr__(
@@ -87,7 +97,7 @@ class SidebarViewSpec:
             'comms_height',
             normalize_sidebar_view_height(
                 self.comms_height,
-                field_name='ui.sidebar.view.comms_height',
+                field_name=f'{prefix}.comms_height',
             ),
         )
         object.__setattr__(
@@ -95,23 +105,23 @@ class SidebarViewSpec:
             'tips_height',
             normalize_sidebar_view_height(
                 self.tips_height,
-                field_name='ui.sidebar.view.tips_height',
+                field_name=f'{prefix}.tips_height',
             ),
         )
         try:
             comms_limit = int(self.comms_limit)
         except Exception as exc:
-            raise AgentValidationError('ui.sidebar.view.comms_limit must be a positive integer') from exc
+            raise AgentValidationError(f'{prefix}.comms_limit must be a positive integer') from exc
         if comms_limit <= 0:
-            raise AgentValidationError('ui.sidebar.view.comms_limit must be a positive integer')
+            raise AgentValidationError(f'{prefix}.comms_limit must be a positive integer')
         object.__setattr__(self, 'comms_limit', comms_limit)
         if not isinstance(self.comms_compact, bool):
-            raise AgentValidationError('ui.sidebar.view.comms_compact must be a boolean')
+            raise AgentValidationError(f'{prefix}.comms_compact must be a boolean')
         if not isinstance(self.tips_enabled, bool):
-            raise AgentValidationError('ui.sidebar.view.tips_enabled must be a boolean')
+            raise AgentValidationError(f'{prefix}.tips_enabled must be a boolean')
         object.__setattr__(self, 'comms_compact', self.comms_compact)
         object.__setattr__(self, 'tips_enabled', self.tips_enabled)
-        tips = tuple(_normalize_tip(item) for item in self.tips)
+        tips = tuple(_normalize_tip(item, field_name=f'{prefix}.tips') for item in self.tips)
         object.__setattr__(self, 'tips', tips or DEFAULT_SIDEBAR_VIEW_TIPS)
 
     def to_record(self) -> dict[str, object]:
@@ -292,10 +302,10 @@ def normalize_sidebar_view_height(
     raise AgentValidationError(f'{field_name} must be a positive integer or percentage string')
 
 
-def _normalize_tip(value: object) -> str:
+def _normalize_tip(value: object, *, field_name: str = 'ui.sidebar.view.tips') -> str:
     text = str(value or '').strip()
     if not text:
-        raise AgentValidationError('ui.sidebar.view.tips cannot contain empty strings')
+        raise AgentValidationError(f'{field_name} cannot contain empty strings')
     return text
 
 
@@ -452,6 +462,8 @@ __all__ = [
     'DEFAULT_SIDEBAR_VIEW_TIPS',
     'SIDEBAR_MODE_EVERY_WINDOW',
     'SIDEBAR_MODE_OFF',
+    'SIDEBAR_POSITION_LEFT',
+    'SIDEBAR_POSITION_RIGHT',
     'SidebarSpec',
     'SidebarViewSpec',
     'ToolWindowSpec',

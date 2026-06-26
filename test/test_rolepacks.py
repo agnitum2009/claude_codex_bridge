@@ -2068,6 +2068,70 @@ def test_roles_add_uses_explicit_overlay_for_custom_agent_name(tmp_path: Path, m
     assert loaded.agents['archi-review'].role == 'agentroles.archi'
 
 
+def test_roles_add_allows_multiple_project_agents_for_same_role(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    project = tmp_path / 'project'
+    project.mkdir()
+    _write_project_config(project)
+    install_role('agentroles.archi', script_root=REPO_ROOT, with_tools=False)
+
+    first = _run_cli(['roles', 'add', 'agentroles.archi:codex', '--agent', 'archi-review'], cwd=project)
+    second = _run_cli(['roles', 'add', 'agentroles.archi:claude', '--agent', 'archi-qa'], cwd=project)
+
+    assert first[0] == 0
+    assert second[0] == 0
+    text = (project / '.ccb' / 'ccb.config').read_text(encoding='utf-8')
+    assert 'main = "agent1:codex, archi-review:codex, archi-qa:claude"' in text
+    assert '[agents.archi-review]\nrole = "agentroles.archi"' in text
+    assert '[agents.archi-qa]\nrole = "agentroles.archi"' in text
+    loaded = load_project_config(project).config
+    assert loaded.windows[0].agent_names == ('agent1', 'archi-review', 'archi-qa')
+    assert loaded.agents['archi-review'].role == 'agentroles.archi'
+    assert loaded.agents['archi-qa'].role == 'agentroles.archi'
+
+
+def test_roles_add_existing_default_role_is_idempotent_with_multi_instance_hint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    project = tmp_path / 'project'
+    project.mkdir()
+    _write_project_config(project)
+    install_role('agentroles.archi', script_root=REPO_ROOT, with_tools=False)
+    assert _run_cli(['roles', 'add', 'agentroles.archi:codex'], cwd=project)[0] == 0
+
+    code, out, err = _run_cli(['roles', 'add', 'agentroles.archi:codex'], cwd=project)
+
+    assert code == 0
+    assert err == ''
+    assert 'role_status: unchanged' in out
+    assert 'use `ccb roles add agentroles.archi:codex --agent <name>`' in out
+
+
+def test_roles_add_binds_existing_default_agent_with_explicit_overlay(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    project = tmp_path / 'project'
+    project.mkdir()
+    _write_project_config_text(
+        project,
+        'version = 2\nentry_window = "main"\n\n[windows]\nmain = "archi:codex"\n',
+    )
+    install_role('agentroles.archi', script_root=REPO_ROOT, with_tools=False)
+
+    code, out, err = _run_cli(['roles', 'add', 'agentroles.archi:codex'], cwd=project)
+
+    assert code == 0
+    assert err == ''
+    assert 'role_status: added' in out
+    assert 'config_binding: explicit' in out
+    text = (project / '.ccb' / 'ccb.config').read_text(encoding='utf-8')
+    assert 'main = "archi:codex"' in text
+    assert '[agents.archi]\nrole = "agentroles.archi"' in text
+    loaded = load_project_config(project).config
+    assert loaded.agents['archi'].role == 'agentroles.archi'
+
+
 def test_role_id_shorthand_in_windows_resolves_to_default_agent_name(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
     project = tmp_path / 'project'

@@ -225,9 +225,10 @@ callback 的限制包括：
   \item 必须存在 parent message。
   \item message-bureau support 必须可用。
   \item parent 不能已有 outstanding callback。
+  \item callback continuation job 不能再 \cmd{--callback} 回该 continuation 的 original caller；它必须直接完成当前 turn，由 CCB 把 completion 继续向上游投递。
 \end{itemize}
 
-child 完成后，CCB 不把 child reply 直接投递给 original caller。它记录 child reply，向 parent agent 提交 continuation job，并更新 callback edge。repair 和 timeout sweep 可以恢复或失败 pending callback edges。
+child 完成后，CCB 不把 child reply 直接投递给 original caller。它记录 child reply，向 parent agent 提交 continuation job，并更新 callback edge。continuation job 的 final answer 才是上游投递路径；agent 不应再用 ask 把 final result 发送给 original caller。repair 和 timeout sweep 可以恢复或失败 pending callback edges。
 
 \section{retry 和 resubmit}
 

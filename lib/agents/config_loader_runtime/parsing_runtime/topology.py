@@ -19,6 +19,10 @@ from agents.models import (
 from ..common import ConfigValidationError
 
 
+_SIDEBAR_TOPOLOGY_FIELDS = {'mode', 'width', 'bottom_height', 'position'}
+_SIDEBAR_VIEW_FIELDS = {'agents_height', 'comms_height', 'tips_height', 'comms_limit', 'comms_compact', 'tips_enabled', 'tips'}
+
+
 def parse_sidebar(raw_ui: Any) -> SidebarSpec | None:
     if raw_ui is None:
         return None
@@ -29,7 +33,7 @@ def parse_sidebar(raw_ui: Any) -> SidebarSpec | None:
     if ui.get('sidebar') is None:
         return None
     sidebar = expect_mapping(ui['sidebar'], field_name='ui.sidebar')
-    unknown_sidebar = sorted(set(sidebar) - {'mode', 'width', 'bottom_height', 'view'})
+    unknown_sidebar = sorted(set(sidebar) - (_SIDEBAR_TOPOLOGY_FIELDS | _SIDEBAR_VIEW_FIELDS | {'view'}))
     if unknown_sidebar:
         raise ConfigValidationError(
             f'ui.sidebar contains unknown fields: {", ".join(unknown_sidebar)}'
@@ -39,6 +43,7 @@ def parse_sidebar(raw_ui: Any) -> SidebarSpec | None:
             mode=sidebar.get('mode', 'every_window'),
             width=sidebar.get('width', '15%'),
             bottom_height=sidebar.get('bottom_height', 20),
+            position=sidebar.get('position', 'left'),
         )
     except AgentValidationError as exc:
         raise ConfigValidationError(str(exc)) from exc
@@ -51,26 +56,31 @@ def parse_sidebar_view(raw_ui: Any) -> SidebarViewSpec | None:
     if ui.get('sidebar') is None:
         return None
     sidebar = expect_mapping(ui['sidebar'], field_name='ui.sidebar')
-    if sidebar.get('view') is None:
+    inline_view = {key: sidebar[key] for key in _SIDEBAR_VIEW_FIELDS if key in sidebar}
+    legacy_view = sidebar.get('view')
+    if legacy_view is None and not inline_view:
         return None
-    view = expect_mapping(sidebar['view'], field_name='ui.sidebar.view')
-    unknown_view = sorted(
-        set(view)
-        - {'agents_height', 'comms_height', 'tips_height', 'comms_limit', 'comms_compact', 'tips_enabled', 'tips'}
-    )
-    if unknown_view:
-        raise ConfigValidationError(
-            f'ui.sidebar.view contains unknown fields: {", ".join(unknown_view)}'
-        )
+    view: dict[str, Any] = {}
+    if legacy_view is not None:
+        legacy_map = expect_mapping(legacy_view, field_name='ui.sidebar.view')
+        unknown_view = sorted(set(legacy_map) - _SIDEBAR_VIEW_FIELDS)
+        if unknown_view:
+            raise ConfigValidationError(
+                f'ui.sidebar.view contains unknown fields: {", ".join(unknown_view)}'
+            )
+        view.update(legacy_map)
+    view.update(inline_view)
+    field_prefix = 'ui.sidebar' if inline_view else 'ui.sidebar.view'
     try:
         return SidebarViewSpec(
             agents_height=view.get('agents_height', '50%'),
-            comms_height=view.get('comms_height', '23%'),
-            tips_height=view.get('tips_height', '27%'),
+            comms_height=view.get('comms_height', '15%'),
+            tips_height=view.get('tips_height', '35%'),
             comms_limit=view.get('comms_limit', 5),
-            comms_compact=expect_bool(view.get('comms_compact', True), field_name='ui.sidebar.view.comms_compact'),
-            tips_enabled=expect_bool(view.get('tips_enabled', True), field_name='ui.sidebar.view.tips_enabled'),
-            tips=expect_string_list(view.get('tips', list(SidebarViewSpec().tips)), field_name='ui.sidebar.view.tips'),
+            comms_compact=expect_bool(view.get('comms_compact', True), field_name=f'{field_prefix}.comms_compact'),
+            tips_enabled=expect_bool(view.get('tips_enabled', True), field_name=f'{field_prefix}.tips_enabled'),
+            tips=expect_string_list(view.get('tips', list(SidebarViewSpec().tips)), field_name=f'{field_prefix}.tips'),
+            field_prefix=field_prefix,
         )
     except AgentValidationError as exc:
         raise ConfigValidationError(str(exc)) from exc

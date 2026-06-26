@@ -186,6 +186,7 @@ class _PatchFakeBackend:
 
 
 def test_apply_add_window_creates_only_new_window_sidebar_and_agent_panes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     current = _load_config(tmp_path / 'current', BASE_CONFIG)
     new = _load_config(tmp_path / 'new', ADD_WINDOW_CONFIG)
     project_root = _project(tmp_path / 'repo', BASE_CONFIG)
@@ -230,6 +231,9 @@ def test_apply_add_window_creates_only_new_window_sidebar_and_agent_panes(tmp_pa
     assert ('new-window', '-d', '-t', layout.ccbd_tmux_session_name, '-n', 'review') == backend.tmux_calls[1][:6]
     assert all('kill' not in ' '.join(call) for call in backend.tmux_calls)
     assert backend.split_calls == [('%3', 'right', 85), ('%4', 'bottom', 50)]
+    assert backend.respawn_calls[0][0] == '%3'
+    assert backend.respawn_calls[0][1].startswith('CCB_SIDEBAR_THEME_PROFILE=default ')
+    assert '--theme' not in backend.respawn_calls[0][1]
     assert backend.pane_options['%3']['@ccb_role'] == 'sidebar'
     assert backend.pane_options['%3']['@ccb_slot'] == 'sidebar:review'
     assert backend.pane_options['%3']['@ccb_managed_by'] == 'ccbd'
@@ -504,6 +508,7 @@ def test_apply_add_tool_window_creates_tool_window_sidebar_and_tool_pane(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setenv('CCB_TMUX_THEME_PROFILE', 'light')
     current = _load_config(tmp_path / 'current-tool-window', BASE_CONFIG)
     new = _load_config(tmp_path / 'new-tool-window', ADD_TOOL_WINDOW_CONFIG)
     layout = PathLayout(_project(tmp_path / 'repo-tool-window', BASE_CONFIG))
@@ -531,6 +536,9 @@ def test_apply_add_tool_window_creates_tool_window_sidebar_and_tool_pane(
     assert result.sidebar_panes == {'neovim': '%3'}
     assert result.tool_panes == {'neovim': '%4'}
     assert result.agent_panes == {}
+    assert backend.respawn_calls[-2][0] == '%3'
+    assert backend.respawn_calls[-2][1].startswith('CCB_SIDEBAR_THEME_PROFILE=light ')
+    assert '--theme' not in backend.respawn_calls[-2][1]
     assert backend.respawn_calls[-1] == ('%4', 'ccb-nvim')
     assert backend.pane_options['%3']['@ccb_role'] == 'sidebar'
     assert backend.pane_options['%3']['@ccb_slot'] == 'sidebar:neovim'

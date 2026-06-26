@@ -402,9 +402,10 @@ def _materialize_trust(
     workspace_path: Path | None,
 ) -> None:
     source_trust = source_home / '.claude.json'
-    if source_trust.is_file():
+    profile_servers = _profile_mcp_servers(profile)
+    if source_trust.is_file() or target_layout.trust_path.exists() or profile_servers:
         merged = _projected_claude_json_payload(
-            _read_json_object(source_trust),
+            _read_json_object(source_trust) if source_trust.is_file() else {},
             existing=_read_json_object(target_layout.trust_path),
             profile=profile,
             project_root=project_root,
