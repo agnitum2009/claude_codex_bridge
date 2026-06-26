@@ -19,7 +19,8 @@ def _spec(name: str, provider: str) -> AgentSpec:
     )
 
 
-def test_namespace_topology_plan_projects_sidebar_outside_user_layout() -> None:
+def test_namespace_topology_plan_projects_sidebar_outside_user_layout(monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     config = build_default_project_config()
 
     plan = build_namespace_topology_plan(
@@ -77,6 +78,21 @@ def test_namespace_topology_plan_projects_right_sidebar_after_user_layout() -> N
     assert plan.windows[1].sidebar.position == 'right'
 
 
+def test_namespace_topology_plan_keeps_sidebar_launch_args_theme_compatible(monkeypatch) -> None:
+    monkeypatch.setenv('CCB_TMUX_THEME_PROFILE', 'light')
+    config = build_default_project_config()
+
+    plan = build_namespace_topology_plan(
+        config,
+        ccbd_socket_path='/tmp/ccbd.sock',
+        project_root='/repo',
+    )
+
+    assert plan.windows[0].sidebar is not None
+    assert '--theme' not in plan.windows[0].sidebar.launch_args
+    assert plan.windows[0].sidebar.launch_args[-2:] == ('--pane-window', 'main')
+
+
 def test_namespace_topology_plan_leaves_layout_plain_when_sidebar_off() -> None:
     config = ProjectConfig(
         version=2,
@@ -95,7 +111,8 @@ def test_namespace_topology_plan_leaves_layout_plain_when_sidebar_off() -> None:
     assert plan.windows[0].sidebar is None
 
 
-def test_namespace_topology_plan_includes_tool_window_without_agent_names() -> None:
+def test_namespace_topology_plan_includes_tool_window_without_agent_names(monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     config = ProjectConfig(
         version=2,
         default_agents=('agent1',),

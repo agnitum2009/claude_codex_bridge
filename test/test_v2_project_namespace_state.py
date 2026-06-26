@@ -437,7 +437,8 @@ def test_project_namespace_controller_creates_state_and_lifecycle_event(tmp_path
     assert latest_event.details['reason'] == 'initial_create'
 
 
-def test_project_namespace_controller_materializes_explicit_windows_and_sidebar(tmp_path: Path) -> None:
+def test_project_namespace_controller_materializes_explicit_windows_and_sidebar(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     project_root = tmp_path / 'repo-topology'
     (project_root / '.ccb').mkdir(parents=True)
     (project_root / '.ccb' / 'ccb.config').write_text(
@@ -484,6 +485,10 @@ bottom_height = 20
     assert backend.pane_options['%1']['@ccb_sidebar_instance'] == 'main'
     assert backend.pane_options['%3']['@ccb_role'] == 'sidebar'
     assert backend.pane_options['%3']['@ccb_sidebar_instance'] == 'review'
+    assert backend.pane_options['%1']['@respawn_cmd'].startswith('CCB_SIDEBAR_THEME_PROFILE=default ')
+    assert '--theme' not in backend.pane_options['%1']['@respawn_cmd']
+    assert backend.pane_options['%3']['@respawn_cmd'].startswith('CCB_SIDEBAR_THEME_PROFILE=default ')
+    assert '--theme' not in backend.pane_options['%3']['@respawn_cmd']
     assert backend.pane_options['%2']['@ccb_slot'] == 'agent1'
     assert backend.pane_options['%4']['@ccb_slot'] == 'agent2'
     assert backend.pane_options['%5']['@ccb_slot'] == 'agent3'

@@ -77,6 +77,8 @@ def print_start_help(*, file=None) -> None:
               ccb kill             Stop the current project's background runtime.
               ccb kill -f          Force cleanup project-owned runtime residue.
               ccb cleanup          Prune safe provider rebuildable caches after ccbd is stopped.
+              ccb theme [light|dark|+|-]
+                                    Set or show the global CCB UI theme.
 
             Core commands:
               ccb ask <agent> [from <sender>] <message>
@@ -202,6 +204,22 @@ _COMMAND_HELP = {
 
         Advanced lineage view:
           ccb trace <id>   Show the full job/message/reply lineage for one id.
+    """,
+    "theme": """
+        usage: ccb theme [dark|light|+|-|solarized|tokyo|gruvbox|rose-pine]
+
+        CCB UI theme:
+          ccb theme          Show current CCB theme preference.
+          ccb theme +        Switch to the next CCB theme.
+          ccb theme -        Switch to the previous CCB theme.
+          ccb theme light    Use a light CCB tmux/sidebar theme.
+          ccb theme dark     Use the dark CCB tmux/sidebar theme.
+
+        Notes:
+          - Ordinary terminals keep their own terminal theme; CCB only updates
+            CCB-owned tmux/sidebar colors.
+          - CCB-owned rich WezTerm follows this preference through its
+            generated config.
     """,
     "inbox": """
         usage: ccb inbox [--detail] <agent_name>

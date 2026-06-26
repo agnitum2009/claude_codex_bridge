@@ -6,6 +6,8 @@ import os
 import shlex
 from typing import Mapping
 
+from terminal_runtime.ui_theme import load_theme_preference
+
 
 @dataclass(frozen=True)
 class TmuxPaneVisual:
@@ -15,11 +17,29 @@ class TmuxPaneVisual:
 
 
 @dataclass(frozen=True)
+class TmuxStatusPalette:
+    background: str
+    foreground: str
+    muted: str
+    segment_fg: str
+    mode_accent: str
+    git_bg: str
+    focus_bg: str
+    version_bg: str
+    indicator_bg: str
+    indicator_fg: str
+    time_bg: str
+    time_fg: str
+
+
+@dataclass(frozen=True)
 class TmuxThemeProfile:
     name: str
     fallback_label_style: str
     pane_border_style: str
     pane_active_border_style: str
+    status: TmuxStatusPalette
+    pane_title_style: str = '#[fg=#565f89]'
     window_style: str | None = None
     window_active_style: str | None = None
 
@@ -32,6 +52,37 @@ class RenderedTmuxSessionTheme:
 
 
 _DEFAULT_FALLBACK_LABEL_STYLE = '#[fg=#1e1e2e]#[bg=#7aa2f7]#[bold]'
+_LIGHT_FALLBACK_LABEL_STYLE = '#[fg=#eff1f5]#[bg=#1e66f5]#[bold]'
+
+_DARK_STATUS = TmuxStatusPalette(
+    background='#1e1e2e',
+    foreground='#cdd6f4',
+    muted='#6c7086',
+    segment_fg='#1e1e2e',
+    mode_accent='#{?client_prefix,#f38ba8,#{?pane_in_mode,#fab387,#f5c2e7}}',
+    git_bg='#cba6f7',
+    focus_bg='#f38ba8',
+    version_bg='#cba6f7',
+    indicator_bg='#89b4fa',
+    indicator_fg='#cdd6f4',
+    time_bg='#fab387',
+    time_fg='#1e1e2e',
+)
+
+_LIGHT_STATUS = TmuxStatusPalette(
+    background='#eff1f5',
+    foreground='#4c4f69',
+    muted='#6c6f85',
+    segment_fg='#eff1f5',
+    mode_accent='#{?client_prefix,#d20f39,#{?pane_in_mode,#df8e1d,#1e66f5}}',
+    git_bg='#179299',
+    focus_bg='#d20f39',
+    version_bg='#8839ef',
+    indicator_bg='#1e66f5',
+    indicator_fg='#eff1f5',
+    time_bg='#4c4f69',
+    time_fg='#eff1f5',
+)
 
 _THEME_PROFILES: dict[str, TmuxThemeProfile] = {
     'default': TmuxThemeProfile(
@@ -39,21 +90,29 @@ _THEME_PROFILES: dict[str, TmuxThemeProfile] = {
         fallback_label_style=_DEFAULT_FALLBACK_LABEL_STYLE,
         pane_border_style='fg=#3b4261,bold',
         pane_active_border_style='fg=#7aa2f7,bold',
+        status=_DARK_STATUS,
     ),
     'contrast': TmuxThemeProfile(
         name='contrast',
         fallback_label_style=_DEFAULT_FALLBACK_LABEL_STYLE,
         pane_border_style='fg=#565f89,bold',
         pane_active_border_style='fg=#89b4fa,bold',
+        status=_DARK_STATUS,
         window_style='bg=#181825',
         window_active_style='bg=#1e1e2e',
+    ),
+    'light': TmuxThemeProfile(
+        name='light',
+        fallback_label_style=_LIGHT_FALLBACK_LABEL_STYLE,
+        pane_border_style='fg=#bcc0cc,bold',
+        pane_active_border_style='fg=#1e66f5,bold',
+        status=_LIGHT_STATUS,
+        pane_title_style='#[fg=#6c6f85]',
     ),
 }
 
 _CONTRAST_TERMINAL_FAMILIES = {'apple_terminal'}
 
-_STATUS_STYLE = 'bg=#1e1e2e fg=#cdd6f4'
-_STATUS_FORMAT_0 = '#[align=left,bg=#1e1e2e]#{T:status-left}#[align=centre,fg=#6c7086]#{b:pane_current_path}#[align=right]#{T:status-right}'
 _WINDOW_STATUS_FORMAT = ''
 _WINDOW_STATUS_CURRENT_FORMAT = ''
 _WINDOW_STATUS_SEPARATOR = ''
@@ -121,10 +180,38 @@ _AGENT_VISUALS_CONTRAST: tuple[TmuxPaneVisual, ...] = (
     _visual(bg='#f5bde6'),
 )
 
-_SIDEBAR_VISUAL = TmuxPaneVisual(
+_CMD_VISUALS_LIGHT: tuple[TmuxPaneVisual, ...] = (
+    _visual(bg='#1e66f5', fg='#eff1f5'),
+    _visual(bg='#179299', fg='#eff1f5'),
+    _visual(bg='#209fb5', fg='#eff1f5'),
+    _visual(bg='#8839ef', fg='#eff1f5'),
+)
+
+_AGENT_VISUALS_LIGHT: tuple[TmuxPaneVisual, ...] = (
+    _visual(bg='#fe640b', fg='#eff1f5'),
+    _visual(bg='#40a02b', fg='#eff1f5'),
+    _visual(bg='#d20f39', fg='#eff1f5'),
+    _visual(bg='#8839ef', fg='#eff1f5'),
+    _visual(bg='#1e66f5', fg='#eff1f5'),
+    _visual(bg='#179299', fg='#eff1f5'),
+    _visual(bg='#df8e1d', fg='#eff1f5'),
+    _visual(bg='#7287fd', fg='#eff1f5'),
+    _visual(bg='#209fb5', fg='#eff1f5'),
+    _visual(bg='#ea76cb', fg='#eff1f5'),
+    _visual(bg='#e64553', fg='#eff1f5'),
+    _visual(bg='#04a5e5', fg='#eff1f5'),
+)
+
+_SIDEBAR_VISUAL_DEFAULT = TmuxPaneVisual(
     label_style='#[fg=#cdd6f4]#[bg=#45475a]#[bold]',
     border_style='fg=#6c7086',
     active_border_style='fg=#6c7086',
+)
+
+_SIDEBAR_VISUAL_LIGHT = TmuxPaneVisual(
+    label_style='#[fg=#eff1f5]#[bg=#6c6f85]#[bold]',
+    border_style='fg=#bcc0cc',
+    active_border_style='fg=#9ca0b0',
 )
 
 
@@ -153,6 +240,11 @@ def tmux_theme_profile(environ: Mapping[str, str] | None = None) -> str:
     override = _normalize_profile_name(env.get('CCB_TMUX_THEME_PROFILE'))
     if override is not None:
         return override
+    preference = load_theme_preference(env)
+    if preference is not None:
+        normalized = _normalize_profile_name(preference.tmux_profile)
+        if normalized is not None:
+            return normalized
     family = detect_terminal_family(env)
     return 'contrast' if family in _CONTRAST_TERMINAL_FAMILIES else 'default'
 
@@ -175,7 +267,7 @@ def pane_border_format(profile_name: str | None = None, *, environ: Mapping[str,
         '#{?#{@ccb_agent},'
         f'#{{?#{{@ccb_label_style}},#{{@ccb_label_style}},{profile.fallback_label_style}}} '
         '#{@ccb_agent} #[default],'
-        '#[fg=#565f89] #{pane_title} #[default]}'
+        f'{profile.pane_title_style} #{{pane_title}} #[default]}}'
     )
 
 
@@ -190,7 +282,8 @@ def render_tmux_session_theme(
     profile = theme_profile_definition(profile_name, environ=environ)
     normalized_version = _normalized_ccb_version(ccb_version)
     focus_agent = '#{?#{@ccb_agent},#{@ccb_agent},-}'
-    accent = '#{?client_prefix,#f38ba8,#{?pane_in_mode,#fab387,#f5c2e7}}'
+    palette = profile.status
+    accent = palette.mode_accent
     label = '#{?client_prefix,KEY,#{?pane_in_mode,COPY,INPUT}}'
     git_info = f'#({git_script} "#{{pane_current_path}}")' if git_script else '-'
     status_indicator = f'#({status_script} modern "#{{pane_current_path}}")' if status_script else '-'
@@ -201,21 +294,26 @@ def render_tmux_session_theme(
         '@ccb_theme_profile': profile.name,
         'status-position': 'bottom',
         'status-interval': tmux_status_interval(environ),
-        'status-style': _STATUS_STYLE,
+        'status-style': _status_style(palette),
         'status': 'on',
         'status-left-length': '80',
         'status-right-length': '120',
-        'status-format[0]': _STATUS_FORMAT_0,
+        'status-format[0]': _status_format_0(palette),
         'status-left': (
-            f'#[fg=#1e1e2e,bg={accent},bold] {label} '
-            f'#[fg={accent},bg=#cba6f7]#[fg=#1e1e2e,bg=#cba6f7] {git_info} '
-            '#[fg=#cba6f7,bg=#1e1e2e]'
+            f'#[fg={palette.segment_fg},bg={accent},bold] {label} '
+            f'#[fg={accent},bg={palette.git_bg}]'
+            f'#[fg={palette.segment_fg},bg={palette.git_bg}] {git_info} '
+            f'#[fg={palette.git_bg},bg={palette.background}]'
         ),
         'status-right': (
-            f'#[fg=#f38ba8,bg=#1e1e2e]#[fg=#1e1e2e,bg=#f38ba8,bold] {focus_agent} '
-            f'#[fg=#cba6f7,bg=#f38ba8]#[fg=#1e1e2e,bg=#cba6f7,bold] CCB:{normalized_version} '
-            f'#[fg=#89b4fa,bg=#cba6f7]#[fg=#cdd6f4,bg=#89b4fa] {status_indicator} '
-            '#[fg=#fab387,bg=#89b4fa]#[fg=#1e1e2e,bg=#fab387,bold] %m/%d %a %H:%M #[default]'
+            f'#[fg={palette.focus_bg},bg={palette.background}]'
+            f'#[fg={palette.segment_fg},bg={palette.focus_bg},bold] {focus_agent} '
+            f'#[fg={palette.version_bg},bg={palette.focus_bg}]'
+            f'#[fg={palette.segment_fg},bg={palette.version_bg},bold] CCB:{normalized_version} '
+            f'#[fg={palette.indicator_bg},bg={palette.version_bg}]'
+            f'#[fg={palette.indicator_fg},bg={palette.indicator_bg}] {status_indicator} '
+            f'#[fg={palette.time_bg},bg={palette.indicator_bg}]'
+            f'#[fg={palette.time_fg},bg={palette.time_bg},bold] %m/%d %a %H:%M #[default]'
         ),
         'window-status-format': _WINDOW_STATUS_FORMAT,
         'window-status-current-format': _WINDOW_STATUS_CURRENT_FORMAT,
@@ -242,6 +340,8 @@ def render_tmux_session_theme(
 def _pane_palette(*, profile_name: str, is_cmd: bool) -> tuple[TmuxPaneVisual, ...]:
     if profile_name == 'contrast':
         return _CMD_VISUALS_CONTRAST if is_cmd else _AGENT_VISUALS_CONTRAST
+    if profile_name == 'light':
+        return _CMD_VISUALS_LIGHT if is_cmd else _AGENT_VISUALS_LIGHT
     return _CMD_VISUALS_DEFAULT if is_cmd else _AGENT_VISUALS_DEFAULT
 
 
@@ -255,9 +355,9 @@ def pane_visual(
     profile_name: str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> TmuxPaneVisual:
-    if str(role or '').strip().lower() == 'sidebar':
-        return _SIDEBAR_VISUAL
     resolved_profile = theme_profile_definition(profile_name, environ=environ).name
+    if str(role or '').strip().lower() == 'sidebar':
+        return _SIDEBAR_VISUAL_LIGHT if resolved_profile == 'light' else _SIDEBAR_VISUAL_DEFAULT
     visuals = _pane_palette(profile_name=resolved_profile, is_cmd=is_cmd)
     return _select_visual(visuals, project_id=project_id, slot_key=slot_key, fallback_index=order_index)
 
@@ -281,6 +381,18 @@ def _stable_index(key: str, size: int) -> int:
         return 0
     digest = hashlib.sha256(str(key or '').encode('utf-8')).hexdigest()
     return int(digest[:8], 16) % size
+
+
+def _status_style(palette: TmuxStatusPalette) -> str:
+    return f'bg={palette.background} fg={palette.foreground}'
+
+
+def _status_format_0(palette: TmuxStatusPalette) -> str:
+    return (
+        f'#[align=left,bg={palette.background}]#{{T:status-left}}'
+        f'#[align=centre,fg={palette.muted}]#{{b:pane_current_path}}'
+        '#[align=right]#{T:status-right}'
+    )
 
 
 def shell_exports(
@@ -329,6 +441,7 @@ def _normalized_ccb_version(value: str) -> str:
 __all__ = [
     'RenderedTmuxSessionTheme',
     'TmuxPaneVisual',
+    'TmuxStatusPalette',
     'TmuxThemeProfile',
     'detect_terminal_family',
     'pane_border_format',
