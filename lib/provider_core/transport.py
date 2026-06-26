@@ -99,7 +99,7 @@ class SpoolDirTransport(MessageTransport):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
-            time.sleep(min(0.05, remaining))
+            time.sleep(min(0.2, remaining))
 
     def _next_entry(self) -> Path | None:
         try:

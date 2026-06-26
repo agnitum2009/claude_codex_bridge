@@ -66,11 +66,11 @@ class DualBridge:
         self._log_console('Codex bridge started, waiting for Claude commands...')
         cleanup_acks(self._runtime.paths.runtime_dir / 'acks')
         self.binding_tracker.start()
-        idle_sleep = env_float('CCB_BRIDGE_IDLE_SLEEP', 0.05)
+        idle_sleep = env_float('CCB_BRIDGE_IDLE_SLEEP', 1.0)
         error_backoff_min = env_float('CCB_BRIDGE_ERROR_BACKOFF_MIN', 0.05)
         error_backoff_max = env_float('CCB_BRIDGE_ERROR_BACKOFF_MAX', 0.2)
         error_backoff = max(0.0, min(error_backoff_min, error_backoff_max))
-        poll_timeout = idle_sleep if idle_sleep else 0.05
+        poll_timeout = idle_sleep if idle_sleep else 1.0
         try:
             while self._running:
                 try:
