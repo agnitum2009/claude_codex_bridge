@@ -39,6 +39,7 @@ CCB_BRIDGE_IDLE_SLEEP=0.05
 CCB_CODEX_BIND_POLL_INTERVAL=0.5
 CCB_CCBD_IDLE_FULL_HEARTBEAT_INTERVAL_S=30
 CCB_CCBD_HEARTBEAT_WRITE_INTERVAL_S=5
+CCB_KEEPER_STATE_WRITE_INTERVAL_S=5
 ```
 
 `CCB_BRIDGE_IDLE_SLEEP=0.05` and `CCB_CODEX_BIND_POLL_INTERVAL=0.5` restore the
@@ -103,6 +104,12 @@ Heartbeat write debounce check:
 
 ```bash
 PYTHONPATH=lib uv run --with pytest pytest -q test/test_v2_ccbd_mount_ownership.py
+```
+
+Keeper/lifecycle idle-write check:
+
+```bash
+PYTHONPATH=lib uv run --with pytest pytest -q test/test_v2_ccbd_keeper.py
 ```
 
 ## Known follow-up
