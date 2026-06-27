@@ -894,6 +894,76 @@ plan-orchestrate = "p1:codex, p2:codex, p3:codex, p4:codex, p5:codex"
     }
 
 
+def test_agent_move_batch_resolves_execution_node_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = _project_with_agent_profiles(tmp_path, monkeypatch)
+    for agent in ('worker', 'checker'):
+        result, _payload, stderr = _run_phase2(
+            [
+                'agent',
+                'add',
+                f'{agent}:codex',
+                '--role',
+                'agentroles.general',
+                '--window',
+                'review',
+                '--hidden',
+                '--json',
+            ],
+            cwd=project_root,
+        )
+        assert result == 0, stderr
+    before_move = load_project_config(project_root).config
+
+    result, moved, stderr = _run_phase2(
+        [
+            'agent',
+            'move',
+            '--agents',
+            'worker,checker',
+            '--loop-id',
+            'round1',
+            '--node-id',
+            'node1',
+            '--reason',
+            'batch execution node placement',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+
+    assert result == 0, stderr
+    assert moved['agent_lifecycle_status'] == 'active'
+    assert moved['target_window_name'] == 'node-round1-node1'
+    assert moved['target_window_names'] == ['node-round1-node1']
+    assert [(agent['agent'], agent['resolved_window_name']) for agent in moved['agents']] == [
+        ('worker', 'node-round1-node1'),
+        ('checker', 'node-round1-node1'),
+    ]
+    after_move = load_project_config(project_root).config
+    assert [(window.name, window.agent_names) for window in after_move.windows] == [
+        ('main', ('main',)),
+        ('node-round1-node1', ('worker', 'checker')),
+    ]
+    plan = build_reload_dry_run_plan(before_move, after_move, project_id='proj-1', current_namespace=_namespace('proj-1'))
+    assert plan['plan_class'] == 'move_agent'
+    assert plan['future_safe_to_apply'] is True
+    assert [item['op'] for item in plan['operations']] == [
+        'add_window',
+        'move_agent',
+        'move_agent',
+        'layout_change',
+    ]
+    assert plan['namespace_patch_plan']['steps'][-1] == {
+        'action': 'kill_window',
+        'window': 'review',
+        'managed_by': 'ccbd',
+        'reason': 'window emptied by moved agents',
+    }
+
+
 def test_agent_add_with_loop_node_places_agent_in_node_window(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

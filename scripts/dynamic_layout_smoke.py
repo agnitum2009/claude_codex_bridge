@@ -26,6 +26,7 @@ FLOW_NAMES = (
     "move-agent",
     "move-shared-source",
     "batch-move-window-class",
+    "batch-move-execution-node",
     "window-class",
     "arrange-window",
     "window-class-continuous",
@@ -392,6 +393,19 @@ def run_dynamic_layout_smoke(
             _run_batch_move_window_class_flow(
                 test_root=test_root,
                 project_name=f"{project_prefix}-batch-move-window-class",
+                provider=provider,
+                ccb_test=ccb_test,
+                provider_home=provider_home,
+                command_timeout_s=command_timeout_s,
+                reset=reset,
+                keep_running=keep_running,
+            )
+        )
+    if "batch-move-execution-node" in flow_names:
+        results.append(
+            _run_batch_move_execution_node_flow(
+                test_root=test_root,
+                project_name=f"{project_prefix}-batch-move-execution-node",
                 provider=provider,
                 ccb_test=ccb_test,
                 provider_home=provider_home,
@@ -1694,6 +1708,121 @@ def _run_batch_move_window_class_flow(
             commands.append(_run("kill", [str(ccb_test), "--project", str(project_root), "kill", "-f"], cwd=test_root, env=env, timeout=command_timeout_s))
 
 
+def _run_batch_move_execution_node_flow(
+    *,
+    test_root: Path,
+    project_name: str,
+    provider: str,
+    ccb_test: Path,
+    provider_home: Path,
+    command_timeout_s: int,
+    reset: bool,
+    keep_running: bool,
+) -> dict[str, Any]:
+    prepared = prepare_same_window_project(test_root=test_root, project_name=project_name, provider=provider, reset=reset)
+    project_root = Path(prepared["project_root"])
+    env = _env(provider_home=provider_home, role_store=Path(prepared["role_store"]))
+    agents = ("worker", "checker")
+    commands: list[dict[str, Any]] = []
+    try:
+        commands.append(_run("config_validate", [str(ccb_test), "--project", str(project_root), "config", "validate"], cwd=test_root, env=env, timeout=command_timeout_s))
+        commands.append(_run("start", [str(ccb_test), "--project", str(project_root)], cwd=test_root, env=env, timeout=command_timeout_s))
+        adds: list[dict[str, Any]] = []
+        for agent in agents:
+            add = _run_json(
+                f"add_{agent}_to_review",
+                [
+                    str(ccb_test),
+                    "--project",
+                    str(project_root),
+                    "agent",
+                    "add",
+                    f"{agent}:{provider}",
+                    "--role",
+                    "agentroles.general",
+                    "--window",
+                    "review",
+                    "--hidden",
+                    "--json",
+                ],
+                cwd=test_root,
+                env=env,
+                timeout=command_timeout_s,
+            )
+            adds.append(add)
+            commands.append(add)
+        before_move = _run_json("layout_before_batch_move_execution_node", [str(ccb_test), "--project", str(project_root), "layout", "status", "--json"], cwd=test_root, env=env, timeout=command_timeout_s)
+        commands.append(before_move)
+        move = _run_json(
+            "move_worker_checker_to_execution_node",
+            [
+                str(ccb_test),
+                "--project",
+                str(project_root),
+                "agent",
+                "move",
+                "--agents",
+                ",".join(agents),
+                "--loop-id",
+                "round1",
+                "--node-id",
+                "node1",
+                "--reason",
+                "dynamic layout batch execution-node move smoke",
+                "--json",
+            ],
+            cwd=test_root,
+            env=env,
+            timeout=command_timeout_s,
+        )
+        commands.append(move)
+        after_move = _run_json("layout_after_batch_move_execution_node", [str(ccb_test), "--project", str(project_root), "layout", "status", "--json"], cwd=test_root, env=env, timeout=command_timeout_s)
+        commands.append(after_move)
+        worker_ask = _run(
+            "ask_worker_after_batch_move_execution_node",
+            [str(ccb_test), "--project", str(project_root), "ask", "worker"],
+            cwd=test_root,
+            env=env,
+            input_text="batch-move-execution-node smoke ping worker\n",
+            timeout=command_timeout_s,
+        )
+        checker_ask = _run(
+            "ask_checker_after_batch_move_execution_node",
+            [str(ccb_test), "--project", str(project_root), "ask", "checker"],
+            cwd=test_root,
+            env=env,
+            input_text="batch-move-execution-node smoke ping checker\n",
+            timeout=command_timeout_s,
+        )
+        commands.extend([worker_ask, checker_ask])
+        before_panes = _agent_panes(before_move)
+        after_panes = _agent_panes(after_move)
+        move_payload = _payload(move)
+        move_apply = dict(move_payload.get("apply") or {})
+        moved_agents = dict(move_apply.get("namespace_moved_agents") or {})
+        moved_windows = dict(move_apply.get("namespace_moved_agent_windows") or {})
+        checks = {
+            "add_plans": [_payload(item).get("apply", {}).get("plan_class") for item in adds] == ["add_window", "add_agent"],
+            "before_windows": _window_agents(before_move) == {"main": ["main"], "review": ["worker", "checker"]},
+            "move_status_active": move_payload.get("agent_lifecycle_status") == "active",
+            "move_target_window": move_payload.get("target_window_name") == "node-round1-node1",
+            "move_target_windows": move_payload.get("target_window_names") == ["node-round1-node1"],
+            "move_plan_class": move_apply.get("plan_class") == "move_agent",
+            "moved_agent_panes_match": all(moved_agents.get(agent) == before_panes.get(agent) for agent in agents),
+            "moved_window_evidence": moved_windows == {"worker": "node-round1-node1", "checker": "node-round1-node1"},
+            "removed_review_window": move_apply.get("namespace_removed_windows") == ["review"],
+            "after_panes_preserved": all(after_panes.get(agent) == before_panes.get(agent) for agent in agents),
+            "after_windows": _window_agents(after_move) == {"main": ["main"], "node-round1-node1": ["worker", "checker"]},
+            "worker_ask_accepted": _accepted(worker_ask),
+            "checker_ask_accepted": _accepted(checker_ask),
+        }
+        status = "ok" if all(checks.values()) and _all_success(commands) else "failed"
+        return {"flow": "batch_move_execution_node", "flow_status": status, "checks": checks, "commands": commands}
+    finally:
+        if not keep_running:
+            commands.append(_run("kill", [str(ccb_test), "--project", str(project_root), "kill", "-f"], cwd=test_root, env=env, timeout=command_timeout_s))
+
+
 def _run_window_class_flow(
     *,
     test_root: Path,
@@ -2426,6 +2555,15 @@ def _prepare_selected_projects(
             prepare_batch_move_window_class_project(
                 test_root=test_root,
                 project_name=f"{project_prefix}-batch-move-window-class",
+                provider=provider,
+                reset=reset,
+            )
+        )
+    if "batch-move-execution-node" in flows:
+        prepared.append(
+            prepare_same_window_project(
+                test_root=test_root,
+                project_name=f"{project_prefix}-batch-move-execution-node",
                 provider=provider,
                 reset=reset,
             )

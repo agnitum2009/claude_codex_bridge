@@ -942,6 +942,15 @@ Date: 2026-06-24
   `plan-orchestrate=[p1..p5,zeta]` plus `plan-orchestrate-2=[alpha]`,
   preserves both moved pane ids, removes the empty `review` window, and keeps
   both moved ask targets accepted.
+- Proved the same batch move surface for execution-node placement.
+  `scripts/dynamic_layout_smoke.py --flow batch-move-execution-node` now
+  hot-loads `worker,checker` into a `review` window, runs one
+  `ccb agent move --agents worker,checker --loop-id round1 --node-id node1`,
+  and verifies both existing panes move into `node-round1-node1` without
+  respawn, the empty `review` window is removed, and both moved ask targets
+  remain accepted. Focused regression passed with `70 passed`; source-wrapper
+  fake-provider evidence is preserved in
+  `/home/bfly/yunwei/test_ccb2/dynamic-layout-batch-move-execution-node-latest.json`.
 - Exposed the first user-facing batch park/resume command:
   `ccb agent park --agents a,b --json` and
   `ccb agent resume --agents a,b --hidden|--visible --json`. The command
@@ -966,9 +975,9 @@ Date: 2026-06-24
    and user-facing command now move multiple source-window agents in one
    transaction, including newly materialized target windows and emptied source
    window removal. Batch `--window-class` placement is now proven for
-   capacity-based split targets; next evaluate batch execution-node placement
-   and transactions that mix moved panes with newly created agents in one
-   target.
+   capacity-based split targets, and batch execution-node placement is proven
+   for `--loop-id/--node-id`; next evaluate transactions that mix moved panes
+   with newly created agents in one target.
 3. Extend the shrink/release proof from single-agent and batch fake-provider
    source-wrapper/CI smokes to opt-in real-provider tolerance where useful.
 4. Define the minimum `ccb loop`, `ccb plan`, and `ccb question` command

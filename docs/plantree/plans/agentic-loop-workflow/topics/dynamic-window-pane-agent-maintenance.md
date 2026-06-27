@@ -1135,6 +1135,14 @@ Current evidence:
   `plan-orchestrate=[p1,p2,p3,p4,p5,zeta]` and
   `plan-orchestrate-2=[alpha]`, preserves both moved pane ids, removes
   `review`, and accepts ask for both moved agents;
+- `scripts/dynamic_layout_smoke.py --flow batch-move-execution-node` now
+  covers the other dynamic target grammar for batch move. The flow creates
+  `review=[worker,checker]`, runs one `ccb agent move --agents worker,checker
+  --loop-id round1 --node-id node1 --json`, verifies `target_window_name` and
+  `target_window_names` resolve to `node-round1-node1`, checks both moved pane
+  ids are preserved in `node-round1-node1`, confirms `review` is removed, and
+  accepts ask for both moved agents. Latest evidence:
+  `/home/bfly/yunwei/test_ccb2/dynamic-layout-batch-move-execution-node-latest.json`;
 - `ccb agent park --agents a,b --json` and
   `ccb agent resume --agents a,b --hidden|--visible --json` now expose the
   first user-facing batch transition command for long-lived dynamic agents.
@@ -1196,6 +1204,6 @@ Deferred:
 - visual rich panel for window topology;
 - automatic screenshot/archive of completed node windows;
 - cross-session restoration of exact pane geometry;
-- batch movement for execution-node placement, and transactions that mix moved
-  panes with newly materialized panes in the same target window;
+- transactions that mix moved panes with newly materialized panes in the same
+  target window;
 - user-defined arbitrary window classes.

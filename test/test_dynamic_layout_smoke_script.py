@@ -364,6 +364,26 @@ def test_prepare_only_can_generate_batch_move_window_class_project(tmp_path: Pat
     assert 'plan-orchestrate = "p1:fake, p2:fake, p3:fake, p4:fake, p5:fake"' in text
 
 
+def test_prepare_only_can_generate_batch_move_execution_node_project(tmp_path: Path) -> None:
+    module = _load_module()
+
+    payload = module.run_dynamic_layout_smoke(
+        test_root=tmp_path,
+        project_prefix="batch-move-execution-node-prepare",
+        ccb_test=Path(__file__),
+        provider="fake",
+        flows=("batch-move-execution-node",),
+        prepare_only=True,
+        reset=True,
+    )
+
+    assert payload["dynamic_layout_smoke_status"] == "prepared"
+    assert payload["flows"] == ["batch-move-execution-node"]
+    assert len(payload["prepared"]) == 1
+    config = Path(payload["prepared"][0]["project_root"]) / ".ccb" / "ccb.config"
+    assert 'main = "main:fake"' in config.read_text(encoding="utf-8")
+
+
 def test_same_window_continuous_flow_grows_to_six_and_shrinks_to_one(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -968,6 +988,163 @@ def test_batch_move_window_class_flow_splits_targets_by_capacity(
         "ccb_test --project "
         f"{project_root} agent move --agents zeta,alpha --window-class plan-orchestrate "
         "--reason dynamic layout batch window-class move smoke --json"
+    ]
+
+
+def test_batch_move_execution_node_flow_moves_pair_to_node_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_module()
+    project_root = tmp_path / "project"
+    role_store = tmp_path / "roles"
+    calls: list[tuple[str, str]] = []
+    panes = {"main": "%1", "worker": "%2", "checker": "%3"}
+
+    monkeypatch.setattr(
+        module,
+        "prepare_same_window_project",
+        lambda **_kwargs: {"project_root": str(project_root), "role_store": str(role_store)},
+    )
+
+    def fake_run(name, command, **_kwargs):
+        calls.append((name, " ".join(str(item) for item in command)))
+        if name == "ask_worker_after_batch_move_execution_node":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "accepted job=job_worker target=worker\n[CCB_ASYNC_SUBMITTED job=job_worker target=worker]\n",
+                "stderr": "",
+            }
+        if name == "ask_checker_after_batch_move_execution_node":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "accepted job=job_checker target=checker\n[CCB_ASYNC_SUBMITTED job=job_checker target=checker]\n",
+                "stderr": "",
+            }
+        return {"name": name, "returncode": 0, "stdout": "ok\n", "stderr": ""}
+
+    def fake_run_json(name, command, **_kwargs):
+        calls.append((name, " ".join(str(item) for item in command)))
+        if name == "add_worker_to_review":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {"apply": {"plan_class": "add_window"}},
+            }
+        if name == "add_checker_to_review":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {"apply": {"plan_class": "add_agent"}},
+            }
+        if name == "layout_before_batch_move_execution_node":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "dynamic_agent_count": 2,
+                    "windows": [
+                        {
+                            "name": "main",
+                            "agent_names": ["main"],
+                            "observed": _observed_window([panes["main"]], ["main"]),
+                            "agents": [{"agent": "main", "pane_id": panes["main"]}],
+                        },
+                        {
+                            "name": "review",
+                            "agent_names": ["worker", "checker"],
+                            "observed": _observed_window([panes["worker"], panes["checker"]], ["worker", "checker"]),
+                            "agents": [
+                                {"agent": "worker", "pane_id": panes["worker"]},
+                                {"agent": "checker", "pane_id": panes["checker"]},
+                            ],
+                        },
+                    ],
+                },
+            }
+        if name == "move_worker_checker_to_execution_node":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "agent_lifecycle_status": "active",
+                    "target_window_name": "node-round1-node1",
+                    "target_window_names": ["node-round1-node1"],
+                    "apply": {
+                        "plan_class": "move_agent",
+                        "namespace_moved_agents": {"worker": panes["worker"], "checker": panes["checker"]},
+                        "namespace_moved_agent_windows": {
+                            "worker": "node-round1-node1",
+                            "checker": "node-round1-node1",
+                        },
+                        "namespace_removed_windows": ["review"],
+                    },
+                },
+            }
+        if name == "layout_after_batch_move_execution_node":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "dynamic_agent_count": 2,
+                    "windows": [
+                        {
+                            "name": "main",
+                            "agent_names": ["main"],
+                            "observed": _observed_window([panes["main"]], ["main"]),
+                            "agents": [{"agent": "main", "pane_id": panes["main"]}],
+                        },
+                        {
+                            "name": "node-round1-node1",
+                            "agent_names": ["worker", "checker"],
+                            "observed": _observed_window([panes["worker"], panes["checker"]], ["worker", "checker"]),
+                            "agents": [
+                                {"agent": "worker", "pane_id": panes["worker"]},
+                                {"agent": "checker", "pane_id": panes["checker"]},
+                            ],
+                        },
+                    ],
+                },
+            }
+        raise AssertionError(f"unexpected json command {name}")
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module, "_run_json", fake_run_json)
+
+    payload = module._run_batch_move_execution_node_flow(
+        test_root=tmp_path,
+        project_name="batch-move-execution-node",
+        provider="fake",
+        ccb_test=Path("ccb_test"),
+        provider_home=tmp_path / "home",
+        command_timeout_s=1,
+        reset=True,
+        keep_running=False,
+    )
+
+    assert payload["flow_status"] == "ok"
+    assert payload["checks"]["move_target_window"] is True
+    assert payload["checks"]["moved_agent_panes_match"] is True
+    assert payload["checks"]["removed_review_window"] is True
+    assert payload["checks"]["after_windows"] is True
+    assert payload["checks"]["worker_ask_accepted"] is True
+    move_commands = [command for name, command in calls if name == "move_worker_checker_to_execution_node"]
+    assert move_commands == [
+        "ccb_test --project "
+        f"{project_root} agent move --agents worker,checker --loop-id round1 --node-id node1 "
+        "--reason dynamic layout batch execution-node move smoke --json"
     ]
 
 
