@@ -146,6 +146,12 @@ pane IDs, provider sessions, and CCB slot metadata must remain valid.
   matrix entrypoint and have passed for Codex+Claude on `window-class`.
 - The guarded provider matrix now also has a fixed wrapper entrypoint for
   release/local validation: `scripts/guarded_dynamic_layout_provider_smoke.py`.
-- Remaining gap: wire that wrapper into the selected guarded release/CI
-  regression path and extend startup/mount diagnostics with the same pane
-  identity vocabulary.
+- Startup diagnostics now use the same pane identity vocabulary as
+  `layout status`: non-interactive `ccb` start output includes compact
+  `layout_window` and `layout_agent` lines with `ownership_class`,
+  `dispatch_state`, `pane_id`, `pane_identity_source`, runtime state, and apply
+  status, while diagnostic failure is surfaced as
+  `layout_summary_status: unavailable` without failing an otherwise successful
+  start.
+- Remaining gap: wire the guarded provider wrapper into the selected
+  guarded release/CI regression path.

@@ -183,6 +183,17 @@ Date: 2026-06-24
   draft planner activation, paused clarification stop, and ready execution
   bridge behavior with fake providers. See
   [history/workflow-runner-state-router-2026-06-27.md](history/workflow-runner-state-router-2026-06-27.md).
+- Landed startup layout identity diagnostics in the current worktree:
+  non-interactive `ccb` start output now includes a compact layout summary
+  generated from the same `layout status` source as dynamic runtime
+  diagnostics, including window counts, observed pane counts, explicit-window
+  state, and per-agent `ownership_class`, `dispatch_state`, `pane_id`,
+  `pane_identity_source`, runtime state, and apply status. Focused tests passed
+  with `68 passed`; the dynamic layout regression set passed with
+  `118 passed`; and an external source-wrapper fake-provider
+  `window-class` smoke in `/home/bfly/yunwei/test_ccb2` preserved hot-load,
+  middle unload, `plan-orchestrate` reflow, survivor pane IDs, askability, and
+  cleanup.
 
 ## In Progress
 

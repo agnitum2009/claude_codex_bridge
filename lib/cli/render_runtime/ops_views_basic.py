@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .common import render_tmux_cleanup_summaries
+from .common import cleanup_csv, render_tmux_cleanup_summaries
 from .ops_views_common import binding_line
 
 
@@ -88,8 +88,77 @@ def render_start(summary) -> tuple[str, ...]:
         reason = str(heartbeat.get('reason') or '').strip()
         if reason:
             lines.append(f'maintenance_heartbeat_reason: {reason}')
+    layout_summary = getattr(summary, 'layout_summary', None)
+    if isinstance(layout_summary, Mapping):
+        lines.extend(_render_start_layout_summary(layout_summary))
     lines.extend(render_tmux_cleanup_summaries(getattr(summary, 'cleanup_summaries', ()) or ()))
     return tuple(lines)
+
+
+def _render_start_layout_summary(payload: Mapping[str, object]) -> list[str]:
+    status = str(payload.get('layout_summary_status') or payload.get('layout_status') or 'unknown')
+    lines = [f'layout_summary_status: {status}']
+    if status == 'unavailable':
+        error_type = str(payload.get('error_type') or '').strip()
+        error = str(payload.get('error') or '').strip()
+        if error_type:
+            lines.append(f'layout_summary_error_type: {error_type}')
+        if error:
+            lines.append(f'layout_summary_error: {error}')
+        return lines
+    details = [
+        f'windows={_text(payload.get("window_count"), default="0")}',
+        f'panes={_text(payload.get("pane_count"), default="0")}',
+        f'runtime_panes={_text(payload.get("observed_pane_count"), default="0")}',
+        f'dynamic={_text(payload.get("dynamic_agent_count"), default="0")}',
+        f'loop={_text(payload.get("loop_agent_count"), default="0")}',
+        f'runtime={_text(payload.get("runtime_agent_count"), default="0")}',
+        f'explicit={str(bool(payload.get("windows_explicit"))).lower()}',
+        f'entry_window={_text(payload.get("entry_window"), default="-")}',
+        f'ccbd_state={_text(payload.get("ccbd_state"), default="unknown")}',
+        f'observe_status={_text(payload.get("observe_status"), default="unknown")}',
+    ]
+    observe_reason = str(payload.get('observe_reason') or '').strip()
+    if observe_reason:
+        details.append(f'observe_reason={observe_reason}')
+    lines.append('layout: ' + ' '.join(details))
+    for window in tuple(payload.get('windows') or ()):
+        if not isinstance(window, Mapping):
+            continue
+        lines.append(
+            'layout_window: '
+            f'name={_text(window.get("name"), default="-")} '
+            f'index={_text(window.get("index"), default="-")} '
+            f'panes={_text(window.get("pane_count"), default="0")} '
+            f'runtime_panes={_text(window.get("runtime_pane_count"), default="0")} '
+            f'agents={cleanup_csv(tuple(window.get("agent_names") or ()))}'
+        )
+        for agent in tuple(window.get('agents') or ()):
+            if isinstance(agent, Mapping):
+                lines.append(_render_start_layout_agent(agent))
+    return lines
+
+
+def _render_start_layout_agent(agent: Mapping[str, object]) -> str:
+    return (
+        'layout_agent: '
+        f'name={_text(agent.get("agent"), default="-")} '
+        f'kind={_text(agent.get("agent_kind"), default="-")} '
+        f'source={_text(agent.get("source"), default="-")} '
+        f'ownership={_text(agent.get("ownership_class"), default="-")} '
+        f'dispatch={_text(agent.get("dispatch_state"), default="-")} '
+        f'window={_text(agent.get("window_name"), default="-")} '
+        f'pane={_text(agent.get("pane_id"), default="-")} '
+        f'pane_identity={_text(agent.get("pane_identity_source"), default="-")} '
+        f'runtime_state={_text(agent.get("runtime_state"), default="-")} '
+        f'apply_status={_text(agent.get("apply_status"), default="-")} '
+        f'failed_apply={str(bool(agent.get("failed_apply"))).lower()}'
+    )
+
+
+def _text(value: object, *, default: str) -> str:
+    text = str(value or '').strip()
+    return text or default
 
 
 def render_logs(summary) -> tuple[str, ...]:

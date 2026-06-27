@@ -648,6 +648,13 @@ Evidence:
   without switching field names. Focused tests cover static configured agents,
   active dynamic agents, parked dispatch-disabled agents, deferred apply
   records, and failed-apply detection.
+- Non-interactive `ccb` start output now carries a compact layout identity
+  summary generated from the same `layout status` source. The startup view
+  reports explicit-window state, window/pane counts, observed pane count, and
+  per-agent `ownership_class`, `dispatch_state`, `pane_id`,
+  `pane_identity_source`, runtime state, and apply status. If that diagnostic
+  probe fails, start still reports success but surfaces
+  `layout_summary_status: unavailable` with the error type and message.
 - The orchestrator draft RolePack now includes `dynamic-agent-lifecycle` for
   non-loop dynamic agents while `orchestrator-capacity` remains loop-only. The
   skill documents allowed `ccb agent ... --json` and read-only

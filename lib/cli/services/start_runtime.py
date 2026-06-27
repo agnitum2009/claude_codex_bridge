@@ -14,6 +14,7 @@ class StartSummary:
     worktree_warnings: tuple[object, ...] = ()
     worktree_retired: tuple[object, ...] = ()
     maintenance_heartbeat: dict | None = None
+    layout_summary: dict | None = None
 
 
 def start_agents(

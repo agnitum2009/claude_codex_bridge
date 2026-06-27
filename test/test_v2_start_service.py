@@ -283,6 +283,130 @@ def test_start_agents_updates_startup_report_with_daemon_started_flag(tmp_path: 
     assert report.daemon_started is True
 
 
+def test_start_agents_attaches_compact_layout_identity_summary(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-start-layout-summary'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        'version = 2\n\n[windows]\nmain = "frontdesk:fake"\nplan-orchestrate = "planner:fake"\n',
+        encoding='utf-8',
+    )
+    bootstrap_project(project_root)
+    command = ParsedStartCommand(project=None, agent_names=(), restore=False, auto_permission=False)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+
+    class _FakeClient:
+        def start(self, **kwargs):
+            del kwargs
+            return {
+                'project_root': str(project_root),
+                'project_id': context.project.project_id,
+                'started': ['frontdesk', 'planner'],
+                'socket_path': str(context.paths.ccbd_socket_path),
+                'cleanup_summaries': [],
+            }
+
+    monkeypatch.setattr(
+        'cli.services.start.ensure_daemon_started',
+        lambda context: SimpleNamespace(client=_FakeClient(), started=True),
+    )
+    monkeypatch.setattr(
+        'cli.services.start.layout_status',
+        lambda context: {
+            'layout_status': 'ok',
+            'ccbd_state': 'mounted',
+            'windows_explicit': True,
+            'entry_window': 'main',
+            'window_count': 2,
+            'pane_count': 2,
+            'dynamic_agent_count': 0,
+            'loop_agent_count': 0,
+            'runtime_agent_count': 2,
+            'observed': {'observe_status': 'ok', 'observed_pane_count': 2},
+            'windows': [
+                {
+                    'name': 'main',
+                    'index': 1,
+                    'pane_count': 1,
+                    'runtime_pane_count': 1,
+                    'agent_names': ['frontdesk'],
+                    'agents': [
+                        {
+                            'agent': 'frontdesk',
+                            'source': 'configured',
+                            'agent_kind': 'configured',
+                            'ownership_class': 'static_configured',
+                            'dispatch_state': 'enabled',
+                            'window_name': 'main',
+                            'pane_id': '%1',
+                            'pane_identity_source': 'observed',
+                            'runtime_state': 'running',
+                            'apply_status': None,
+                            'failed_apply': False,
+                        }
+                    ],
+                },
+                {
+                    'name': 'plan-orchestrate',
+                    'index': 2,
+                    'pane_count': 1,
+                    'runtime_pane_count': 1,
+                    'agent_names': ['planner'],
+                    'agents': [],
+                },
+            ],
+        },
+    )
+
+    summary = start_agents(context, command)
+
+    assert summary.layout_summary is not None
+    assert summary.layout_summary['layout_summary_status'] == 'ok'
+    assert summary.layout_summary['window_count'] == 2
+    assert summary.layout_summary['observed_pane_count'] == 2
+    frontdesk = summary.layout_summary['windows'][0]['agents'][0]
+    assert frontdesk['ownership_class'] == 'static_configured'
+    assert frontdesk['pane_identity_source'] == 'observed'
+
+
+def test_start_agents_surfaces_layout_summary_failure_without_failing_start(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-start-layout-summary-failure'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('demo:fake\n', encoding='utf-8')
+    bootstrap_project(project_root)
+    command = ParsedStartCommand(project=None, agent_names=(), restore=False, auto_permission=False)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+
+    class _FakeClient:
+        def start(self, **kwargs):
+            del kwargs
+            return {
+                'project_root': str(project_root),
+                'project_id': context.project.project_id,
+                'started': ['demo'],
+                'socket_path': str(context.paths.ccbd_socket_path),
+                'cleanup_summaries': [],
+            }
+
+    def _raise_layout_status(_context):
+        raise RuntimeError('layout probe failed')
+
+    monkeypatch.setattr(
+        'cli.services.start.ensure_daemon_started',
+        lambda context: SimpleNamespace(client=_FakeClient(), started=False),
+    )
+    monkeypatch.setattr('cli.services.start.layout_status', _raise_layout_status)
+
+    summary = start_agents(context, command)
+
+    assert summary.started == ('demo',)
+    assert summary.layout_summary == {
+        'layout_summary_status': 'unavailable',
+        'layout_status': 'unavailable',
+        'error_type': 'RuntimeError',
+        'error': 'layout probe failed',
+    }
+
+
 def test_start_agents_validates_config_before_starting_daemon(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo-start-invalid-config'
     (project_root / '.ccb').mkdir(parents=True, exist_ok=True)

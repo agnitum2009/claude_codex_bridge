@@ -1025,6 +1025,90 @@ def test_render_start_and_kill_include_tmux_cleanup_summary() -> None:
     assert 'tmux_cleanup: socket=<default> owned=%1,%2 active=%1 orphaned=%2 killed=%2' in kill_lines
 
 
+def test_render_start_includes_layout_identity_summary() -> None:
+    start = SimpleNamespace(
+        project_root='/tmp/repo',
+        project_id='proj-1',
+        daemon_started=True,
+        socket_path='/tmp/repo/.ccb/ccbd/ccbd.sock',
+        started=('frontdesk', 'planner'),
+        cleanup_summaries=(),
+        layout_summary={
+            'layout_summary_status': 'ok',
+            'window_count': 2,
+            'pane_count': 2,
+            'observed_pane_count': 2,
+            'dynamic_agent_count': 0,
+            'loop_agent_count': 0,
+            'runtime_agent_count': 2,
+            'windows_explicit': True,
+            'entry_window': 'main',
+            'ccbd_state': 'mounted',
+            'observe_status': 'ok',
+            'windows': [
+                {
+                    'name': 'main',
+                    'index': 1,
+                    'pane_count': 1,
+                    'runtime_pane_count': 1,
+                    'agent_names': ['frontdesk'],
+                    'agents': [
+                        {
+                            'agent': 'frontdesk',
+                            'agent_kind': 'configured',
+                            'source': 'configured',
+                            'ownership_class': 'static_configured',
+                            'dispatch_state': 'enabled',
+                            'window_name': 'main',
+                            'pane_id': '%1',
+                            'pane_identity_source': 'observed',
+                            'runtime_state': 'running',
+                            'apply_status': None,
+                            'failed_apply': False,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    lines = render_start(start)
+
+    assert 'layout_summary_status: ok' in lines
+    assert (
+        'layout: windows=2 panes=2 runtime_panes=2 dynamic=0 loop=0 runtime=2 '
+        'explicit=true entry_window=main ccbd_state=mounted observe_status=ok'
+    ) in lines
+    assert 'layout_window: name=main index=1 panes=1 runtime_panes=1 agents=frontdesk' in lines
+    assert (
+        'layout_agent: name=frontdesk kind=configured source=configured ownership=static_configured '
+        'dispatch=enabled window=main pane=%1 pane_identity=observed runtime_state=running '
+        'apply_status=- failed_apply=false'
+    ) in lines
+
+
+def test_render_start_surfaces_layout_identity_summary_failure() -> None:
+    start = SimpleNamespace(
+        project_root='/tmp/repo',
+        project_id='proj-1',
+        daemon_started=True,
+        socket_path='/tmp/repo/.ccb/ccbd/ccbd.sock',
+        started=('frontdesk',),
+        cleanup_summaries=(),
+        layout_summary={
+            'layout_summary_status': 'unavailable',
+            'error_type': 'RuntimeError',
+            'error': 'layout probe failed',
+        },
+    )
+
+    lines = render_start(start)
+
+    assert 'layout_summary_status: unavailable' in lines
+    assert 'layout_summary_error_type: RuntimeError' in lines
+    assert 'layout_summary_error: layout probe failed' in lines
+
+
 def test_render_logs_includes_tail_content() -> None:
     summary = SimpleNamespace(
         project_id='proj-1',
