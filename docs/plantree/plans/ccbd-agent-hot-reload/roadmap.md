@@ -180,12 +180,20 @@ Date: 2026-06-28
   `pytest -q test/test_dynamic_agent_lifecycle_smoke_script.py` passed with
   `5 passed`; source-wrapper fake smoke
   `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-fake-latest.json`
+  passed; CI-gate-equivalent fake smoke
+  `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-ci-gate-latest.json`
   passed; real-home Codex smoke
   `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-codex-latest.json`
+  passed; real-home Claude smoke
+  `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-claude-latest.json`
   passed. The lifecycle smoke proves long-lived planner helpers auto-park,
   reject dispatch while parked, preserve pane identity through resume, regain
   ask reachability after resume, while short-lived reviewer helpers auto-unload
   and clean layout/runtime state.
+- Promoted the dynamic lifecycle smoke into the Ubuntu/Python 3.11 test
+  workflow as `Guard dynamic agent lifecycle smoke`, with workflow text
+  coverage in `test/test_dynamic_agent_lifecycle_smoke_script.py`. This makes
+  fake-provider park/resume/auto-unload behavior part of the regular CI gate.
 
 ## In Progress
 
@@ -196,8 +204,9 @@ Date: 2026-06-28
   dispatch toggling, compact-startup pane identity preservation, batch release,
   batch move into explicit review/loop/node windows, and mixed move-plus-add
   explicit `[windows]` reload. Live `codex` move, live `codex` same-window
-  `1->6->1`, live `codex` lifecycle park/resume, and live `claude` move smokes
-  have passed; broader provider lifecycle matrix coverage,
+  `1->6->1`, live `codex` and `claude` lifecycle park/resume, and live
+  `claude` move smokes have passed; broader provider lifecycle matrix
+  coverage,
   daemon-pushed sidebar refresh, replacement, arbitrary layout reshapes, and
   background config watching remain deferred.
 
@@ -205,9 +214,10 @@ Date: 2026-06-28
 
 1. Extend live-provider smoke for pane-backed `codex`/`claude` dynamic add,
    move, release, hide/park/resume. `codex` `move-agent`, `codex`
-   `same-window-continuous`, `codex` lifecycle park/resume, and `claude`
-   `move-agent` have passed with real-home auth; remaining flows need the same
-   guarded account-boundary treatment before being promoted to release gates.
+   `same-window-continuous`, `codex` lifecycle park/resume, `claude`
+   `move-agent`, and `claude` lifecycle park/resume have passed with real-home
+   auth; remaining flows need the same guarded account-boundary treatment
+   before being promoted to release gates.
 2. Run or update the automatic and manual additive reload matrix in
    [topics/test-matrix.md](topics/test-matrix.md), including `test_ccb2`
    evidence for unchanged old panes, newly-mounted agents, released dynamic

@@ -183,6 +183,59 @@ jobs:
           )
           PY
 
+      - name: Guard dynamic agent lifecycle smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TERM=xterm-256color
+          smoke_root="${RUNNER_TEMP}/ccb-dynamic-agent-lifecycle-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python scripts/dynamic_agent_lifecycle_smoke.py \
+            --test-root "$smoke_root" \
+            --project-name ci-dynamic-agent-lifecycle \
+            --ccb-test "$GITHUB_WORKSPACE/ccb_test" \
+            --provider fake \
+            --command-timeout 180 \
+            --reset > "$RUNNER_TEMP/dynamic-agent-lifecycle-smoke.json"
+          python - "$RUNNER_TEMP/dynamic-agent-lifecycle-smoke.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          checks = payload["checks"]
+          assert payload["dynamic_agent_lifecycle_smoke_status"] == "ok"
+          assert checks["planner_auto_policy_park"] is True
+          assert checks["planner_park_dispatch_disabled"] is True
+          assert checks["planner_park_view_only"] is True
+          assert checks["planner_pane_preserved_on_park"] is True
+          assert checks["parked_ask_rejected"] is True
+          assert checks["planner_resume_hidden"] is True
+          assert checks["planner_pane_preserved_on_resume"] is True
+          assert checks["planner_ask_after_resume_accepted"] is True
+          assert checks["reviewer_auto_policy_unload"] is True
+          assert checks["reviewer_remove_agent"] is True
+          assert checks["reviewer_pane_removed"] is True
+          assert checks["layout_clean_after_cleanup"] is True
+          assert checks["asks_terminal"] is True
+          print(
+              json.dumps(
+                  {
+                      "dynamic_agent_lifecycle_smoke_status": payload["dynamic_agent_lifecycle_smoke_status"],
+                      "provider": payload["provider"],
+                      "selected_checks": {
+                          "planner_auto_policy_park": checks["planner_auto_policy_park"],
+                          "parked_ask_rejected": checks["parked_ask_rejected"],
+                          "planner_resume_hidden": checks["planner_resume_hidden"],
+                          "reviewer_auto_policy_unload": checks["reviewer_auto_policy_unload"],
+                          "layout_clean_after_cleanup": checks["layout_clean_after_cleanup"],
+                      },
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
       - name: Guard workflow closure layout cleanup smoke
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         shell: bash

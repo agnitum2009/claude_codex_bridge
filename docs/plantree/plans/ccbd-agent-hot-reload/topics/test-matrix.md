@@ -235,15 +235,25 @@ Date: 2026-05-29
     and unload checks.
 - 2026-06-28 dynamic lifecycle smoke evidence:
   - `pytest -q test/test_dynamic_agent_lifecycle_smoke_script.py` passed with
-    `5 passed`;
+    `5 passed` before workflow promotion; after adding the CI gate, targeted
+    workflow/lifecycle tests passed with `8 passed`;
+  - `.github/workflows/test.yml` now runs `Guard dynamic agent lifecycle smoke`
+    on Ubuntu/Python 3.11 with fake provider, checking park/resume dispatch
+    gates, pane preservation, reviewer unload, layout cleanup, and terminal
+    asks;
   - `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-fake-latest.json`
     passed fake-provider lifecycle policy checks;
+  - `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-ci-gate-latest.json`
+    passed the same fake-provider lifecycle smoke using the CI-gate timeout and
+    project shape;
   - `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-codex-latest.json`
     passed real-home `codex` lifecycle checks: long-lived planner helper
     auto-parks, dispatch is rejected while parked, pane identity is preserved
     through resume, ask works again after resume, short-lived reviewer helper
     auto-unloads, and final layout returns to static `frontdesk` plus
     `planner`.
+  - `/home/bfly/yunwei/test_ccb2/dynamic-agent-lifecycle-claude-latest.json`
+    passed the same real-home lifecycle checks for `claude`.
 - Phase 3 dry-run checks:
   - start a mounted project and run `ccb reload --dry-run` with no config
     changes; expect `plan_class: no_change`;

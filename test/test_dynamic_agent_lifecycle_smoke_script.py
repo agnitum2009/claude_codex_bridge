@@ -298,3 +298,28 @@ def test_main_passes_arguments_to_runner(monkeypatch: pytest.MonkeyPatch) -> Non
     assert captured["provider"] == "fake"
     assert captured["project_name"] == "life"
     assert captured["command_timeout_s"] == 77
+
+
+def test_tests_workflow_runs_dynamic_agent_lifecycle_fake_smoke() -> None:
+    text = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
+
+    assert "Guard dynamic agent lifecycle smoke" in text
+    assert "scripts/dynamic_agent_lifecycle_smoke.py" in text
+    assert "ci-dynamic-agent-lifecycle" in text
+    assert "matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'" in text
+    assert "--provider fake" in text
+    assert "--command-timeout 180" in text
+    assert 'payload["dynamic_agent_lifecycle_smoke_status"] == "ok"' in text
+    assert 'checks["planner_auto_policy_park"] is True' in text
+    assert 'checks["planner_park_dispatch_disabled"] is True' in text
+    assert 'checks["planner_park_view_only"] is True' in text
+    assert 'checks["planner_pane_preserved_on_park"] is True' in text
+    assert 'checks["parked_ask_rejected"] is True' in text
+    assert 'checks["planner_resume_hidden"] is True' in text
+    assert 'checks["planner_pane_preserved_on_resume"] is True' in text
+    assert 'checks["planner_ask_after_resume_accepted"] is True' in text
+    assert 'checks["reviewer_auto_policy_unload"] is True' in text
+    assert 'checks["reviewer_remove_agent"] is True' in text
+    assert 'checks["reviewer_pane_removed"] is True' in text
+    assert 'checks["layout_clean_after_cleanup"] is True' in text
+    assert 'checks["asks_terminal"] is True' in text
