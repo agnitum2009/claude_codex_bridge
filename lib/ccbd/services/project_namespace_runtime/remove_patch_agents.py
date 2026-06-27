@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ccbd.reload_additive_agents import window_agent_names, window_map
 
-from .backend import kill_window, session_window_target
+from .backend import find_window, kill_window, session_window_target
 from .materialize_topology import sync_topology_sidebar_widths
 
 
@@ -100,7 +100,7 @@ def _reflow_window_after_remove(
     result,
     timeout_s: float | None,
 ) -> None:
-    target = session_window_target(current.tmux_session_name, window_name)
+    target = _reflow_target(backend, current=current, topology_plan=topology_plan, window_name=window_name, timeout_s=timeout_s)
     runner = getattr(backend, '_tmux_run', None)
     if not callable(runner):
         result.reflow_errors[window_name] = 'tmux backend does not support select-layout'
@@ -130,6 +130,31 @@ def _reflow_window_after_remove(
         )
     except Exception as exc:
         result.reflow_errors[window_name] = f'sidebar_width_sync_failed: {exc}'
+
+
+def _reflow_target(backend, *, current, topology_plan, window_name: str, timeout_s: float | None) -> str:
+    session_name = current.tmux_session_name
+    if find_window(backend, session_name=session_name, window_name=window_name, timeout_s=timeout_s) is not None:
+        return session_window_target(session_name, window_name)
+    if _is_entry_window(topology_plan, window_name):
+        workspace_ref = str(getattr(current, 'workspace_window_id', '') or '').strip()
+        if not workspace_ref:
+            workspace_ref = str(getattr(current, 'workspace_window_name', '') or '').strip()
+        if workspace_ref:
+            return session_window_target(session_name, workspace_ref)
+    return session_window_target(session_name, window_name)
+
+
+def _is_entry_window(topology_plan, window_name: str) -> bool:
+    target = str(window_name or '').strip()
+    if not target:
+        return False
+    entry = str(getattr(topology_plan, 'entry_window', '') or '').strip()
+    if entry and target == entry:
+        return True
+    windows = tuple(getattr(topology_plan, 'windows', ()) or ())
+    first = str(getattr(windows[0], 'name', '') or '').strip() if windows else ''
+    return bool(first and target == first)
 
 
 def _kill_pane(backend, pane_id: str, *, timeout_s: float | None) -> None:

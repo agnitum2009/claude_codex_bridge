@@ -71,6 +71,52 @@ jobs:
           assert payload["flows"] == ["window-class", "resolve-preflight"]
           PY
 
+      - name: Guard workflow closure layout cleanup smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TERM=xterm-256color
+          smoke_root="${RUNNER_TEMP}/ccb-workflow-closure-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python scripts/workflow_closure_smoke.py \
+            --test-root "$smoke_root" \
+            --project-name ci-workflow-closure \
+            --ccb-test "$GITHUB_WORKSPACE/ccb_test" \
+            --provider fake \
+            --timeout 120 \
+            --reset \
+            --run \
+            --json > "$RUNNER_TEMP/workflow-closure-smoke.json"
+          python - "$RUNNER_TEMP/workflow-closure-smoke.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          run = payload["run"]
+          summary = run["summary"]
+          release = summary["release"]
+          apply = release["apply"]
+          assert run["workflow_smoke_status"] == "ok"
+          assert summary["ok"] is True
+          assert release["loop_capacity_status"] == "released"
+          assert release["retained_count"] == 0
+          assert not apply["namespace_reflow_errors"]
+          assert not apply["pane_identity_report"]["reflow_errors"]
+          print(
+              json.dumps(
+                  {
+                      "workflow_smoke_status": run["workflow_smoke_status"],
+                      "loop_id": summary["loop_id"],
+                      "final_status": summary["final_status"],
+                      "released_count": release["released_count"],
+                      "reflowed_windows": apply["namespace_reflowed_windows"],
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
   provider-blackbox:
     name: Provider blackbox / ubuntu-latest / py3.11
     runs-on: ubuntu-latest

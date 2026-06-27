@@ -103,5 +103,5 @@ def test_tests_workflow_runs_prepare_only_guarded_provider_matrix() -> None:
     assert 'payload["dynamic_layout_smoke_status"] == "prepared"' in text
     assert 'payload["providers"] == ["codex", "claude"]' in text
     assert 'payload["flows"] == ["window-class", "resolve-preflight"]' in text
-    step = text.split("Guard dynamic layout provider matrix smoke", 1)[1].split("provider-blackbox:", 1)[0]
+    step = text.split("Guard dynamic layout provider matrix smoke", 1)[1].split("Guard workflow closure layout cleanup smoke", 1)[0]
     assert "--run" not in step

@@ -961,6 +961,13 @@ Current evidence:
   `resolve-preflight` variant also passed in `/home/bfly/yunwei/test_ccb2`,
   proving the same real dynamic reviewer and loop worker/checker lifecycle
   path for Claude;
+- compact workspace release reflow now resolves entry-window reflow through
+  namespace workspace id/name when logical `main` is not an actual tmux window
+  name; the workflow closure source-wrapper smoke proved loop worker/checker
+  release with `namespace_reflowed_windows=["main"]` and empty reflow errors;
+- the fake-provider workflow closure layout-cleanup smoke is now part of the
+  Ubuntu py3.11 CI gate, asserting workflow closure, auto release, zero
+  retained loop agents, and empty namespace/pane reflow errors;
 - live provider release remains gated on busy/idle checks.
 
 Deferred:

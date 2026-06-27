@@ -625,11 +625,26 @@ Date: 2026-06-24
   worker/checker panes in `node-round3-node1`, layout status returned to
   `dynamic_agent_count=0` and `loop_agent_count=0`, and final `kill -f`
   returned `state: unmounted`.
+- Fixed compact workspace release reflow for loop-capacity cleanup. The
+  workflow closure smoke exposed a `remove_agent` reflow error when logical
+  window `main` mapped to the namespace workspace window `ccb` / `@1`.
+  Namespace patch release now targets the stable namespace workspace id/name
+  for entry-window reflow when the logical window name is not present in tmux.
+  Focused namespace/reload/capacity/workflow tests passed with `78 passed`,
+  and a source-wrapper workflow closure run in
+  `/home/bfly/yunwei/test_ccb2/workflow-closure-ci-gate-1782575` passed with
+  `workflow_smoke_status=ok`, `released_count=2`,
+  `namespace_reflowed_windows=["main"]`, and empty reflow errors.
+- Wired the fake-provider workflow closure layout-cleanup smoke into the
+  Ubuntu py3.11 `Tests` workflow. The gate runs
+  `scripts/workflow_closure_smoke.py --run --json` and asserts workflow
+  closure, auto release, zero retained loop agents, and empty namespace/pane
+  reflow errors.
 
 ## Next
 
-1. Wire the repeatable workflow closure smoke and autonomous layout-cleanup
-   smoke into the chosen release/CI guarded regression path.
+1. Wire the autonomous layout-cleanup smoke into the chosen release/CI guarded
+   regression path without requiring real provider credentials in default CI.
 2. Implement richer live reflow beyond the proven same-window and
    explicit-window-class middle-removal cases.
 3. Wire the verified deterministic layout planner and dynamic smoke behavior

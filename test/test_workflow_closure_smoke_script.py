@@ -174,5 +174,19 @@ def test_run_workflow_smoke_requires_review_and_auto_releases_capacity(
     assert ready_count == 2
 
 
+def test_tests_workflow_runs_workflow_closure_layout_cleanup_smoke() -> None:
+    text = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
+
+    assert "Guard workflow closure layout cleanup smoke" in text
+    assert "scripts/workflow_closure_smoke.py" in text
+    assert "ci-workflow-closure" in text
+    assert "matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'" in text
+    assert 'run["workflow_smoke_status"] == "ok"' in text
+    assert 'release["loop_capacity_status"] == "released"' in text
+    assert 'release["retained_count"] == 0' in text
+    assert 'not apply["namespace_reflow_errors"]' in text
+    assert 'not apply["pane_identity_report"]["reflow_errors"]' in text
+
+
 def _json(payload: dict[str, object]) -> str:
     return json.dumps(payload, ensure_ascii=False) + "\n"
