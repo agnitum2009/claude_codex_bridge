@@ -679,6 +679,12 @@ Evidence:
   `window-class` provider matrix reaches `prepared`. This keeps real provider
   execution behind explicit local/release opt-in while making wrapper drift a
   normal CI failure.
+- Dynamic reload apply reports now carry pane identity diagnostics. The shared
+  `pane_identity_report` appears under mounted `ccb agent add/remove --json`
+  and `ccb loop capacity ensure/release --json` apply payloads, summarizing
+  added and removed agent panes, preserved before/after panes, created/removed
+  panes, removed windows, reflowed windows, reflow errors, mounted agents, and
+  unloaded agents from the same namespace patch/runtime mount transaction.
 - Focused regression after connecting loop capacity to layout placement passed
   with `187 passed` across loop capacity, agent lifecycle, layout status, pane
   growth, layout runtime, reload patch/runtime mount, and config loader tests.

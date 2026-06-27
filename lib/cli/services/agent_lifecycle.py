@@ -21,6 +21,7 @@ from .agent_status_diagnostics import (
 )
 from .daemon import ping_local_state
 from .reload import reload_config
+from .reload_apply_diagnostics import reload_apply_summary
 
 ACTIVE_STATES = frozenset({'visible', 'hidden', 'parked'})
 REMOVE_POLICIES = frozenset({'auto', 'hide', 'park', 'unload', 'kill'})
@@ -676,28 +677,7 @@ def _apply_reload_if_mounted(context, *, action: str) -> dict[str, object]:
     status = str(payload.get('status') or '')
     if status not in {'ok', 'noop', 'published'}:
         raise RuntimeError(_reload_failure_message(action, payload))
-    namespace_patch = dict(payload.get('namespace_patch') or {})
-    runtime_mount = dict(payload.get('runtime_mount') or {})
-    return {
-        'apply_status': 'applied',
-        'action': action,
-        'reload_status': status,
-        'plan_class': payload.get('plan_class'),
-        'stage': payload.get('stage'),
-        'published_graph_version': payload.get('published_graph_version'),
-        'namespace_patch_status': namespace_patch.get('status'),
-        'namespace_agent_panes': dict(namespace_patch.get('agent_panes') or {}),
-        'namespace_removed_agents': dict(namespace_patch.get('removed_agents') or {}),
-        'namespace_removed_panes': list(namespace_patch.get('removed_panes') or ()),
-        'namespace_removed_windows': list(namespace_patch.get('removed_windows') or ()),
-        'namespace_reflowed_windows': list(namespace_patch.get('reflowed_windows') or ()),
-        'namespace_reflow_errors': dict(namespace_patch.get('reflow_errors') or {}),
-        'runtime_mount_status': runtime_mount.get('status'),
-        'mounted_agents': list(runtime_mount.get('mounted_agents') or ()),
-        'unloaded_agents': list(runtime_mount.get('unloaded_agents') or ()),
-        'runtime_authority_written_agents': list(runtime_mount.get('runtime_authority_written_agents') or ()),
-        'runtime_authority_stopped_agents': list(runtime_mount.get('runtime_authority_stopped_agents') or ()),
-    }
+    return reload_apply_summary(payload, action=action)
 
 
 def _reload_failure_message(action: str, payload: dict[str, object]) -> str:

@@ -157,3 +157,10 @@ pane IDs, provider sessions, and CCB slot metadata must remain valid.
   a prepare-only Ubuntu py3.11 gate. It verifies the Codex+Claude
   `window-class` wrapper contract without `--run`, so CI catches wrapper/config
   drift while real provider execution remains explicit.
+- Mounted dynamic apply reports now include `pane_identity_report` under the
+  `apply` payload for `ccb agent add/remove --json` and
+  `ccb loop capacity ensure/release --json`. The report records added panes,
+  removed panes, preserved before/after panes, reflowed windows, mounted
+  agents, and unloaded agents from the reload transaction itself, so scripts
+  can verify hot-load/hot-unload effects without immediately re-querying raw
+  tmux state.

@@ -1175,6 +1175,80 @@ def test_loop_capacity_ensure_status_release_json_contract(
     assert 'loop-round1-worker-1' not in validate_out.getvalue()
 
 
+def test_loop_capacity_ensure_while_mounted_reports_pane_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = _project_with_loop_capacity(tmp_path, monkeypatch)
+    worker = 'loop-round1-worker-1'
+    reviewer = 'loop-round1-code_reviewer-1'
+    monkeypatch.setattr(
+        loop_capacity_module,
+        'ping_local_state',
+        lambda _context: SimpleNamespace(mount_state='mounted', socket_connectable=True, reason=None),
+    )
+    monkeypatch.setattr(
+        loop_capacity_module,
+        'reload_config',
+        lambda _context, _command: {
+            'status': 'published',
+            'stage': 'publish_transaction',
+            'plan_class': 'add_window',
+            'published_graph_version': 7,
+            'namespace_patch': {
+                'status': 'applied',
+                'agent_panes': {worker: '%2', reviewer: '%3'},
+                'preserved_before': {'orchestrator': '%1'},
+                'preserved_after': {'orchestrator': '%1'},
+            },
+            'runtime_mount': {
+                'status': 'mounted',
+                'mounted_agents': [worker, reviewer],
+                'runtime_authority_written_agents': [worker, reviewer],
+            },
+        },
+    )
+
+    result, ensured, err = _run_phase2(
+        [
+            'loop',
+            'capacity',
+            'ensure',
+            '--loop-id',
+            'round1',
+            '--profile',
+            'worker=1',
+            '--profile',
+            'code_reviewer=1',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+
+    assert result == 0
+    assert err == ''
+    assert ensured['apply']['apply_status'] == 'applied'
+    assert ensured['apply']['plan_class'] == 'add_window'
+    assert ensured['apply']['namespace_agent_panes'] == {worker: '%2', reviewer: '%3'}
+    assert ensured['apply']['namespace_preserved_before'] == {'orchestrator': '%1'}
+    assert ensured['apply']['namespace_preserved_after'] == {'orchestrator': '%1'}
+    assert ensured['apply']['runtime_mount_status'] == 'mounted'
+    assert ensured['apply']['pane_identity_report']['added_agents'] == [
+        {'agent': reviewer, 'pane_id': '%3', 'pane_identity_source': 'namespace_agent_panes'},
+        {'agent': worker, 'pane_id': '%2', 'pane_identity_source': 'namespace_agent_panes'},
+    ]
+    assert ensured['apply']['pane_identity_report']['preserved_agents'] == [
+        {
+            'agent': 'orchestrator',
+            'before_pane_id': '%1',
+            'after_pane_id': '%1',
+            'pane_identity_source': 'namespace_preserved_before_after',
+            'changed': False,
+        }
+    ]
+    assert ensured['apply']['pane_identity_report']['mounted_agents'] == [worker, reviewer]
+
+
 def test_loop_capacity_ensure_rejects_unknown_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

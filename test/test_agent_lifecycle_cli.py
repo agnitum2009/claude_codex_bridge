@@ -567,6 +567,8 @@ def test_agent_add_while_mounted_applies_reload_and_reports_runtime_details(
             'namespace_patch': {
                 'status': 'applied',
                 'agent_panes': {'helper': '%3'},
+                'preserved_before': {'main': '%1'},
+                'preserved_after': {'main': '%1'},
             },
             'runtime_mount': {
                 'status': 'mounted',
@@ -586,8 +588,23 @@ def test_agent_add_while_mounted_applies_reload_and_reports_runtime_details(
     assert payload['apply']['reload_status'] == 'published'
     assert payload['apply']['plan_class'] == 'add_agent'
     assert payload['apply']['namespace_agent_panes'] == {'helper': '%3'}
+    assert payload['apply']['namespace_preserved_before'] == {'main': '%1'}
+    assert payload['apply']['namespace_preserved_after'] == {'main': '%1'}
     assert payload['apply']['runtime_mount_status'] == 'mounted'
     assert payload['apply']['runtime_authority_written_agents'] == ['helper']
+    assert payload['apply']['pane_identity_report']['added_agents'] == [
+        {'agent': 'helper', 'pane_id': '%3', 'pane_identity_source': 'namespace_agent_panes'}
+    ]
+    assert payload['apply']['pane_identity_report']['preserved_agents'] == [
+        {
+            'agent': 'main',
+            'before_pane_id': '%1',
+            'after_pane_id': '%1',
+            'pane_identity_source': 'namespace_preserved_before_after',
+            'changed': False,
+        }
+    ]
+    assert payload['apply']['pane_identity_report']['mounted_agents'] == ['helper']
     assert payload['pane_id'] == '%3'
     assert payload['applied']['status'] == 'applied'
     assert payload['applied']['window_name'] == 'main'
@@ -771,6 +788,8 @@ def test_agent_remove_while_mounted_unloads_and_reports_runtime_details(
             'namespace_patch': {
                 'status': 'applied',
                 'agent_panes': {'helper': '%3'},
+                'preserved_before': {'main': '%1'},
+                'preserved_after': {'main': '%1'},
             },
             'runtime_mount': {
                 'status': 'mounted',
@@ -787,6 +806,9 @@ def test_agent_remove_while_mounted_unloads_and_reports_runtime_details(
                 'status': 'applied',
                 'removed_agents': {'helper': '%3'},
                 'removed_panes': ['%3'],
+                'preserved_before': {'main': '%1'},
+                'preserved_after': {'main': '%1'},
+                'reflowed_windows': ['main'],
             },
             'runtime_mount': {
                 'status': 'unloaded',
@@ -824,9 +846,27 @@ def test_agent_remove_while_mounted_unloads_and_reports_runtime_details(
     assert removed['apply']['plan_class'] == 'remove_agent'
     assert removed['apply']['namespace_removed_agents'] == {'helper': '%3'}
     assert removed['apply']['namespace_removed_panes'] == ['%3']
+    assert removed['apply']['namespace_preserved_before'] == {'main': '%1'}
+    assert removed['apply']['namespace_preserved_after'] == {'main': '%1'}
+    assert removed['apply']['namespace_reflowed_windows'] == ['main']
     assert removed['apply']['runtime_mount_status'] == 'unloaded'
     assert removed['apply']['unloaded_agents'] == ['helper']
     assert removed['apply']['runtime_authority_stopped_agents'] == ['helper']
+    assert removed['apply']['pane_identity_report']['removed_agents'] == [
+        {'agent': 'helper', 'pane_id': '%3', 'pane_identity_source': 'namespace_removed_agents'}
+    ]
+    assert removed['apply']['pane_identity_report']['removed_panes'] == ['%3']
+    assert removed['apply']['pane_identity_report']['reflowed_windows'] == ['main']
+    assert removed['apply']['pane_identity_report']['preserved_agents'] == [
+        {
+            'agent': 'main',
+            'before_pane_id': '%1',
+            'after_pane_id': '%1',
+            'pane_identity_source': 'namespace_preserved_before_after',
+            'changed': False,
+        }
+    ]
+    assert removed['apply']['pane_identity_report']['unloaded_agents'] == ['helper']
     assert removed['last_pane_id'] == '%3'
     assert removed['pane_id'] is None
     assert removed['placement']['last_pane_id'] == '%3'

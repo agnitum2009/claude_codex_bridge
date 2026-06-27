@@ -550,6 +550,16 @@ Date: 2026-06-24
   passed with `44 passed`, the broader dynamic layout regression set passed
   with `162 passed`, and the source-wrapper prepare-only command returned
   `prepared` from `/home/bfly/yunwei/test_ccb2`.
+- Added shared reload apply pane-identity diagnostics for dynamic
+  add/remove reports. Mounted `ccb agent add/remove --json` and
+  `ccb loop capacity ensure/release --json` now include a
+  `pane_identity_report` built from reload `namespace_patch` and
+  `runtime_mount` facts: added agents, removed agents, preserved before/after
+  panes, created/removed panes, removed windows, reflowed windows, reflow
+  errors, mounted agents, and unloaded agents. Focused lifecycle/capacity tests
+  passed with `40 passed`, the broader dynamic layout regression set passed
+  with `163 passed`, and an external source-wrapper fake-provider
+  `window-class` smoke in `/home/bfly/yunwei/test_ccb2` remained green.
 
 ## Next
 
@@ -560,9 +570,7 @@ Date: 2026-06-24
    expose a script-friendly placement command/skill wrapper for generic
    non-loop dynamic agents while keeping loop execution capacity behind
    `ccb loop capacity`.
-3. Implement the next true hot-load slices:
-   extend pane-identity diagnostics into mount/reload transaction reports, and
-   only later richer live reflow beyond the proven same-window and
+3. Implement richer live reflow beyond the proven same-window and
    explicit-window-class middle-removal cases.
 4. Wire the verified deterministic layout planner and dynamic smoke behavior
    into live dynamic capacity only after `layout status` can read current pane

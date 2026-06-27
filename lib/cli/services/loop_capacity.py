@@ -12,6 +12,7 @@ from storage.atomic import atomic_write_json
 
 from .daemon import ping_local_state
 from .reload import reload_config
+from .reload_apply_diagnostics import reload_apply_summary
 
 
 def loop_capacity(context, command) -> dict[str, object]:
@@ -478,14 +479,7 @@ def _apply_reload_if_mounted(context, *, action: str) -> dict[str, object]:
     status = str(payload.get('status') or '')
     if status not in {'ok', 'noop', 'published'}:
         raise RuntimeError(f'loop capacity {action} reload failed: {status or "unknown"}')
-    return {
-        'apply_status': 'applied',
-        'action': action,
-        'reload_status': status,
-        'plan_class': payload.get('plan_class'),
-        'stage': payload.get('stage'),
-        'published_graph_version': payload.get('published_graph_version'),
-    }
+    return reload_apply_summary(payload, action=action)
 
 
 def _utc_now() -> str:
