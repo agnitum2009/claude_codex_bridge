@@ -1,6 +1,6 @@
 # CCBD Agent Hot Reload Roadmap
 
-Date: 2026-05-29
+Date: 2026-06-28
 
 ## Done
 
@@ -140,6 +140,21 @@ Date: 2026-05-29
   `%1:main,%2:dyn1,%3:dyn2,%4:dyn3,%5:dyn4,%6:dyn5`, each dynamic agent
   accepted ask submission, then `remove --policy unload --force` shrank the
   window back to only `%1:main` with runtime authority showing only `main`.
+- Added and verified batch dynamic lifecycle release coverage:
+  `ccb agent release --agents ...` can release a group of idle dynamic agents
+  through one guarded reload transaction, including namespace/runtime cleanup
+  evidence in the default fake-provider dynamic layout CI bundle
+  (`231e30b8`).
+- Added and verified batch move placement by window class: `ccb agent move
+  --agents ... --window-class review|loop|node` can place a group of existing
+  panes into class-derived target windows without rewriting static
+  `.ccb/ccb.config`, and the smoke flow proves source-window cleanup plus ask
+  reachability after the move (`ec9d488d`).
+- Added and verified execution-node batch move smoke: `ccb agent move
+  --agents worker,checker --loop-id round1 --node-id node1 --json` moves an
+  existing worker/checker pair into `node-round1-node1`, removes the evacuated
+  source window, preserves pane identity, and keeps ask submission reachable
+  after the transaction (`24bbad5f`).
 
 ## In Progress
 
@@ -147,23 +162,34 @@ Date: 2026-05-29
   accepted user-path classes are implemented for view-only, append-only
   add-agent/add-window, idle remove-agent, runtime dynamic add, runtime dynamic
   release, busy retain, empty dynamic-window cleanup, config-only park/resume
-  dispatch toggling, and compact-startup pane identity preservation. Full live
-  `codex`/`claude` provider smoke, daemon-pushed sidebar refresh, replacement,
-  moves, arbitrary layout reshapes, and background config watching remain
-  deferred.
+  dispatch toggling, compact-startup pane identity preservation, batch release,
+  and batch move into explicit review/loop/node windows. The next hardening
+  target is a mixed reload transaction that both moves existing panes and
+  creates new agent panes in the same target window. Full live `codex`/`claude`
+  provider smoke, daemon-pushed sidebar refresh, replacement, arbitrary layout
+  reshapes, and background config watching remain deferred.
 
 ## Next
 
-1. Run full live-provider smoke for pane-backed `codex`/`claude` dynamic add
-   and release after confirming account/auth boundaries for the test project.
-2. Run or update the automatic and manual additive reload matrix in
+1. Add focused tests for mixed move-plus-add transactions in both existing and
+   newly-created target windows, then unblock only the safe namespace patch
+   shape: moved panes first, new panes appended after stable moved anchors, and
+   evacuated source-window cleanup when all source agents moved.
+2. Extend the source-wrapper fake-provider smoke from
+   `/home/bfly/yunwei/test_ccb2` to cover the mixed transaction after the unit
+   plan is safe, including ask reachability for both moved and newly-created
+   agents.
+3. Run full live-provider smoke for pane-backed `codex`/`claude` dynamic add,
+   move, release, hide/park/resume after confirming account/auth boundaries for
+   the test project.
+4. Run or update the automatic and manual additive reload matrix in
    [topics/test-matrix.md](topics/test-matrix.md), including `test_ccb2`
    evidence for unchanged old panes, newly-mounted agents, released dynamic
-   panes, and empty-window cleanup.
-3. Add a lightweight daemon-pushed sidebar refresh signal if needed after manual
+   panes, moved panes, and empty-window cleanup.
+5. Add a lightweight daemon-pushed sidebar refresh signal if needed after manual
    validation; avoid polling or steady-state scans.
-4. Add bounded draining follow-up for busy unload instead of stable rejection.
-5. Expose replacement only after unload semantics are safe; busy replacement
+6. Add bounded draining follow-up for busy unload instead of stable rejection.
+7. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
 
 ## Deferred
