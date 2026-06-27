@@ -6,8 +6,11 @@ from datetime import datetime, timezone
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import mimetypes
 from pathlib import Path
 import re
+import shutil
+import sqlite3
 import threading
 from typing import Callable, Mapping
 from uuid import uuid4
@@ -281,22 +284,22 @@ class MobileGatewayService:
             namespace_epoch=_query_int(query, 'namespace_epoch'),
         )
         limit = min(200, max(1, _query_int(query, 'limit') or 50))
-        items = self._agent_terminal_conversation_items(
+        terminal_history = self._agent_terminal_history_for_conversation(
             project_id=project.project_id,
             view_payload=view_payload,
-            agent=target['agent'],
+            agent=str(target['agent']),
             namespace_epoch=int(target['namespace_epoch']),
         )
-        if not items:
-            items = _agent_conversation_items(
+        page = _agent_conversation_page(
+            _agent_conversation_items(
                 view_payload,
                 project_id=project.project_id,
                 agent=target['agent'],
                 namespace_epoch=int(target['namespace_epoch']),
                 project_root=project.project_root,
-            )
-        page = _agent_conversation_page(
-            items,
+                terminal_history=terminal_history,
+                mobile_files_dir=self._mobile_files_dir(),
+            ),
             limit=limit,
             cursor=_query_text(query, 'cursor'),
         )
@@ -315,31 +318,32 @@ class MobileGatewayService:
             'conversation': conversation,
         }
 
-    def _agent_terminal_conversation_items(
+    def _agent_terminal_history_for_conversation(
         self,
         *,
         project_id: str,
         view_payload: dict[str, object],
         agent: str,
         namespace_epoch: int,
-    ) -> list[dict[str, object]]:
+    ) -> dict[str, object] | None:
         try:
             target = _terminal_history_target(
                 project_id=project_id,
                 view_payload=view_payload,
                 agent=agent,
                 namespace_epoch=namespace_epoch,
-                max_lines=200,
+                max_lines=240,
             )
             history = dict(self._terminal_history_factory(target) or {})
         except Exception:
-            return []
+            return None
         history.setdefault('agent', target.agent)
         history.setdefault('history_scope', 'tmux_scrollback')
         history.setdefault('source_pane_id', target.pane_id)
         history.setdefault('generated_at', self._clock())
         history.setdefault('stale', False)
-        return _terminal_history_conversation_items(history, agent=target.agent)
+        history.setdefault('blocks', [])
+        return history
 
     def file_upload_target_from_path(self, path: str) -> tuple[str, str] | None:
         parsed = urlparse(path)
@@ -1377,6 +1381,8 @@ def _agent_conversation_items(
     agent: str,
     namespace_epoch: int,
     project_root: Path,
+    terminal_history: dict[str, object] | None = None,
+    mobile_files_dir: Path | None = None,
 ) -> list[dict[str, object]]:
     view = _map(view_payload.get('view'))
     agents = [_map(item) for item in _iterable(view.get('agents'))]
@@ -1418,6 +1424,29 @@ def _agent_conversation_items(
             }
         )
     seen_item_ids = {str(item.get('id') or '') for item in items}
+    native_items = _agent_native_conversation_items(
+        project_root,
+        project_id=project_id,
+        agent=agent,
+        mobile_files_dir=mobile_files_dir,
+    )
+    for item in native_items:
+        item_id = str(item.get('id') or '')
+        if item_id and item_id in seen_item_ids:
+            continue
+        items.append(item)
+        if item_id:
+            seen_item_ids.add(item_id)
+    if native_items:
+        return items
+
+    terminal_items = _terminal_history_conversation_items(
+        terminal_history,
+        agent=agent,
+    )
+    if terminal_items:
+        return terminal_items
+
     for item in _agent_history_conversation_items(
         project_root,
         project_id=project_id,
@@ -1520,10 +1549,13 @@ def _agent_conversation_items(
 
 
 def _terminal_history_conversation_items(
-    history: dict[str, object],
+    history: dict[str, object] | None,
     *,
     agent: str,
 ) -> list[dict[str, object]]:
+    history = _map(history)
+    if not history:
+        return []
     history_scope = _optional_text(history.get('history_scope')) or 'tmux_scrollback'
     source_pane_id = _optional_text(history.get('source_pane_id'))
     items: list[dict[str, object]] = []
@@ -1576,6 +1608,415 @@ def _terminal_conversation_source(
     if source_pane_id:
         parts.append(source_pane_id)
     return ' / '.join(parts)
+
+
+def _agent_native_conversation_items(
+    project_root: Path,
+    *,
+    project_id: str,
+    agent: str,
+    mobile_files_dir: Path | None = None,
+) -> list[dict[str, object]]:
+    return _codex_native_conversation_items(
+        project_root,
+        project_id=project_id,
+        agent=agent,
+        mobile_files_dir=mobile_files_dir,
+    )
+
+
+def _codex_native_conversation_items(
+    project_root: Path,
+    *,
+    project_id: str,
+    agent: str,
+    mobile_files_dir: Path | None = None,
+) -> list[dict[str, object]]:
+    home = project_root / '.ccb' / 'agents' / agent / 'provider-state' / 'codex' / 'home'
+    state_path = home / 'state_5.sqlite'
+    if not state_path.is_file():
+        return []
+    try:
+        connection = sqlite3.connect(f'file:{state_path}?mode=ro', uri=True)
+        connection.row_factory = sqlite3.Row
+        rows = list(
+            connection.execute(
+                'select id, rollout_path, created_at, updated_at from threads '
+                'where rollout_path is not null and rollout_path != "" '
+                'order by created_at asc, updated_at asc, id asc'
+            )
+        )
+    except Exception:
+        return []
+    finally:
+        try:
+            connection.close()  # type: ignore[possibly-undefined]
+        except Exception:
+            pass
+
+    items: list[dict[str, object]] = []
+    for row_index, row in enumerate(rows):
+        thread_id = str(row['id'] or '').strip() or f'thread-{len(items)}'
+        rollout_text = str(row['rollout_path'] or '').strip()
+        if not rollout_text:
+            continue
+        rollout_path = Path(rollout_text)
+        if not rollout_path.is_absolute():
+            rollout_path = home / rollout_path
+        fallback_timestamp = _codex_thread_fallback_timestamp(row)
+        items.extend(
+            _codex_rollout_conversation_items(
+                rollout_path,
+                project_root=project_root,
+                project_id=project_id,
+                agent=agent,
+                thread_id=thread_id,
+                thread_order=row_index,
+                fallback_timestamp=fallback_timestamp,
+                mobile_files_dir=mobile_files_dir,
+                file_roots=[
+                    path
+                    for path in (
+                        mobile_files_dir,
+                        project_root / '.ccb' / 'ccbd' / 'mobile' / 'files',
+                    )
+                    if path is not None
+                ],
+            )
+        )
+    return [
+        _without_native_sort_fields(item)
+        for _, item in sorted(
+            enumerate(items),
+            key=lambda indexed: (
+                _optional_text(indexed[1].get('_native_sort_timestamp')) or '',
+                int(indexed[1].get('_native_thread_order') or 0),
+                int(indexed[1].get('_native_line_number') or 0),
+                indexed[0],
+            ),
+        )
+    ]
+
+
+def _codex_thread_fallback_timestamp(row: sqlite3.Row) -> str:
+    timestamp = row['updated_at'] or row['created_at'] or 0
+    try:
+        return f'{int(timestamp):020d}'
+    except Exception:
+        return str(timestamp)
+
+
+def _codex_rollout_conversation_items(
+    rollout_path: Path,
+    *,
+    project_root: Path,
+    project_id: str,
+    agent: str,
+    thread_id: str,
+    thread_order: int,
+    fallback_timestamp: str,
+    mobile_files_dir: Path | None,
+    file_roots: list[Path],
+) -> list[dict[str, object]]:
+    event_items: list[dict[str, object]] = []
+    response_items: list[dict[str, object]] = []
+    try:
+        lines = rollout_path.open(encoding='utf-8')
+    except Exception:
+        return []
+    with lines:
+        for line_number, line in enumerate(lines, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = _map(json.loads(line))
+            except Exception:
+                continue
+            payload = _map(record.get('payload'))
+            if record.get('type') == 'event_msg':
+                event_item = _codex_event_message_conversation_item(
+                    payload,
+                    project_root=project_root,
+                    project_id=project_id,
+                    agent=agent,
+                    item_id=f'codex-{thread_id}-{line_number}',
+                    mobile_files_dir=mobile_files_dir,
+                    file_roots=file_roots,
+                )
+                if event_item is not None:
+                    _set_native_sort_fields(
+                        event_item,
+                        record,
+                        fallback_timestamp=fallback_timestamp,
+                        thread_order=thread_order,
+                        line_number=line_number,
+                    )
+                    event_items.append(event_item)
+                continue
+            if record.get('type') != 'response_item':
+                continue
+            if payload.get('type') != 'message':
+                continue
+            role = str(payload.get('role') or '').strip()
+            if role not in {'user', 'assistant'}:
+                continue
+            body = _codex_message_content_text(payload.get('content'))
+            body = _inject_workspace_artifacts(
+                body,
+                project_root=project_root,
+                project_id=project_id,
+                agent=agent,
+                mobile_files_dir=mobile_files_dir,
+            )
+            body = _clean_native_message_text(body)
+            if not body:
+                continue
+            item_id = f'codex-{thread_id}-{line_number}-{role}'
+            if role == 'user':
+                item = {
+                    'id': item_id,
+                    'agent': agent,
+                    'kind': 'user_message',
+                    'title': 'You',
+                    'body': body,
+                    'format': 'markdown',
+                    'source': 'provider_native/codex',
+                    'state': 'sent',
+                    'attachments': [],
+                }
+            else:
+                item = {
+                    'id': item_id,
+                    'agent': agent,
+                    'kind': 'agent_reply',
+                    'title': 'Agent reply',
+                    'body': body,
+                    'format': 'markdown',
+                    'source': 'provider_native/codex',
+                    'attachments': _artifact_link_attachments(
+                        body,
+                        file_roots=file_roots,
+                        project_id=project_id,
+                        agent=agent,
+                    ),
+                }
+            _set_native_sort_fields(
+                item,
+                record,
+                fallback_timestamp=fallback_timestamp,
+                thread_order=thread_order,
+                line_number=line_number,
+            )
+            response_items.append(item)
+    return event_items or response_items
+
+
+def _set_native_sort_fields(
+    item: dict[str, object],
+    record: dict[str, object],
+    *,
+    fallback_timestamp: str,
+    thread_order: int,
+    line_number: int,
+) -> None:
+    payload = _map(record.get('payload'))
+    item['_native_sort_timestamp'] = (
+        _optional_text(record.get('timestamp'))
+        or _optional_text(payload.get('timestamp'))
+        or fallback_timestamp
+    )
+    item['_native_thread_order'] = thread_order
+    item['_native_line_number'] = line_number
+
+
+def _without_native_sort_fields(item: dict[str, object]) -> dict[str, object]:
+    clean = dict(item)
+    clean.pop('_native_sort_timestamp', None)
+    clean.pop('_native_thread_order', None)
+    clean.pop('_native_line_number', None)
+    return clean
+
+
+def _codex_event_message_conversation_item(
+    payload: dict[str, object],
+    *,
+    project_root: Path,
+    project_id: str,
+    agent: str,
+    item_id: str,
+    mobile_files_dir: Path | None,
+    file_roots: list[Path],
+) -> dict[str, object] | None:
+    payload_type = str(payload.get('type') or '').strip()
+    body = _optional_text(payload.get('message')) or ''
+    body = _inject_workspace_artifacts(
+        body,
+        project_root=project_root,
+        project_id=project_id,
+        agent=agent,
+        mobile_files_dir=mobile_files_dir,
+    )
+    body = _clean_native_message_text(body)
+    if not body:
+        return None
+    if payload_type == 'user_message':
+        return {
+            'id': f'{item_id}-user',
+            'agent': agent,
+            'kind': 'user_message',
+            'title': 'You',
+            'body': body,
+            'format': 'markdown',
+            'source': 'provider_native/codex',
+            'state': 'sent',
+            'attachments': [],
+        }
+    if payload_type == 'agent_message':
+        return {
+            'id': f'{item_id}-assistant',
+            'agent': agent,
+            'kind': 'agent_reply',
+            'title': 'Agent reply',
+            'body': body,
+            'format': 'markdown',
+            'source': 'provider_native/codex',
+            'attachments': _artifact_link_attachments(
+                body,
+                file_roots=file_roots,
+                project_id=project_id,
+                agent=agent,
+            ),
+        }
+    return None
+
+
+def _codex_message_content_text(value: object) -> str:
+    parts: list[str] = []
+    for item in _iterable(value):
+        content = _map(item)
+        text = (
+            _optional_text(content.get('text'))
+            or _optional_text(content.get('input_text'))
+            or _optional_text(content.get('output_text'))
+            or ''
+        )
+        if text:
+            parts.append(text)
+    return '\n\n'.join(parts)
+
+
+_CCB_REQ_LINE_RE = re.compile(r'^\s*CCB_(?:REQ_ID|DONE):\s+\S+\s*$', re.IGNORECASE)
+
+
+def _inject_workspace_artifacts(
+    body: str,
+    *,
+    project_root: Path,
+    project_id: str,
+    agent: str,
+    mobile_files_dir: Path | None,
+) -> str:
+    if not body:
+        return body
+    project_root_resolved = project_root.resolve(strict=False)
+    mobile_file_root = (
+        mobile_files_dir
+        if mobile_files_dir is not None
+        else project_root / '.ccb' / 'ccbd' / 'mobile' / 'files'
+    )
+
+    def repl(match: re.Match) -> str:
+        text = match.group(1)
+        url = match.group(2)
+        parsed = urlparse(url)
+        if parsed.scheme or parsed.netloc or url.startswith('#'):
+            return match.group(0)
+        try:
+            link_path = unquote(parsed.path)
+            if not link_path.strip():
+                return match.group(0)
+            target_path = Path(link_path)
+            if not target_path.is_absolute():
+                target_path = project_root / target_path
+            target_path = target_path.resolve(strict=False)
+            try:
+                relative_path = target_path.relative_to(project_root_resolved)
+            except ValueError:
+                return match.group(0)
+            if relative_path.parts and relative_path.parts[0] in {'.ccb', '.git'}:
+                return match.group(0)
+            if not target_path.is_file():
+                return match.group(0)
+            stat = target_path.stat()
+            if stat.st_size > _MAX_MOBILE_FILE_BYTES:
+                return match.group(0)
+            content = target_path.read_bytes()
+            digest = hashlib.sha256(content).hexdigest()
+            identity = '\0'.join(
+                (
+                    project_id,
+                    agent,
+                    relative_path.as_posix(),
+                    str(stat.st_size),
+                    digest,
+                )
+            ).encode('utf-8')
+            file_id = f'mobile-file-{hashlib.sha256(identity).hexdigest()[:24]}'
+            mobile_file_dir = (
+                mobile_file_root
+                / _safe_path_segment(project_id)
+                / _safe_path_segment(agent)
+                / file_id
+            )
+            if not mobile_file_dir.is_dir():
+                mobile_file_dir.mkdir(parents=True, exist_ok=True)
+                content_path = mobile_file_dir / 'content.bin'
+                content_path.write_bytes(content)
+                shutil.copystat(target_path, content_path, follow_symlinks=True)
+                mime_type = (
+                    mimetypes.guess_type(target_path.name)[0]
+                    or 'application/octet-stream'
+                )
+                record = {
+                    'schema_version': _SCHEMA_VERSION,
+                    'file_id': file_id,
+                    'project_id': project_id,
+                    'agent': agent,
+                    'device_id': 'auto-injected',
+                    'file_name': target_path.name,
+                    'mime_type': mime_type,
+                    'size_bytes': stat.st_size,
+                    'sha256': digest,
+                    'created_at': _utc_now(),
+                }
+                (mobile_file_dir / 'metadata.json').write_text(
+                    json.dumps(record, ensure_ascii=False, sort_keys=True),
+                    encoding='utf-8',
+                )
+            return f'[{text}](ccb-artifact://{file_id})'
+        except Exception:
+            return match.group(0)
+
+    return re.sub(r'\[([^\]]+)\]\(([^)]+)\)', repl, body)
+
+
+def _clean_native_message_text(text: str) -> str:
+    lines: list[str] = []
+    skipping_reply_guidance = False
+    for line in str(text or '').splitlines():
+        stripped = line.strip()
+        if _CCB_REQ_LINE_RE.match(line):
+            continue
+        if stripped == 'CCB reply guidance:':
+            skipping_reply_guidance = True
+            continue
+        if skipping_reply_guidance:
+            if not stripped or stripped.startswith('- '):
+                continue
+            skipping_reply_guidance = False
+        lines.append(line)
+    return '\n'.join(lines).strip()
 
 
 def _agent_history_conversation_items(
@@ -1792,12 +2233,15 @@ def _artifact_link_attachments(
             continue
         seen.add(file_id)
         for file_root in file_roots:
-            directory = (
-                file_root
-                / _safe_path_segment(project_id)
-                / _safe_path_segment(agent)
-                / _safe_path_segment(file_id)
-            )
+            try:
+                directory = (
+                    file_root
+                    / _safe_path_segment(project_id)
+                    / _safe_path_segment(agent)
+                    / _safe_path_segment(file_id)
+                )
+            except MobileGatewayError:
+                continue
             metadata = _read_file_metadata(directory)
             if not metadata:
                 continue

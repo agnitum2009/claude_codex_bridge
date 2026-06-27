@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import socket
+import sqlite3
 import struct
 import threading
 import time
@@ -675,6 +676,144 @@ def test_agent_conversation_prefers_terminal_scrollback_over_comms(tmp_path: Pat
     assert 'question from phone' not in public_json
 
 
+def test_agent_conversation_prefers_codex_native_transcript(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    snapshot_dir = project_root / '.ccb' / 'ccbd' / 'snapshots'
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / 'job_mobile_probe.json').write_text(
+        json.dumps({'latest_decision': {'reply': 'stale ask snapshot'}}),
+        encoding='utf-8',
+    )
+    jobs_dir = project_root / '.ccb' / 'agents' / 'mobile'
+    jobs_dir.mkdir(parents=True)
+    (jobs_dir / 'jobs.jsonl').write_text(
+        json.dumps(
+            {
+                'job_id': 'job_mobile_probe',
+                'status': 'completed',
+                'agent_name': 'mobile',
+                'created_at': '2026-06-25T12:00:00Z',
+                'request': {
+                    'body': 'stale ask prompt',
+                    'route_options': {'source': 'mobile_gateway'},
+                },
+            }
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+    _write_codex_rollout(
+        project_root,
+        agent='mobile',
+        thread_id='thread-native',
+        records=[
+            {
+                'type': 'response_item',
+                'payload': {
+                    'type': 'message',
+                    'role': 'developer',
+                    'content': [{'type': 'input_text', 'text': 'hidden developer'}],
+                },
+            },
+            {
+                'type': 'response_item',
+                'payload': {
+                    'type': 'message',
+                    'role': 'user',
+                    'content': [{'type': 'input_text', 'text': 'hidden context'}],
+                },
+            },
+            {
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'user_message',
+                    'message': 'native question',
+                },
+            },
+            {
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'agent_message',
+                    'message': 'native answer',
+                },
+            },
+            {
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'user_message',
+                    'message': (
+                        'CCB_REQ_ID: job_mobile_probe\n\n'
+                        'clean prompt\n\n'
+                        'CCB reply guidance:\n'
+                        '- Answer directly and concisely.\n'
+                        '- Avoid raw logs.'
+                    ),
+                },
+            },
+        ],
+    )
+
+    def history_factory(target):
+        return {
+            'history_scope': 'tmux_scrollback',
+            'source_pane_id': target.pane_id,
+            'blocks': [
+                {
+                    'id': 'old-input',
+                    'type': 'command',
+                    'title': 'Command',
+                    'text': 'stale pane prompt',
+                },
+                {
+                    'id': 'old-output',
+                    'type': 'log',
+                    'title': 'Terminal output',
+                    'text': 'stale pane answer',
+                },
+            ],
+        }
+
+    service = _service(
+        _FakeCcbdClient(),
+        project_root=project_root,
+        mobile_dir=tmp_path / 'mobile',
+        terminal_history_factory=history_factory,
+    )
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+
+    status, payload = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4&limit=20',
+        {'Authorization': f'Bearer {claim["device_token"]}'},
+    )
+
+    assert status == 200
+    items = payload['conversation']['items']
+    native_items = [
+        item for item in items if item.get('source') == 'provider_native/codex'
+    ]
+    assert [(item['kind'], item['body']) for item in native_items] == [
+        ('user_message', 'native question'),
+        ('agent_reply', 'native answer'),
+        ('user_message', 'clean prompt'),
+    ]
+    public_json = json.dumps(payload)
+    assert 'hidden developer' not in public_json
+    assert 'hidden context' not in public_json
+    assert 'CCB_REQ_ID' not in public_json
+    assert 'CCB reply guidance' not in public_json
+    assert 'stale ask prompt' not in public_json
+    assert 'stale ask snapshot' not in public_json
+    assert 'stale pane prompt' not in public_json
+    assert 'stale pane answer' not in public_json
+
+
 def test_agent_conversation_pages_latest_then_older_items(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     snapshot_dir = project_root / '.ccb' / 'ccbd' / 'snapshots'
@@ -737,6 +876,98 @@ def test_agent_conversation_pages_latest_then_older_items(tmp_path: Path) -> Non
         'reply-content-1',
     ]
     assert 'next_cursor' not in oldest_conversation
+
+
+def test_agent_conversation_pages_codex_native_by_record_timestamp_across_threads(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo'
+    _write_codex_rollout(
+        project_root,
+        agent='mobile',
+        thread_id='newer-pane-thread-created-first',
+        created_at=1782350000,
+        updated_at=1782350100,
+        records=[
+            {
+                'timestamp': '2026-06-25T12:02:00.000Z',
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'user_message',
+                    'message': 'fresh pane question',
+                },
+            },
+            {
+                'timestamp': '2026-06-25T12:02:01.000Z',
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'agent_message',
+                    'message': 'fresh pane answer',
+                },
+            },
+        ],
+    )
+    _write_codex_rollout(
+        project_root,
+        agent='mobile',
+        thread_id='older-backfill-thread-created-second',
+        created_at=1782350001,
+        updated_at=1782350002,
+        records=[
+            {
+                'timestamp': '2026-06-25T12:00:00.000Z',
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'user_message',
+                    'message': 'older backfill question',
+                },
+            },
+            {
+                'timestamp': '2026-06-25T12:00:01.000Z',
+                'type': 'event_msg',
+                'payload': {
+                    'type': 'agent_message',
+                    'message': 'older backfill answer',
+                },
+            },
+        ],
+    )
+    service = _service(
+        _FakeCcbdClientWithConversationComms(),
+        project_root=project_root,
+        mobile_dir=tmp_path / 'mobile',
+    )
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+    headers = {'Authorization': f'Bearer {claim["device_token"]}'}
+
+    _, latest = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4&limit=2',
+        headers,
+    )
+    latest_items = latest['conversation']['items']
+
+    assert [item['body'] for item in latest_items] == [
+        'fresh pane question',
+        'fresh pane answer',
+    ]
+    assert latest['conversation']['next_cursor'] == '4'
+
+    _, older = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4'
+        f'&limit=2&cursor={latest["conversation"]["next_cursor"]}',
+        headers,
+    )
+    assert [item['body'] for item in older['conversation']['items']] == [
+        'older backfill question',
+        'older backfill answer',
+    ]
 
 
 def test_agent_conversation_pages_completed_job_history_beyond_project_view_limit(tmp_path: Path) -> None:
@@ -2080,6 +2311,54 @@ def test_http_server_exposes_g1_get_endpoints(tmp_path: Path) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def _write_codex_rollout(
+    project_root: Path,
+    *,
+    agent: str,
+    thread_id: str,
+    records: list[dict[str, object]],
+    created_at: int = 1782350000,
+    updated_at: int = 1782350001,
+) -> None:
+    home = project_root / '.ccb' / 'agents' / agent / 'provider-state' / 'codex' / 'home'
+    rollout_path = home / 'sessions' / '2026' / '06' / '25' / f'rollout-{thread_id}.jsonl'
+    rollout_path.parent.mkdir(parents=True, exist_ok=True)
+    rollout_path.write_text(
+        ''.join(f'{json.dumps(record)}\n' for record in records),
+        encoding='utf-8',
+    )
+    state_path = home / 'state_5.sqlite'
+    connection = sqlite3.connect(state_path)
+    try:
+        connection.execute(
+            'create table if not exists threads ('
+            'id text primary key, '
+            'rollout_path text, '
+            'created_at integer, '
+            'updated_at integer, '
+            'title text, '
+            'first_user_message text, '
+            'preview text)'
+        )
+        connection.execute(
+            'insert into threads '
+            '(id, rollout_path, created_at, updated_at, title, first_user_message, preview) '
+            'values (?, ?, ?, ?, ?, ?, ?)',
+            (
+                thread_id,
+                str(rollout_path),
+                created_at,
+                updated_at,
+                'native transcript',
+                'native question',
+                'native preview',
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _websocket_connect(host: str, port: int, path: str) -> socket.socket:
