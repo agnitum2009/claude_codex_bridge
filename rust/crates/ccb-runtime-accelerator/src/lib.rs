@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::File;
+use std::hash::Hasher;
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -757,10 +759,76 @@ pub fn classify_process(command: &str, args: &str) -> String {
 }
 
 pub fn default_socket_path(project_root: &Path) -> PathBuf {
-    project_root
+    let root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let preferred = root
         .join(".ccb")
         .join("runtime-accelerator")
-        .join("accelerator.sock")
+        .join("accelerator.sock");
+    if unix_socket_path_is_safe(&preferred) {
+        return preferred;
+    }
+    runtime_socket_path(&root)
+}
+
+fn runtime_socket_path(project_root: &Path) -> PathBuf {
+    let key = project_socket_key(project_root);
+    for root in runtime_socket_roots() {
+        let candidate = root.join(format!("accelerator-{key}.sock"));
+        if unix_socket_path_is_safe(&candidate) {
+            return candidate;
+        }
+    }
+    PathBuf::from("/tmp")
+        .join("ccb-runtime")
+        .join(format!("accelerator-{key}.sock"))
+}
+
+fn runtime_socket_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(raw) = std::env::var("XDG_RUNTIME_DIR") {
+        if !raw.trim().is_empty() {
+            roots.push(PathBuf::from(raw).join("ccb-runtime"));
+        }
+    }
+    roots.push(PathBuf::from("/tmp").join("ccb-runtime"));
+    let temp_root = std::env::temp_dir().join("ccb-runtime");
+    if !roots.iter().any(|root| root == &temp_root) {
+        roots.push(temp_root);
+    }
+    roots
+}
+
+fn unix_socket_path_is_safe(path: &Path) -> bool {
+    path.as_os_str().as_bytes().len() <= 100
+}
+
+fn project_socket_key(project_root: &Path) -> String {
+    let mut hasher = Fnv1a64::new();
+    hasher.write(project_root.to_string_lossy().as_bytes());
+    format!("{:016x}", hasher.finish())
+}
+
+struct Fnv1a64(u64);
+
+impl Fnv1a64 {
+    fn new() -> Self {
+        Self(0xcbf29ce484222325)
+    }
+}
+
+impl Hasher for Fnv1a64 {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -811,6 +879,24 @@ mod tests {
             default_socket_path(Path::new("/repo")),
             PathBuf::from("/repo/.ccb/runtime-accelerator/accelerator.sock")
         );
+    }
+
+    #[test]
+    fn default_socket_falls_back_for_long_project_paths() {
+        let long_root = PathBuf::from(format!("/tmp/{}", "long-project-name-".repeat(8)));
+        let socket_path = default_socket_path(&long_root);
+
+        assert!(socket_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("accelerator-"));
+        assert!(socket_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with(".sock"));
+        assert!(socket_path.as_os_str().as_bytes().len() <= 100);
     }
 
     #[test]

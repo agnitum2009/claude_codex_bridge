@@ -30,6 +30,14 @@ def test_install_script_links_rs_helper() -> None:
     assert 'ERROR: ccb-rs-helper binary not available' in text
 
 
+def test_install_script_links_runtime_accelerator_when_packaged() -> None:
+    text = Path('install.sh').read_text(encoding='utf-8')
+
+    assert 'bin/ccb-runtime-accelerator' in text
+    assert 'bin/build-ccb-runtime-accelerator' in text
+    assert 'bin/build-ccb-runtime-accelerator|bin/ccb-runtime-accelerator' in text
+
+
 def test_install_script_does_not_provision_standalone_neovim_tool() -> None:
     text = Path('install.sh').read_text(encoding='utf-8')
 
@@ -101,6 +109,14 @@ def test_rs_helper_build_script_copies_release_binary() -> None:
     text = Path('bin/build-ccb-rs-helper').read_text(encoding='utf-8')
 
     assert 'cargo build --release --manifest-path "$CRATE_DIR/Cargo.toml"' in text
+    assert 'cp -f "$TARGET_BIN" "$OUT_BIN"' in text
+    assert 'Built $OUT_BIN' in text
+
+
+def test_runtime_accelerator_build_script_copies_release_binary() -> None:
+    text = Path('bin/build-ccb-runtime-accelerator').read_text(encoding='utf-8')
+
+    assert 'cargo build --release --manifest-path "$WORKSPACE/Cargo.toml" -p ccb-runtime-accelerator' in text
     assert 'cp -f "$TARGET_BIN" "$OUT_BIN"' in text
     assert 'Built $OUT_BIN' in text
 

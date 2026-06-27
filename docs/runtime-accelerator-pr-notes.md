@@ -16,6 +16,12 @@ an optional hotpath sidecar for active Codex observation.
   - Standalone `rust/crates/ccb-runtime-accelerator` workspace.
 - `4ea58bf Wire Python runtime to the Rust accelerator`
   - Python glue, sidecar lifecycle, fallback handling, tests, and switch docs.
+- PR regression follow-up in the final merge review:
+  - release artifacts now build and ship `bin/ccb-runtime-accelerator`;
+  - GitHub Actions Rust helper checks compile/test the accelerator crate;
+  - install links the packaged accelerator binary when present;
+  - accelerator default socket placement falls back to a short runtime socket
+    root when the project-local socket path exceeds Unix socket limits.
 
 ## Switches and rollback
 
@@ -100,6 +106,25 @@ Live local observation after restart showed Codex bridge CPU dropping from the
 previous ~16-19% hotspot to low single digits or below for idle agents; ccbd
 still has a remaining idle thread hotspot for later P1 work.
 
+Final merge review additionally ran a real `/home/bfly/yunwei/test_ccb2`
+source-runtime communication pressure project with three Codex agents. The
+review first exposed an overlong accelerator socket path failure, then verified
+the fixed short socket fallback with 9 completed ask jobs across active and
+queued per-agent execution.
+
+Extended integration on 2026-06-27 added:
+
+- a 3-agent Codex soak with 4 rounds separated by 300-second idle windows; all
+  12 asks completed, the sidecar ping stayed `ok`, ccbd stayed healthy, and
+  mailbox consistency stayed `ok`;
+- a Claude live direct ask plus Codex-to-Claude callback chain; the Claude child
+  reply and callback continuation completed normally;
+- a mixed-provider startup and completion check covering Codex, Claude, Gemini,
+  OpenCode, Kimi, Z.ai, and AGY in one project. OpenCode, Kimi, and AGY
+  completed native-detected asks. Gemini and Z.ai were environment-blocked by
+  first-run authentication and missing `ZAI_API_KEY`, respectively, and the
+  project returned to a healthy zero-active state after cancellation/cleanup.
+
 Heartbeat write debounce check:
 
 ```bash
@@ -114,6 +139,4 @@ PYTHONPATH=lib uv run --with pytest pytest -q test/test_v2_ccbd_keeper.py
 
 ## Known follow-up
 
-- Release packaging must build/install `ccb-runtime-accelerator` automatically.
-- Full live ask/callback/reply matrix still needs owner-run confirmation.
 - Remaining ccbd idle thread and keeper loop are separate P1 optimizations.

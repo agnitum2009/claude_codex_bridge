@@ -8,7 +8,7 @@ import time
 from provider_backends.codex.comm_runtime.binding import extract_session_id
 from provider_backends.codex.comm_runtime.log_reader_facade import CodexLogReader
 from provider_backends.codex.session import CodexProjectSession
-from provider_backends.codex.session_runtime.follow_policy import should_follow_workspace_sessions
+from provider_backends.codex.session_runtime.follow_policy import codex_session_root_path, should_follow_workspace_sessions
 from provider_backends.codex.session_switch import STATE_AUTO_REBINDABLE, STATE_BOUND, STATE_SWITCHED_UNBOUND, commit_rebind, resolve_switch_decision, write_decision
 from provider_core.comm_logging import get_comm_logger, log_comm_event
 
@@ -51,9 +51,8 @@ class CodexBindingTracker:
                     endpoint=str(self.session_file),
                     event='binding_refresh_failed',
                     error=exc,
-                )
+            )
             time.sleep(max(1.0, self._poll_interval))
-
 
     def _should_skip_deferred_switch_scan(self, data: dict[str, object]) -> bool:
         signature = self._deferred_switch_signature
@@ -177,7 +176,7 @@ def _resolve_and_maybe_rebind(
 
 
 def _switch_scan_signature(data: dict[str, object]) -> tuple[object, ...]:
-    root = session_root(data)
+    root = codex_session_root_path(data) or session_root(data)
     current_path = path_or_none(data.get("codex_session_path"))
     current_mtime = _path_mtime(current_path)
     count = 0

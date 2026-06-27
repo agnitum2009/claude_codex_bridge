@@ -41,29 +41,40 @@ Date: 2026-06-23
 
 ## In Progress
 
-- Shape worker-guided execution for the remaining idle resource phases.
+- Review and harden PR234, now rebased cleanly onto `origin/main` `v7.6.19`.
+  The PR contains five review slices: Claude callback completion capture,
+  optional Rust runtime accelerator, Codex idle polling reduction, ccbd/keeper/
+  ProjectView write-churn reduction, and release/CI packaging. See
+  [topics/pr234-runtime-accelerator-review.md](topics/pr234-runtime-accelerator-review.md).
+- Package/CI hardening for the runtime accelerator has been added during review:
+  release artifacts build and ship `bin/ccb-runtime-accelerator`, CI tests the
+  Rust crate, and install links the packaged binary when present.
 
 ## Next
 
-1. Use [topics/worker-execution-goal.md](topics/worker-execution-goal.md) as
+1. Finish PR234 full regression gates after the packaging and callback-hot-work
+   fixes: targeted provider/accelerator tests, ccbd idle tests, Rust
+   fmt/test/build, compileall, diff check, and any affordable release script
+   dry-run.
+2. Use [topics/worker-execution-goal.md](topics/worker-execution-goal.md) as
    the worker contract for phased landing, tests, source runtime validation, and
    plan-tree evidence updates.
-2. Add an ask-stability gate for every idle optimization:
+3. Add an ask-stability gate for every idle optimization:
    plain ask submit, queued ask, callback continuation, reply delivery, cancel,
    resubmit, and first ask after idle or suspend.
-3. Add measurement hooks for idle write bytes, runtime-store save count, helper
+4. Add measurement hooks for idle write bytes, runtime-store save count, helper
    manifest save count, provider process RSS, and provider idle age.
-4. Add content-equality and debounce guards around JSON runtime writes:
+5. Add content-equality and debounce guards around JSON runtime writes:
    `runtime.json`, `helper.json`, lifecycle records, and lease heartbeat.
-5. Introduce idle-mode heartbeat pacing:
+6. Introduce idle-mode heartbeat pacing:
    active interval, idle interval, deep-idle interval, and immediate wake on
    incoming socket requests.
-6. Move rebuildable runtime residue toward tmpfs:
+7. Move rebuildable runtime residue toward tmpfs:
    provider-runtime, FIFOs, bridge scratch state, activity snapshots, and
    transient pid/socket markers.
-7. Add provider idle suspend/resume for mounted-but-unused agents, starting with
+8. Add provider idle suspend/resume for mounted-but-unused agents, starting with
    an opt-in Codex policy.
-8. Add cleanup/compaction for provider-state:
+9. Add cleanup/compaction for provider-state:
    WAL checkpoint, session JSONL size policy, old cache pruning, and shared
    cache retention limits.
 

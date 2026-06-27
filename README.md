@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.19-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.7.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -709,6 +709,20 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.7.0</b> - Runtime Accelerator Release Hardening</summary>
+
+- Ships the optional Rust `ccb-runtime-accelerator` in release artifacts, so
+  installed Codex agents can use the sidecar hotpath instead of falling back to
+  Python when the binary is expected.
+- Adds short runtime socket fallback for long project paths that would exceed
+  Unix socket path limits.
+- Hardens callback repair and Codex binding cache invalidation, then records
+  full regression, long-idle Codex soak, Claude callback, and mixed-provider
+  integration evidence.
+
+</details>
+
+<details>
 <summary><b>v7.6.19</b> - Long-Running Ask Wait Policy</summary>
 
 - Keeps ordinary long-running `ask` jobs waiting by default instead of

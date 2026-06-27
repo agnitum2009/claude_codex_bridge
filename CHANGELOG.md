@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v7.7.0 (2026-06-27)
+
+### Runtime Accelerator Release Hardening
+
+- **Runtime Accelerator Sidecar Shipped**: release artifacts now build and
+  package `bin/ccb-runtime-accelerator`, so the default Codex accelerator path
+  is available to installed users instead of silently falling back to Python.
+- **Short Socket Fallback Added**: accelerator sockets now relocate to the
+  per-user runtime socket root when a project-local Unix socket path would
+  exceed platform limits.
+- **Callback And Binding Stability Hardened**: pending callback edges keep the
+  dispatcher in the hot loop, and Codex binding scan signatures now follow the
+  managed session root.
+- **Regression Evidence Expanded**: full Python regression, Rust sidecar gates,
+  release preview, Codex soak, Claude callback, and mixed-provider integration
+  evidence are recorded in the runtime accelerator review notes.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, Rust crate metadata, release workflow defaults, README release
+  notes, and npm packaging metadata are aligned for 7.7.0.
+
 ## v7.6.19 (2026-06-26)
 
 ### Long-Running Ask Wait Policy

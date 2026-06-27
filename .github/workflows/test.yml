@@ -102,11 +102,17 @@ jobs:
       - name: Run ccb-rs-helper tests
         run: cargo test --manifest-path tools/ccb-rs-helper/Cargo.toml
 
+      - name: Run runtime accelerator tests
+        run: cargo test --manifest-path rust/Cargo.toml -p ccb-runtime-accelerator -- --test-threads=1
+
       - name: Build sidebar binary
         run: bin/build-ccb-agent-sidebar
 
       - name: Build ccb-rs-helper binary
         run: bin/build-ccb-rs-helper
+
+      - name: Build runtime accelerator binary
+        run: bin/build-ccb-runtime-accelerator
 
   macos-install-smoke:
     name: macOS install smoke

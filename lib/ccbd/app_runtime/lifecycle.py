@@ -155,9 +155,18 @@ def hot_loop_work_pending(app) -> bool:
         return True
     queues = getattr(dispatcher_state, '_queues', {})
     try:
-        return any(len(queue) > 0 for queue in queues.values())
+        if any(len(queue) > 0 for queue in queues.values()):
+            return True
     except Exception:
         return True
+    message_bureau = getattr(getattr(app, 'dispatcher', None), '_message_bureau', None)
+    if message_bureau is not None:
+        try:
+            if message_bureau.pending_callback_edges():
+                return True
+        except Exception:
+            return True
+    return False
 
 
 def serve_forever(app, *, poll_interval: float = DEFAULT_CCBD_POLL_INTERVAL_S) -> None:

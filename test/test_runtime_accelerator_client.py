@@ -10,11 +10,32 @@ from typing import Iterator
 
 import pytest
 
-from runtime_accelerator.client import AcceleratorError, call, call_or_fallback, default_socket_path
+from runtime_accelerator.client import (
+    AcceleratorError,
+    call,
+    call_or_fallback,
+    default_socket_path,
+    socket_path_is_short_enough,
+)
 
 
-def test_default_socket_path_uses_project_ccb(tmp_path: Path) -> None:
-    assert default_socket_path(tmp_path) == tmp_path / ".ccb" / "runtime-accelerator" / "accelerator.sock"
+def test_default_socket_path_uses_project_ccb_for_short_paths() -> None:
+    project_root = Path("/repo")
+
+    assert default_socket_path(project_root) == project_root / ".ccb" / "runtime-accelerator" / "accelerator.sock"
+
+
+def test_default_socket_path_falls_back_when_project_path_is_too_long(monkeypatch) -> None:
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp")
+    project_root = Path("/tmp") / ("long-project-name-" * 8)
+
+    socket_path = default_socket_path(project_root)
+
+    assert socket_path != project_root / ".ccb" / "runtime-accelerator" / "accelerator.sock"
+    assert socket_path.parent == Path("/tmp") / "ccb-runtime"
+    assert socket_path.name.startswith("accelerator-")
+    assert socket_path.name.endswith(".sock")
+    assert socket_path_is_short_enough(socket_path)
 
 
 @pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires Unix sockets")

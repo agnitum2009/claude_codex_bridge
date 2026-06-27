@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to build and upload"
         required: true
-        default: "v7.6.19"
+        default: "v7.7.0"
   push:
     tags:
       - "v*"
@@ -72,13 +72,17 @@ jobs:
           if [ "${{ matrix.platform }}" = "macos" ]; then
             helper="$verify_dir/ccb-macos-universal/bin/ccb-agent-sidebar"
             rs_helper="$verify_dir/ccb-macos-universal/bin/ccb-rs-helper"
+            accelerator="$verify_dir/ccb-macos-universal/bin/ccb-runtime-accelerator"
             file "$helper" | tee "$verify_dir/sidebar-file.txt"
             file "$rs_helper" | tee "$verify_dir/rs-helper-file.txt"
+            file "$accelerator" | tee "$verify_dir/runtime-accelerator-file.txt"
             grep -F 'universal binary' "$verify_dir/sidebar-file.txt"
             grep -F 'universal binary' "$verify_dir/rs-helper-file.txt"
+            grep -F 'universal binary' "$verify_dir/runtime-accelerator-file.txt"
           else
             helper="$verify_dir/ccb-linux-x86_64/bin/ccb-agent-sidebar"
             rs_helper="$verify_dir/ccb-linux-x86_64/bin/ccb-rs-helper"
+            accelerator="$verify_dir/ccb-linux-x86_64/bin/ccb-runtime-accelerator"
           fi
           set +e
           "$helper" --help >/tmp/ccb-sidebar-help.out 2>/tmp/ccb-sidebar-help.err
@@ -90,6 +94,7 @@ jobs:
             exit "$rc"
           fi
           "$rs_helper" --capabilities | grep -F 'native.output.observe'
+          "$accelerator" socket-path --project-root "$verify_dir" | grep -F '.ccb/runtime-accelerator/accelerator.sock'
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

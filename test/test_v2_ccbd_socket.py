@@ -15,6 +15,7 @@ from agents.models import AgentRuntime, AgentState, AgentRestoreState, RestoreMo
 from agents.store import AgentRuntimeStore
 from ccbd.api_models import DeliveryScope, MessageEnvelope
 from ccbd.app import CcbdApp
+from ccbd.app_runtime.lifecycle import hot_loop_work_pending
 from ccbd.services.dispatcher import JobDispatcher
 from ccbd.services.registry import AgentRegistry
 from ccbd.services.lifecycle import build_lifecycle
@@ -973,6 +974,21 @@ def test_ccbd_heartbeat_runs_heavy_maintenance_for_active_execution(tmp_path: Pa
     app.heartbeat()
 
     assert calls == ['health']
+
+
+def test_ccbd_heartbeat_treats_pending_callback_edges_as_hot_work() -> None:
+    app = SimpleNamespace(
+        execution_service=SimpleNamespace(_active={}),
+        dispatcher=SimpleNamespace(
+            _state=SimpleNamespace(
+                active_items=lambda: (),
+                _queues={},
+            ),
+            _message_bureau=SimpleNamespace(pending_callback_edges=lambda: (object(),)),
+        ),
+    )
+
+    assert hot_loop_work_pending(app) is True
 
 
 def test_ccbd_full_idle_heartbeat_does_not_rewrite_last_seen_only_runtime_state(tmp_path: Path, monkeypatch) -> None:

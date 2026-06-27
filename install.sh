@@ -312,8 +312,10 @@ SCRIPTS_TO_LINK=(
   bin/ask
   bin/autonew
   bin/build-ccb-agent-sidebar
+  bin/build-ccb-runtime-accelerator
   bin/build-ccb-rs-helper
   bin/ccb-agent-sidebar
+  bin/ccb-runtime-accelerator
   bin/ccb-rs-helper
   bin/ccb-provider-activity-hook
   bin/ctx-transfer
@@ -2104,7 +2106,7 @@ install_bin_links() {
     local target_path="$target_root/$path"
     if ! install_entrypoint_executable "$target_path" "$BIN_DIR/$name"; then
       case "$path" in
-        bin/build-ccb-agent-sidebar|bin/ccb-agent-sidebar|bin/build-ccb-rs-helper|bin/ccb-rs-helper)
+        bin/build-ccb-agent-sidebar|bin/ccb-agent-sidebar|bin/build-ccb-runtime-accelerator|bin/ccb-runtime-accelerator|bin/build-ccb-rs-helper|bin/ccb-rs-helper)
           ;;
         *)
           return 1

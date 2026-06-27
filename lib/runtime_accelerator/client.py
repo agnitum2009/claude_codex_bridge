@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 from pathlib import Path
 from typing import Any, Callable, TypeVar
+
+from storage.path_helpers import choose_socket_placement
 
 T = TypeVar("T")
 
@@ -13,12 +16,26 @@ class AcceleratorError(RuntimeError):
 
 
 def default_socket_path(project_root: str | Path) -> Path:
-    return (
-        Path(project_root).expanduser().resolve()
-        / ".ccb"
-        / "runtime-accelerator"
-        / "accelerator.sock"
+    root = Path(project_root).expanduser().resolve()
+    preferred = root / ".ccb" / "runtime-accelerator" / "accelerator.sock"
+    placement = choose_socket_placement(
+        preferred_path=preferred,
+        project_socket_key=_project_socket_key(root),
     )
+    return placement.effective_path
+
+
+def _project_socket_key(project_root: Path) -> str:
+    value = str(project_root).encode("utf-8", errors="surrogatepass")
+    digest = 0xCBF29CE484222325
+    for byte in value:
+        digest ^= byte
+        digest = (digest * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{digest:016x}"
+
+
+def socket_path_is_short_enough(path: Path) -> bool:
+    return len(os.fsencode(str(path))) <= 100
 
 
 def call(

@@ -484,6 +484,106 @@ def test_build_rs_helper_for_release_fails_when_cargo_fails(monkeypatch, tmp_pat
     assert "cargo failed" in text
 
 
+def test_build_runtime_accelerator_for_release_copies_real_binary(monkeypatch, tmp_path: Path) -> None:
+    module = _load_module()
+    artifact_root = tmp_path / "artifact"
+    workspace_dir = artifact_root / "rust"
+    crate_dir = workspace_dir / "crates" / "ccb-runtime-accelerator"
+    output_bin = artifact_root / "bin" / "ccb-runtime-accelerator"
+    crate_dir.mkdir(parents=True)
+    output_bin.parent.mkdir(parents=True)
+    (workspace_dir / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/ccb-runtime-accelerator"]\n', encoding="utf-8")
+    (crate_dir / "Cargo.toml").write_text('[package]\nname = "ccb-runtime-accelerator"\n', encoding="utf-8")
+
+    def _fake_run(cmd, **kwargs):
+        assert cmd[:3] == ["cargo", "build", "--release"]
+        assert "-p" in cmd and "ccb-runtime-accelerator" in cmd
+        built = workspace_dir / "target" / "release" / "ccb-runtime-accelerator"
+        built.parent.mkdir(parents=True)
+        built.write_text("#!/usr/bin/env bash\necho runtime-accelerator\n", encoding="utf-8")
+        built.chmod(0o755)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", _fake_run)
+
+    module.build_runtime_accelerator_for_release(artifact_root)
+
+    assert output_bin.read_text(encoding="utf-8") == "#!/usr/bin/env bash\necho runtime-accelerator\n"
+    assert os.access(output_bin, os.X_OK)
+    assert not (workspace_dir / "target").exists()
+
+
+def test_build_runtime_accelerator_for_release_builds_macos_universal_binary(monkeypatch, tmp_path: Path) -> None:
+    module = _load_module()
+    artifact_root = tmp_path / "artifact"
+    workspace_dir = artifact_root / "rust"
+    crate_dir = workspace_dir / "crates" / "ccb-runtime-accelerator"
+    output_bin = artifact_root / "bin" / "ccb-runtime-accelerator"
+    crate_dir.mkdir(parents=True)
+    (workspace_dir / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/ccb-runtime-accelerator"]\n', encoding="utf-8")
+    (crate_dir / "Cargo.toml").write_text('[package]\nname = "ccb-runtime-accelerator"\n', encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if cmd[:3] == ["cargo", "build", "--release"]:
+            target = cmd[cmd.index("--target") + 1]
+            built = workspace_dir / "target" / target / "release" / "ccb-runtime-accelerator"
+            built.parent.mkdir(parents=True)
+            built.write_text(f"{target}\n", encoding="utf-8")
+            built.chmod(0o755)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if cmd[:4] == ["lipo", "-create", "-output", str(output_bin)]:
+            output_bin.parent.mkdir(parents=True, exist_ok=True)
+            output_bin.write_text("universal-runtime-accelerator\n", encoding="utf-8")
+            output_bin.chmod(0o755)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if cmd[:1] == ["file"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{output_bin}: Mach-O universal binary with 2 architectures\n",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(module.subprocess, "run", _fake_run)
+
+    module.build_runtime_accelerator_for_release(artifact_root, target_platform="macos")
+
+    assert any("--target" in call and "x86_64-apple-darwin" in call for call in calls)
+    assert any("--target" in call and "aarch64-apple-darwin" in call for call in calls)
+    assert any(call[:4] == ["lipo", "-create", "-output", str(output_bin)] for call in calls)
+    assert output_bin.read_text(encoding="utf-8") == "universal-runtime-accelerator\n"
+    assert os.access(output_bin, os.X_OK)
+    assert not (workspace_dir / "target").exists()
+
+
+def test_build_runtime_accelerator_for_release_fails_when_cargo_fails(monkeypatch, tmp_path: Path) -> None:
+    module = _load_module()
+    artifact_root = tmp_path / "artifact"
+    workspace_dir = artifact_root / "rust"
+    crate_dir = workspace_dir / "crates" / "ccb-runtime-accelerator"
+    crate_dir.mkdir(parents=True)
+    (workspace_dir / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/ccb-runtime-accelerator"]\n', encoding="utf-8")
+    (crate_dir / "Cargo.toml").write_text('[package]\nname = "ccb-runtime-accelerator"\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout="", stderr="cargo failed"),
+    )
+
+    try:
+        module.build_runtime_accelerator_for_release(artifact_root)
+    except RuntimeError as exc:
+        text = str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert "failed to build ccb-runtime-accelerator" in text
+    assert "cargo failed" in text
+
+
 def test_resolve_version_prefers_git_ref_snapshot(monkeypatch, tmp_path: Path) -> None:
     module = _load_module()
     repo_root = tmp_path / "repo"
