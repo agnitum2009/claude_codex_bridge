@@ -71,6 +71,52 @@ jobs:
           assert payload["flows"] == ["window-class", "resolve-preflight"]
           PY
 
+      - name: Guard same-window continuous dynamic layout smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TERM=xterm-256color
+          smoke_root="${RUNNER_TEMP}/ccb-same-window-continuous-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python scripts/dynamic_layout_smoke.py \
+            --test-root "$smoke_root" \
+            --project-prefix ci-same-window-continuous \
+            --ccb-test "$GITHUB_WORKSPACE/ccb_test" \
+            --provider fake \
+            --flow same-window-continuous \
+            --command-timeout 180 \
+            --reset > "$RUNNER_TEMP/same-window-continuous-smoke.json"
+          python - "$RUNNER_TEMP/same-window-continuous-smoke.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload["dynamic_layout_smoke_status"] == "ok"
+          assert payload["flows"] == ["same-window-continuous"]
+          assert payload["checks"]["same_window_continuous_1_to_6_to_1"] is True
+          result = payload["results"][0]
+          checks = result["checks"]
+          assert result["flow"] == "same_window_continuous_1_to_6_to_1"
+          assert checks["grew_to_six_order"] is True
+          assert checks["release_remove_agent_plans"] is True
+          assert checks["release_reflowed_main"] is True
+          assert checks["main_pane_preserved"] is True
+          assert checks["shrunk_to_one_order"] is True
+          assert checks["dynamic_agents_cleaned"] is True
+          assert checks["ask_main_accepted"] is True
+          print(
+              json.dumps(
+                  {
+                      "dynamic_layout_smoke_status": payload["dynamic_layout_smoke_status"],
+                      "flow": result["flow"],
+                      "checks": checks,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
       - name: Guard workflow closure layout cleanup smoke
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         shell: bash

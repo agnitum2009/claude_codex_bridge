@@ -659,10 +659,21 @@ Date: 2026-06-24
   passed with `add_window`, `remove_agent`, `namespace_removed_windows=["review"]`,
   final `dynamic_agent_count=0`, and `ask main` accepted. Focused tests passed
   with `60 passed`.
+- Added a continuous same-window live dynamic layout regression. The
+  `same-window-continuous` fake-provider flow grows the entry window from
+  `main` to `main + helper1..helper5`, waits for a helper ask to complete,
+  unloads helpers in reverse order back to a single `main` pane, and verifies
+  `remove_agent`, `namespace_reflowed_windows=["main"]`, preserved `main`
+  pane identity, final `dynamic_agent_count=0`, and `ask main` reachability.
+  The source-wrapper run in
+  `/home/bfly/yunwei/test_ccb2/same-window-continuous-smoke-same-window-continuous`
+  passed with `dynamic_layout_smoke_status=ok`, and the same flow is now a
+  Ubuntu py3.11 `Tests` workflow gate. Focused dynamic layout regression
+  passed with `67 passed`.
 
 ## Next
 
-1. Continue richer live reflow beyond the proven same-window,
+1. Continue richer live reflow beyond the proven same-window continuous,
    single-agent-window, and explicit-window-class middle-removal cases.
 2. Wire the verified deterministic layout planner and dynamic smoke behavior
    into live dynamic capacity only after `layout status` can read current pane

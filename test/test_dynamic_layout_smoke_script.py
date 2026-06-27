@@ -172,6 +172,157 @@ def test_prepare_only_can_generate_single_agent_window_project(tmp_path: Path) -
     assert 'main = "main:fake"' in config.read_text(encoding="utf-8")
 
 
+def test_prepare_only_can_generate_same_window_continuous_project(tmp_path: Path) -> None:
+    module = _load_module()
+
+    payload = module.run_dynamic_layout_smoke(
+        test_root=tmp_path,
+        project_prefix="continuous-prepare",
+        ccb_test=Path(__file__),
+        provider="fake",
+        flows=("same-window-continuous",),
+        prepare_only=True,
+        reset=True,
+    )
+
+    assert payload["dynamic_layout_smoke_status"] == "prepared"
+    assert payload["flows"] == ["same-window-continuous"]
+    assert len(payload["prepared"]) == 1
+    config = Path(payload["prepared"][0]["project_root"]) / ".ccb" / "ccb.config"
+    assert 'main = "main:fake"' in config.read_text(encoding="utf-8")
+
+
+def test_same_window_continuous_flow_grows_to_six_and_shrinks_to_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_module()
+    project_root = tmp_path / "project"
+    role_store = tmp_path / "roles"
+    calls: list[tuple[str, str]] = []
+    helper_panes = {f"helper{index}": f"%{index + 1}" for index in range(1, 6)}
+
+    monkeypatch.setattr(
+        module,
+        "prepare_same_window_project",
+        lambda **_kwargs: {"project_root": str(project_root), "role_store": str(role_store)},
+    )
+
+    def fake_run(name, command, **_kwargs):
+        calls.append((name, " ".join(str(item) for item in command)))
+        if name.startswith("ask_helper3"):
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "accepted job=job_helper3 target=helper3\n[CCB_ASYNC_SUBMITTED job=job_helper3 target=helper3]\n",
+                "stderr": "",
+            }
+        if name.startswith("watch_job_"):
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "watch_status: terminal\nstatus: completed\n",
+                "stderr": "",
+            }
+        if name.startswith("ask_main"):
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "accepted job=job_main target=main\n[CCB_ASYNC_SUBMITTED job=job_main target=main]\n",
+                "stderr": "",
+            }
+        return {"name": name, "returncode": 0, "stdout": "ok\n", "stderr": ""}
+
+    def fake_run_json(name, command, **_kwargs):
+        calls.append((name, " ".join(str(item) for item in command)))
+        if name.startswith("add_helper"):
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {"apply": {"plan_class": "add_agent"}},
+            }
+        if name == "layout_after_grow_to_six":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "dynamic_agent_count": 5,
+                    "windows": [
+                        {
+                            "name": "main",
+                            "agent_names": ["main", *helper_panes],
+                            "agents": [
+                                {"agent": "main", "pane_id": "%1"},
+                                *[
+                                    {"agent": helper, "pane_id": pane}
+                                    for helper, pane in helper_panes.items()
+                                ],
+                            ],
+                        }
+                    ],
+                },
+            }
+        if name.startswith("remove_helper"):
+            helper = name.removeprefix("remove_")
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "apply": {
+                        "plan_class": "remove_agent",
+                        "namespace_reflowed_windows": ["main"],
+                        "namespace_removed_agents": {helper: helper_panes[helper]},
+                    }
+                },
+            }
+        if name == "layout_after_shrink_to_one":
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": "{}\n",
+                "stderr": "",
+                "payload": {
+                    "dynamic_agent_count": 0,
+                    "windows": [
+                        {
+                            "name": "main",
+                            "agent_names": ["main"],
+                            "agents": [{"agent": "main", "pane_id": "%1"}],
+                        }
+                    ],
+                },
+            }
+        raise AssertionError(f"unexpected json command {name}")
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module, "_run_json", fake_run_json)
+
+    payload = module._run_same_window_continuous_flow(
+        test_root=tmp_path,
+        project_name="continuous",
+        provider="fake",
+        ccb_test=Path("ccb_test"),
+        provider_home=tmp_path / "home",
+        command_timeout_s=1,
+        reset=True,
+        keep_running=False,
+    )
+
+    assert payload["flow_status"] == "ok"
+    assert payload["checks"]["grew_to_six_order"] is True
+    assert payload["checks"]["shrunk_to_one_order"] is True
+    add_names = [name for name, _command in calls if name.startswith("add_helper")]
+    remove_names = [name for name, _command in calls if name.startswith("remove_helper")]
+    assert add_names == ["add_helper1", "add_helper2", "add_helper3", "add_helper4", "add_helper5"]
+    assert remove_names == ["remove_helper5", "remove_helper4", "remove_helper3", "remove_helper2", "remove_helper1"]
+
+
 def test_prepare_only_can_generate_light_real_provider_resolve_preflight_project(tmp_path: Path) -> None:
     module = _load_module()
 
@@ -397,3 +548,22 @@ def test_compact_payload_keeps_checks_and_window_summary_without_full_stdout() -
             }
         ],
     }
+
+
+def test_tests_workflow_runs_same_window_continuous_fake_smoke() -> None:
+    text = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
+
+    assert "Guard same-window continuous dynamic layout smoke" in text
+    assert "scripts/dynamic_layout_smoke.py" in text
+    assert "ci-same-window-continuous" in text
+    assert "matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'" in text
+    assert "--provider fake" in text
+    assert "--flow same-window-continuous" in text
+    assert 'payload["dynamic_layout_smoke_status"] == "ok"' in text
+    assert 'payload["checks"]["same_window_continuous_1_to_6_to_1"] is True' in text
+    assert 'checks["grew_to_six_order"] is True' in text
+    assert 'checks["shrunk_to_one_order"] is True' in text
+    step = text.split("Guard same-window continuous dynamic layout smoke", 1)[1].split("Guard workflow closure layout cleanup smoke", 1)[0]
+    assert "--run" not in step
+    assert "codex" not in step
+    assert "claude" not in step
