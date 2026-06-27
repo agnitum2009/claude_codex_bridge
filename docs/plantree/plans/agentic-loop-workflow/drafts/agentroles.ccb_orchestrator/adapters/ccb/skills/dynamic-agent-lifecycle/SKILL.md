@@ -1,6 +1,6 @@
 ---
 name: dynamic-agent-lifecycle
-description: Private CCB skill for inspecting, adding, parking, resuming, and safely releasing non-loop dynamic agents through `ccb agent` and read-only layout status commands.
+description: Private CCB skill for resolving placement, inspecting, adding, parking, resuming, and safely releasing non-loop dynamic agents through `ccb layout resolve`, `ccb agent`, and read-only layout status commands.
 ---
 
 # Dynamic Agent Lifecycle
@@ -22,6 +22,7 @@ Allowed command surface:
 ccb agent status --json
 ccb agent status --class <role-class> --json
 ccb agent show <agent> --json
+ccb layout resolve <agent> [--window <name>|--window-class <class>|--loop-id <id> --node-id <id>] --json
 ccb agent add <name>:<provider> --role <role-id> [--window <name>|--window-class <class>] [--hidden|--visible|--parked] --json
 ccb agent add <name>:<provider> --profile <profile> [--window <name>|--window-class <class>] [--hidden|--visible|--parked] --json
 ccb agent hide <agent> --json
@@ -70,9 +71,28 @@ Choose the smallest allowed placement:
   `plan-orchestrate`; CCB chooses the concrete page/window and reflow.
 - Omit both only when the entry window is acceptable.
 
+Before `ccb agent add`, resolve placement with the same placement arguments:
+
+```bash
+ccb layout resolve planner_helper1 --window-class plan-orchestrate --json
+```
+
+Use the resolver output as preflight evidence:
+
+- `layout_status` must be `ok`;
+- `addable` must be `true`;
+- `placement_mode` must match the intended placement class;
+- `resolved_window_name` is CCB-owned evidence for where the add will land;
+- `will_create_window` is allowed only when the requested class or exact
+  window policy expects a new logical window.
+
+If resolve reports an unexpected `target_surface`, existing agent, or target
+window, stop and report a blocker instead of guessing a different placement.
+
 Example:
 
 ```bash
+ccb layout resolve planner_helper1 --window-class plan-orchestrate --json
 ccb agent add planner_helper1:codex \
   --role agentroles.planner \
   --window-class plan-orchestrate \
@@ -83,7 +103,9 @@ ccb agent add planner_helper1:codex \
 Require `agent_lifecycle_status="active"`. For live projects, require
 `apply.apply_status="applied"` and record `apply.plan_class` as evidence. If
 the command returns `failed_apply=true`, `retained_busy=true`, or any blocked
-status, report a blocker instead of treating the agent as ready.
+status, report a blocker instead of treating the agent as ready. Verify that
+the final `resolved_window_name` matches the preflight resolver unless CCB
+reports a newer conflicting runtime state.
 
 ## Hide, Park, Resume
 

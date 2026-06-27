@@ -447,6 +447,7 @@ Allowed commands:
 
 - `ccb agent status --json`;
 - `ccb agent show <agent> --json`;
+- `ccb layout resolve <agent> ... --json`;
 - `ccb agent add ... --json`;
 - `ccb agent load ... --json`;
 - `ccb agent hide ... --json`;
@@ -456,6 +457,19 @@ Allowed commands:
 - `ccb agent release ... --idle-only --json`;
 - `ccb loop capacity ensure/status/release --json` when the caller is
   orchestrator and the target is execution capacity.
+
+For `add`, the intended sequence is:
+
+```text
+layout resolve
+  -> agent add
+  -> agent show/status
+  -> layout status
+```
+
+`layout resolve` is read-only preflight evidence. It should catch unexpected
+entry-window placement, existing-agent conflicts, unexpected overflow windows,
+or accidental execution-node placement before any provider or tmux mutation.
 
 Forbidden actions:
 
@@ -539,6 +553,9 @@ the same underlying runtime command surface.
 7. Skill packaging:
    - `dynamic-agent-lifecycle` skill has landed in the orchestrator CCB
      adapter for non-loop dynamic agents;
+   - the skill now requires `ccb layout resolve ... --json` before
+     `ccb agent add ... --json`, and checks `addable`,
+     `placement_mode`, `resolved_window_name`, and `will_create_window`;
    - `orchestrator-capacity` now points non-loop helper/broker/diagnostic
      work to `dynamic-agent-lifecycle` while keeping loop execution capacity
      behind `ccb loop capacity`.

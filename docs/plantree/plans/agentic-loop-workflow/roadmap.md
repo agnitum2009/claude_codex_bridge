@@ -571,16 +571,21 @@ Date: 2026-06-24
   `plan-orchestrate` overflow resolves to `plan-orchestrate-2`, execution-node
   placement resolves to `node-round1-node1`, and no dynamic lifecycle state is
   created.
+- Packaged the resolver into the orchestrator draft RolePack's
+  `dynamic-agent-lifecycle` skill. Non-loop dynamic agent adds now document the
+  required script chain `layout resolve -> agent add -> agent show/status ->
+  layout status`, with resolver evidence for `addable`, `placement_mode`,
+  `resolved_window_name`, and `will_create_window`. Focused RolePack tests
+  passed with `9 passed`, including Codex home skill projection.
 
 ## Next
 
 1. Wire the repeatable workflow closure smoke and autonomous layout-cleanup
    smoke into the chosen release/CI guarded regression path.
-2. Finish the V1 runtime layout manager script/skill surface from
-   [topics/dynamic-window-pane-agent-maintenance.md](topics/dynamic-window-pane-agent-maintenance.md):
-   package the new `ccb layout resolve --json` command behind a stable
-   role-facing skill wrapper for generic non-loop dynamic agents while keeping
-   loop execution capacity behind `ccb loop capacity`.
+2. Expand guarded smoke coverage so the role-facing
+   `layout resolve -> agent add -> status -> release` chain is exercised in
+   explicit `[windows]` projects for both class overflow and execution-node
+   placement while keeping loop execution capacity behind `ccb loop capacity`.
 3. Implement richer live reflow beyond the proven same-window and
    explicit-window-class middle-removal cases.
 4. Wire the verified deterministic layout planner and dynamic smoke behavior

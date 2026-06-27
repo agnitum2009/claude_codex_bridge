@@ -145,6 +145,10 @@ def test_dynamic_agent_lifecycle_skill_declares_non_loop_command_boundary() -> N
 
     assert 'ccb agent status --json' in skill
     assert 'ccb agent show <agent> --json' in skill
+    assert 'ccb layout resolve <agent>' in skill
+    assert 'ccb layout resolve planner_helper1 --window-class plan-orchestrate --json' in skill
+    assert 'resolved_window_name' in skill
+    assert 'will_create_window' in skill
     assert 'ccb agent add <name>:<provider>' in skill
     assert '--window-class <class>' in skill
     assert 'ccb agent park <agent> --json' in skill
@@ -278,7 +282,9 @@ def test_orchestrator_rolepack_projects_capacity_skill_to_codex_home(tmp_path: P
     assert 'ccb loop capacity ensure' in projected.read_text(encoding='utf-8')
     dynamic_projected = target_home / 'skills' / 'dynamic-agent-lifecycle' / 'SKILL.md'
     assert dynamic_projected.is_file()
-    assert 'ccb agent add <name>:<provider>' in dynamic_projected.read_text(encoding='utf-8')
+    dynamic_text = dynamic_projected.read_text(encoding='utf-8')
+    assert 'ccb layout resolve <agent>' in dynamic_text
+    assert 'ccb agent add <name>:<provider>' in dynamic_text
 
 
 def test_planner_rolepack_projects_planner_skill_to_codex_home(tmp_path: Path, monkeypatch) -> None:
