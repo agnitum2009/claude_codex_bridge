@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.7.0-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -31,7 +31,7 @@
 
 **中文** | [English](README.md)
 
-[快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [Rich 模式](#rich-mode-new) · [配置团队](#配置-agent-团队) · [Mobile Gateway Alpha](docs/mobile-cloudflare-alpha.zh.md) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
+[快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [Rich 模式](#rich-mode-new) · [Mobile App](#mobile-app) · [配置团队](#配置-agent-团队) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB v7 可见多 Agent CLI 工作台" width="960">
@@ -100,6 +100,15 @@ ccb update rich
 ```
 
 rich 启用后，普通 `ccb` 会自动打开 rich WezTerm launcher，只有当当前已经处于 CCB 自己拉起的 rich WezTerm 中时才不会再次跳转；运行 `ccb uninstall rich` 可退回普通终端启动。
+
+可选手机控制端用下面的入口安装或刷新本机侧配置：
+
+```bash
+ccb update mobile
+```
+
+该命令会检查 mobile gateway 依赖，按需引导 Tailscale 登录/Serve 配置，
+保持 gateway 仅监听 loopback，并打印当前 Android APK 下载链接和扫码配对步骤。
 
 <details>
 <summary><b>GitHub release 包和源码安装兜底</b></summary>
@@ -196,6 +205,44 @@ ccb
 <p align="center">
   <img src="assets/readme_v7/rich-workbench.png" alt="CCB rich 富媒体工作台在 WezTerm 中使用 Yazi 预览" width="860">
 </p>
+
+<a id="mobile-app"></a>
+
+### Mobile App（Android Alpha）
+
+CCB 8.0.0 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](mobile/)，
+并在 GitHub Release 中发布 Android APK：
+
+- [下载 CCB Mobile v8.0.0 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.0.0/ccb-mobile-v8.0.0.apk)
+- App 源码：[`mobile/app`](mobile/app)
+- 服务端 gateway 源码：[`lib/mobile_gateway`](lib/mobile_gateway)
+
+手机端定位是远程控制真实服务器上的 CCB 项目。它可以从 server-wide
+mobile gateway 获取所有已挂载项目，切换 window/agent，渲染 agent
+对话上下文，以 pane-native 输入方式发送文本，打开 terminal 视图，并通过
+认证 gateway 上传/下载图片和文档附件。
+
+首次配置建议：
+
+```bash
+ccb update mobile
+```
+
+然后按终端提示：
+
+1. 在桌面/服务器和手机上安装并登录同一个 Tailscale tailnet。
+2. 启动 CCB 打印的 loopback-only Mobile gateway 和 Tailscale Serve 命令。
+3. 在 Android 手机上安装 APK。
+4. 打开 CCB Mobile，扫描配对二维码。
+
+安全边界：
+
+- CCB gateway 只绑定 loopback，例如 `127.0.0.1:8787`。
+- 远程访问使用 Tailscale Serve，不启用 Tailscale Funnel。
+- CCB 不保存 Tailscale 密码、OAuth token、admin API token，也不会自动修改
+  tailnet ACL/grants。
+- 手机只获得 pairing profile 授权的 scope，例如 view、content、terminal、
+  file upload 和 file download。
 
 ### Agent Roles Spec 规范和角色库
 
@@ -695,6 +742,19 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v8.0.0</b> - CCB Mobile Monorepo 发布</summary>
+
+- Flutter 版 CCB Mobile 源码正式进入本仓库，并在 GitHub Release 中发布
+  Android APK。
+- 新增 server-wide mobile 项目发现、配对、认证 gateway 路由、pane-native
+  消息输入、对话上下文渲染、terminal 访问，以及图片/文档上传下载能力。
+- 将 `ccb update mobile` 提升为 Tailscale Tailnet onboarding 的统一入口，
+  同时保持 gateway 仅监听 loopback，不启用 Funnel、不保存 token、不自动修改
+  ACL/grants。
+
+</details>
+
+<details>
 <summary><b>v7.7.0</b> - Runtime Accelerator 发布加固</summary>
 
 - Release artifacts 现在会携带可选 Rust `ccb-runtime-accelerator`，安装版

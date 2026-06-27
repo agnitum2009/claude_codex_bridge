@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.7.0-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -31,7 +31,7 @@
 
 **English** | [中文](README_zh.md)
 
-[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Rich Mode](#rich-mode-new) · [Configure Agents](#configure-your-agent-team) · [Mobile Gateway Alpha](docs/mobile-cloudflare-alpha.md) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Rich Mode](#rich-mode-new) · [Mobile App](#mobile-app) · [Configure Agents](#configure-your-agent-team) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-en.png" alt="CCB v7 visible multi-agent CLI workspace" width="960">
@@ -112,6 +112,16 @@ ccb update rich
 ```
 
 After rich is enabled, plain `ccb` opens the rich WezTerm launcher unless it is already running inside a CCB-managed rich WezTerm; use `ccb uninstall rich` to return to the normal terminal startup.
+
+Install or refresh the optional mobile controller setup:
+
+```bash
+ccb update mobile
+```
+
+This command checks the local mobile gateway prerequisites, guides Tailscale
+login/Serve setup when needed, keeps the gateway loopback-only, and prints the
+current Android APK download link plus pairing steps.
 
 <details>
 <summary><b>GitHub release package and source install fallbacks</b></summary>
@@ -207,6 +217,46 @@ Run `ccb update rich` to install the optional rich workbench; it bundles Yazi wh
 <p align="center">
   <img src="assets/readme_v7/rich-workbench.png" alt="CCB rich workbench with Yazi preview in WezTerm" width="860">
 </p>
+
+<a id="mobile-app"></a>
+
+### Mobile App (Android Alpha)
+
+CCB 8.0.0 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
+and publishes an Android APK as a GitHub Release asset:
+
+- [Download CCB Mobile v8.0.0 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.0.0/ccb-mobile-v8.0.0.apk)
+- App source: [`mobile/app`](mobile/app)
+- Server/gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
+
+The mobile app is a remote controller for real server-side CCB projects. It can
+discover all mounted CCB projects exposed by the server-wide mobile gateway,
+switch windows and agents, render the agent transcript, send text as pane-native
+input, open terminal views, and upload/download image or document attachments
+through the authenticated gateway.
+
+Recommended first-time setup:
+
+```bash
+ccb update mobile
+```
+
+Then follow the printed steps:
+
+1. Install and sign in to Tailscale on the desktop/server and the phone.
+2. Start the loopback-only CCB Mobile gateway and Tailscale Serve command shown
+   by CCB.
+3. Install the APK on Android.
+4. Open CCB Mobile and scan the pairing QR.
+
+Security boundaries:
+
+- The CCB gateway remains bound to loopback, such as `127.0.0.1:8787`.
+- Tailscale Serve is used for tailnet access; Tailscale Funnel is not enabled.
+- CCB does not store Tailscale passwords, OAuth tokens, admin API tokens, or
+  alter tailnet ACLs/grants.
+- The phone only receives the scopes granted by the pairing profile, such as
+  view, content, terminal, file upload, and file download.
 
 ### Agent Roles Spec And Role Catalog
 
@@ -721,6 +771,20 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v8.0.0</b> - CCB Mobile Monorepo Release</summary>
+
+- Ships the Flutter CCB Mobile source inside this repository and publishes the
+  Android APK as a GitHub Release asset.
+- Adds server-wide mobile project discovery, pairing, authenticated gateway
+  routes, pane-native message input, transcript rendering, terminal access, and
+  image/document upload and download support.
+- Promotes `ccb update mobile` as the guided setup entry for Tailscale Tailnet
+  onboarding while preserving loopback-only gateway binding and avoiding Funnel,
+  token storage, or ACL/grant automation.
+
+</details>
+
+<details>
 <summary><b>v7.7.0</b> - Runtime Accelerator Release Hardening</summary>
 
 - Ships the optional Rust `ccb-runtime-accelerator` in release artifacts, so

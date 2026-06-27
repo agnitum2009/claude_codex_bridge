@@ -124,8 +124,8 @@ def test_onboarding_not_installed_prints_install_and_phone_steps() -> None:
     assert mobile_update.TAILSCALE_DOWNLOAD_URL in text
     assert "Skipping automatic install" in text
     assert "Install Tailscale on the phone" in text
-    assert "Use your team's CCB Mobile APK/release link" in text
-    assert "adb install -r build/app/outputs/flutter-apk/app-debug.apk" in text
+    assert f"Download APK: {mobile_update.DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL}" in text
+    assert "adb install -r build/app/outputs/flutter-apk/app-debug.apk" not in text
     assert mobile_update.CCB_MOBILE_APP_DOWNLOAD_URL_ENV in text
     assert "Funnel and 0.0.0.0 listeners are not used" in text
 
@@ -236,6 +236,7 @@ def test_onboarding_prints_configured_mobile_app_download_url() -> None:
     text = "\n".join(output)
     assert code == 0
     assert "Download APK: https://example.test/ccb-mobile.apk" in text
+    assert mobile_update.DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL not in text
     assert "adb install -r build/app/outputs/flutter-apk/app-debug.apk" not in text
     assert "Open CCB Mobile and scan the pairing QR" in text
 

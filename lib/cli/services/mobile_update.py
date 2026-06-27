@@ -15,6 +15,10 @@ TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download"
 TAILSCALE_LOGIN_URL = "https://login.tailscale.com/start"
 DEFAULT_MOBILE_GATEWAY_LISTEN = "127.0.0.1:8787"
 CCB_MOBILE_APP_DOWNLOAD_URL_ENV = "CCB_MOBILE_APP_DOWNLOAD_URL"
+DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL = (
+    "https://github.com/SeemSeam/claude_codex_bridge/releases/download/"
+    "v8.0.0/ccb-mobile-v8.0.0.apk"
+)
 TAILSCALE_LINUX_INSTALL_COMMAND = ("sh", "-c", "curl -fsSL https://tailscale.com/install.sh | sh")
 
 
@@ -313,18 +317,15 @@ def _print_install_confirmation_hint(print_fn: Callable[[str], None]) -> None:
 
 
 def _print_mobile_app_steps(print_fn: Callable[[str], None], *, environ: Mapping[str, str]) -> None:
-    app_download_url = _clean_text(environ.get(CCB_MOBILE_APP_DOWNLOAD_URL_ENV))
+    app_download_url = (
+        _clean_text(environ.get(CCB_MOBILE_APP_DOWNLOAD_URL_ENV))
+        or DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL
+    )
     print_fn("Phone setup:")
     print_fn("   1. Install Tailscale on the phone and sign in to the same tailnet.")
     print_fn("   2. Install CCB Mobile on the phone:")
-    if app_download_url:
-        print_fn(f"      Download APK: {app_download_url}")
-    else:
-        print_fn("      Use your team's CCB Mobile APK/release link.")
-        print_fn("      Dev/emulator build: from the ccb_mobile/app checkout, run:")
-        print_fn("         flutter build apk --debug")
-        print_fn("         adb install -r build/app/outputs/flutter-apk/app-debug.apk")
-        print_fn(f"      To print a custom APK link here, set {CCB_MOBILE_APP_DOWNLOAD_URL_ENV}.")
+    print_fn(f"      Download APK: {app_download_url}")
+    print_fn(f"      Override this link with {CCB_MOBILE_APP_DOWNLOAD_URL_ENV} if your team mirrors the APK.")
     print_fn("   3. Enable the Tailscale VPN on the phone.")
     print_fn("   4. Open CCB Mobile and scan the pairing QR.")
 
@@ -367,6 +368,7 @@ def _quote_shell_part(value: object) -> str:
 __all__ = [
     "DEFAULT_MOBILE_GATEWAY_LISTEN",
     "CCB_MOBILE_APP_DOWNLOAD_URL_ENV",
+    "DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL",
     "TAILSCALE_LINUX_INSTALL_COMMAND",
     "TAILSCALE_DOWNLOAD_URL",
     "TAILSCALE_LOGIN_URL",
