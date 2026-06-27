@@ -308,10 +308,78 @@ def test_agent_add_with_loop_node_places_agent_in_node_window(
 
     assert result == 0, stderr
     assert payload['placement']['mode'] == 'execution_node'
+    assert payload['resolved_window_name'] == 'node-round1-node1'
+    assert payload['placement']['window_name'] == 'node-round1-node1'
     loaded = load_project_config(project_root).config
     assert [(window.name, window.agent_names, window.layout_spec) for window in loaded.windows] == [
         ('main', ('main',), 'main:codex'),
         ('node-round1-node1', ('worker1',), 'worker1:codex'),
+    ]
+
+
+def test_agent_add_second_loop_node_agent_appends_without_reordering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = _project_with_agent_profiles(tmp_path, monkeypatch)
+    result, worker, stderr = _run_phase2(
+        [
+            'agent',
+            'add',
+            'worker1:codex',
+            '--role',
+            'agentroles.general',
+            '--loop-id',
+            'round1',
+            '--node-id',
+            'node1',
+            '--hidden',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+    assert result == 0, stderr
+    assert worker['created_sequence'] == 1
+    after_worker = load_project_config(project_root).config
+
+    result, checker, stderr = _run_phase2(
+        [
+            'agent',
+            'add',
+            'checker1:codex',
+            '--role',
+            'agentroles.general',
+            '--loop-id',
+            'round1',
+            '--node-id',
+            'node1',
+            '--hidden',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+
+    assert result == 0, stderr
+    assert checker['created_sequence'] == 2
+    assert checker['resolved_window_name'] == 'node-round1-node1'
+    loaded = load_project_config(project_root).config
+    assert [(window.name, window.agent_names, window.layout_spec) for window in loaded.windows] == [
+        ('main', ('main',), 'main:codex'),
+        ('node-round1-node1', ('worker1', 'checker1'), 'worker1:codex; checker1:codex'),
+    ]
+    plan = build_reload_dry_run_plan(after_worker, loaded, project_id='proj-1', current_namespace=_namespace('proj-1'))
+    assert plan['plan_class'] == 'add_agent'
+    assert plan['namespace_patch_plan']['steps'] == [
+        {
+            'action': 'create_agent_pane',
+            'window': 'node-round1-node1',
+            'agent': 'checker1',
+            'role': 'agent',
+            'slot_key': 'checker1',
+            'managed_by': 'ccbd',
+            'anchor_agent': 'worker1',
+            'reason': 'new agent appended to existing managed window',
+        }
     ]
 
 
@@ -338,10 +406,59 @@ def test_agent_add_with_window_class_creates_class_window(
 
     assert result == 0, stderr
     assert payload['placement']['mode'] == 'window_class'
+    assert payload['resolved_window_name'] == 'plan-orchestrate'
+    assert payload['placement']['window_name'] == 'plan-orchestrate'
     loaded = load_project_config(project_root).config
     assert [(window.name, window.agent_names, window.layout_spec) for window in loaded.windows] == [
         ('main', ('main',), 'main:codex'),
         ('plan-orchestrate', ('planner2',), 'planner2:codex'),
+    ]
+
+
+def test_agent_add_with_window_class_overflows_to_next_class_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / 'repo-agent-lifecycle-overflow'
+    role_store = tmp_path / 'roles'
+    _write_installed_role(role_store, 'agentroles.general', default_agent_name='general')
+    monkeypatch.setenv('AGENT_ROLES_STORE', str(role_store))
+    _write(
+        project_root / '.ccb' / 'ccb.config',
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+plan-orchestrate = "p1:codex, p2:codex, p3:codex, p4:codex, p5:codex, p6:codex"
+""",
+    )
+
+    result, payload, stderr = _run_phase2(
+        [
+            'agent',
+            'add',
+            'planner2:codex',
+            '--role',
+            'agentroles.general',
+            '--window-class',
+            'plan-orchestrate',
+            '--hidden',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+
+    assert result == 0, stderr
+    assert payload['placement']['mode'] == 'window_class'
+    assert payload['window_class'] == 'plan-orchestrate'
+    assert payload['resolved_window_name'] == 'plan-orchestrate-2'
+    assert payload['placement']['window_name'] == 'plan-orchestrate-2'
+    loaded = load_project_config(project_root).config
+    assert [(window.name, window.agent_names) for window in loaded.windows] == [
+        ('main', ('main',)),
+        ('plan-orchestrate', ('p1', 'p2', 'p3', 'p4', 'p5', 'p6')),
+        ('plan-orchestrate-2', ('planner2',)),
     ]
 
 

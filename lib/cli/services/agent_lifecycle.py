@@ -144,6 +144,7 @@ def _add(context, command) -> dict[str, object]:
         'placement': _placement_record(command),
         'lifetime': _optional_text(getattr(command, 'lifetime', None)) or 'session',
         'created_at': str((previous or {}).get('created_at') or _utc_now()),
+        'created_sequence': _created_sequence(context, previous),
         'updated_at': _utc_now(),
         'created_by': 'ccb agent add',
         'last_reason': 'agent add',
@@ -151,6 +152,8 @@ def _add(context, command) -> dict[str, object]:
         'state_path': str(_state_path(context, name)),
         'events_path': str(_events_path(context)),
     }
+    _write_state(context, name, payload)
+    _update_resolved_placement(context, payload)
     _write_state(context, name, payload)
     _append_event(context, {'event': 'add', 'agent': name, 'lifecycle_state': visibility})
     try:
@@ -279,6 +282,7 @@ def _transition(context, command) -> dict[str, object]:
 
 
 def _status_record(record: dict[str, object], *, source: str) -> dict[str, object]:
+    placement = record.get('placement') if isinstance(record.get('placement'), dict) else {}
     return {
         'agent': record.get('agent'),
         'source': source,
@@ -288,6 +292,9 @@ def _status_record(record: dict[str, object], *, source: str) -> dict[str, objec
         'role_class': record.get('role_class'),
         'lifecycle_state': record.get('lifecycle_state'),
         'visibility_state': record.get('visibility_state'),
+        'resolved_window_name': record.get('resolved_window_name')
+        or placement.get('window_name')
+        or record.get('window_name'),
         'ask_target': record.get('ask_target') or record.get('agent'),
         'state_path': record.get('state_path'),
     }
@@ -442,6 +449,27 @@ def _safe_int(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _created_sequence(context, previous: dict[str, object] | None) -> int:
+    previous_sequence = _optional_int((previous or {}).get('created_sequence'))
+    if previous_sequence is not None:
+        return previous_sequence
+    highest = 0
+    for record in _load_dynamic_records(context):
+        sequence = _optional_int(record.get('created_sequence'))
+        if sequence is not None:
+            highest = max(highest, sequence)
+    return highest + 1
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _infer_role_class(role: object) -> str:
@@ -673,6 +701,8 @@ def _update_apply_evidence(context, payload: dict[str, object]) -> None:
     if pane_id is not None:
         placement['pane_id'] = pane_id
     payload['placement'] = placement
+    if window_name is not None:
+        payload['resolved_window_name'] = window_name
 
 
 def _update_unload_apply_evidence(payload: dict[str, object], *, agent: str, apply: dict[str, object]) -> None:
@@ -726,6 +756,8 @@ def _update_transition_apply_evidence(context, payload: dict[str, object]) -> No
     if pane_id is not None:
         placement['pane_id'] = pane_id
     payload['placement'] = placement
+    if window_name is not None:
+        payload['resolved_window_name'] = window_name
 
 
 def _window_for_agent(context, agent: str) -> str | None:
@@ -737,6 +769,21 @@ def _window_for_agent(context, agent: str) -> str | None:
         if agent in tuple(window.agent_names or ()):
             return str(window.name)
     return None
+
+
+def _update_resolved_placement(context, payload: dict[str, object]) -> None:
+    agent = str(payload.get('agent') or '')
+    if not agent:
+        return
+    placement = dict(payload.get('placement') or {})
+    if str(placement.get('mode') or 'auto') == 'auto':
+        return
+    window_name = _window_for_agent(context, agent)
+    if window_name is None:
+        return
+    payload['resolved_window_name'] = window_name
+    placement['window_name'] = window_name
+    payload['placement'] = placement
 
 
 def _utc_now() -> str:

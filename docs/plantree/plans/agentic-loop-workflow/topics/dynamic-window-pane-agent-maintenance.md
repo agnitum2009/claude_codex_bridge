@@ -493,6 +493,17 @@ slice:
   agents, lifecycle state, dispatch state, runtime state, pane ids, namespace
   state, and best-effort tmux pane observations. Unmounted projects with stale
   namespace state skip tmux observation instead of reporting a false failure.
+- Dynamic lifecycle records now store `created_sequence` and
+  `resolved_window_name`. The config overlay uses creation order for active
+  dynamic agents, so a second agent in the same execution node appends after
+  the existing worker instead of being alphabetically reordered into a
+  non-additive `layout_change`.
+- Loop capacity records now use the same placement model. Generated capacity
+  agents carry `loop_id`, `node_id`, `created_sequence`, and
+  `placement.window_name`, and explicit `[windows]` overlays place worker /
+  checker capacity in `node-<loop-id>-<node-id>` windows. `layout status`
+  reports these records as `source=loop`, separate from configured and generic
+  dynamic agents.
 
 Evidence:
 
@@ -539,6 +550,27 @@ Evidence:
   `layout status --json` on an explicit-window project before mount, after
   mount, after same-window hot add/release, after new-window add/release with
   empty-window removal, and after forced kill with stale namespace state.
+- Source-wrapper placement smoke in
+  `/home/bfly/yunwei/test_ccb2/layout-placement-real-1782555` proved
+  `--window-class plan-orchestrate` overflows from a full 6-pane
+  `plan-orchestrate` window into `plan-orchestrate-2`, the loop/node placement
+  flags create `node-round1-node1`, a second same-node agent appends as
+  `worker1; checker1` with reload `plan_class=add_agent`, `ask checker1` is
+  accepted, and reverse unload removes the checker pane, removes the empty node
+  window after worker unload, removes the empty overflow window, and returns
+  layout status to the two configured windows with `dynamic_agent_count=0`.
+- Focused regression after the placement-order fix passed with `185 passed`
+  across agent lifecycle, layout status, pane growth, layout runtime, reload
+  patch/runtime mount, config loader, and loop capacity tests.
+- Source-wrapper loop-capacity layout smoke in
+  `/home/bfly/yunwei/test_ccb2/loop-capacity-layout-real-1782557` proved
+  mounted loop capacity ensure for `worker=1` and `code_reviewer=1` creates
+  `node-round1-node1`, status reports `loop_agent_count=2` with both agents as
+  `source=loop`, the node panes are alive, and idle loop-capacity release
+  removes the node window and returns to `loop_agent_count=0`.
+- Focused regression after connecting loop capacity to layout placement passed
+  with `187 passed` across loop capacity, agent lifecycle, layout status, pane
+  growth, layout runtime, reload patch/runtime mount, and config loader tests.
 - Focused regression passed with `222 passed` across dynamic lifecycle,
   config-loader, dispatcher, start-runtime, start-flow, reload-apply,
   reload-runtime-mount, and tmux-start-layout tests.
@@ -733,6 +765,11 @@ Current evidence:
 - `ccb layout status --json` now provides a read-only effective topology and
   runtime pane diagnostic for explicit `[windows]`, including dynamic overlays
   and best-effort tmux observations;
+- dynamic same-node placement now preserves creation order, so worker/checker
+  execution-node windows remain append-only and eligible for live guarded
+  reload;
+- loop-capacity worker/checker allocation now uses execution-node windows and
+  is visible in `layout status` as `source=loop`;
 - existing-window and new-window dynamic hot add are proven through guarded
   reload tests and controlled mounted tmux smoke;
 - existing-window and new-window dynamic hot unload are proven through

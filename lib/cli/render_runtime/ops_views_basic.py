@@ -20,6 +20,8 @@ def render_agent_lifecycle(summary) -> tuple[str, ...]:
         lines.append(f'provider: {payload.get("provider", "")}')
         lines.append(f'lifecycle_state: {payload.get("lifecycle_state", "")}')
         lines.append(f'visibility_state: {payload.get("visibility_state", "")}')
+        if payload.get('resolved_window_name') is not None:
+            lines.append(f'resolved_window_name: {payload.get("resolved_window_name", "")}')
         if payload.get('requested_policy') is not None:
             lines.append(f'requested_policy: {payload.get("requested_policy", "")}')
         if payload.get('resolved_policy') is not None:
@@ -37,7 +39,8 @@ def render_agent_lifecycle(summary) -> tuple[str, ...]:
             f'source={record.get("source", "")} '
             f'role={record.get("role", "")} '
             f'provider={record.get("provider", "")} '
-            f'lifecycle_state={record.get("lifecycle_state", "")}'
+            f'lifecycle_state={record.get("lifecycle_state", "")} '
+            f'window={record.get("resolved_window_name", "")}'
         )
     return tuple(lines)
 
@@ -135,7 +138,9 @@ def render_loop_capacity(summary) -> tuple[str, ...]:
             f'profile={agent.get("profile", "")} '
             f'role={agent.get("role", "")} '
             f'provider={agent.get("provider", "")} '
-            f'state={agent.get("state", "")}'
+            f'state={agent.get("state", "")} '
+            f'node={agent.get("node_id", "")} '
+            f'window={agent.get("window_name", "")}'
         )
     return tuple(lines)
 
@@ -222,6 +227,7 @@ def render_layout(summary) -> tuple[str, ...]:
                 f'windows_explicit: {payload.get("windows_explicit", "")}',
                 f'entry_window: {payload.get("entry_window", "")}',
                 f'dynamic_agent_count: {payload.get("dynamic_agent_count", 0)}',
+                f'loop_agent_count: {payload.get("loop_agent_count", 0)}',
                 f'runtime_agent_count: {payload.get("runtime_agent_count", 0)}',
             ]
         )

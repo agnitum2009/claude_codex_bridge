@@ -366,6 +366,30 @@ Date: 2026-06-24
   explicit-window startup, same-window hot add/release, new-window
   add/release with empty-window removal, ask reachability for the dynamic fake
   agent, and unmounted stale-namespace status skipping tmux observation.
+- Landed stable dynamic placement order for explicit `[windows]` hot load.
+  Dynamic lifecycle records now carry `created_sequence`, semantic placement
+  requests are resolved back into `resolved_window_name`, and config overlays
+  order dynamic agents by creation instead of agent name. This fixed the real
+  same execution-node failure where adding `checker1` after `worker1` was
+  misclassified as `layout_change`; it now remains an append-only `add_agent`.
+  Focused tests passed with `185 passed`, and the source-wrapper smoke in
+  `/home/bfly/yunwei/test_ccb2/layout-placement-real-1782555` proved class
+  overflow to `plan-orchestrate-2`, execution node creation
+  `node-round1-node1`, same-node `worker1, checker1` ordering, ask submission
+  to `checker1`, reverse unload, empty dynamic-window removal, and final return
+  to the two configured windows.
+- Connected `ccb loop capacity` to the runtime layout placement model.
+  Capacity-generated worker/checker agents now carry `loop_id`, `node_id`,
+  `created_sequence`, and execution-node placement; explicit `[windows]`
+  overlays materialize them in `node-<loop-id>-<node-id>` windows instead of
+  appending them to the entry window. `layout status` now distinguishes
+  `source=loop` agents and reports `loop_agent_count`, loop id, node id,
+  profile, pane, and runtime state. Focused tests passed with `187 passed`,
+  and the source-wrapper smoke in
+  `/home/bfly/yunwei/test_ccb2/loop-capacity-layout-real-1782557` proved
+  mounted `loop capacity ensure` creates `node-round1-node1`, status reports
+  two loop agents there, and `loop capacity release --idle-only` removes the
+  node window and returns to `loop_agent_count=0`.
 
 ## Next
 
@@ -379,8 +403,10 @@ Date: 2026-06-24
    `orchestrator-capacity` to share the same lifecycle semantics.
 4. Define the V1 runtime layout manager command/state surface from
    [topics/dynamic-window-pane-agent-maintenance.md](topics/dynamic-window-pane-agent-maintenance.md):
-   enforce six-pane dialog/planning windows, allocate one window per execution
-   node, and release/retain panes through runtime state.
+   expose a script-friendly placement command/skill wrapper over the proven
+   `--window-class` and `--loop-id/--node-id` semantics, then update
+   orchestrator-facing role/skill docs to rely on loop capacity rather than
+   hand-picked window names.
 5. Implement the next true hot-load slices:
     full live-provider smoke for pane-backed providers, better pane-identity
     diagnostics at startup, and only later live reflow/1->6 pane rearrangement.

@@ -14,6 +14,7 @@ from agents.models import (
     RuntimeMode,
     WorkspaceMode,
     WindowSpec,
+    build_pane_growth_layout,
     normalize_agent_name,
     parse_layout_spec,
 )
@@ -28,6 +29,7 @@ def apply_loop_capacity_overlays(config: ProjectConfig, project_root: Path) -> P
         return config
     generated_specs: dict[str, AgentSpec] = {}
     generated_order: list[str] = []
+    records_by_name: dict[str, dict[str, object]] = {}
     for state_path, state in states:
         for agent in _active_agents_from_state(state_path, state):
             spec = _agent_spec_from_record(agent)
@@ -40,13 +42,19 @@ def apply_loop_capacity_overlays(config: ProjectConfig, project_root: Path) -> P
                     f'{state_path}: duplicate loop generated agent {spec.name!r} across active loop capacity states'
                 )
             generated_specs[spec.name] = spec
+            records_by_name[spec.name] = agent
             generated_order.append(spec.name)
     if not generated_specs:
         return config
     agents = dict(config.agents)
     agents.update(generated_specs)
     if getattr(config, 'windows_explicit', False):
-        windows = _append_agents_to_entry_window(config, generated_order, agents=agents)
+        window_agents, entry_agents = _plan_window_placement(config, records_by_name, generated_order)
+        windows = (
+            _apply_window_placement(config, window_agents, agents=agents)
+            if window_agents
+            else _append_agents_to_entry_window(config, entry_agents, agents=agents)
+        )
         return _copy_config(config, agents=agents, default_agents=config.default_agents, windows=windows)
     default_agents = (*tuple(config.default_agents), *tuple(generated_order))
     layout_spec = _append_agents_to_layout(config.layout_spec, generated_order, agents)
@@ -86,6 +94,58 @@ def _active_agents_from_state(state_path: Path, state: dict[str, object]) -> tup
     return tuple(active)
 
 
+def _plan_window_placement(
+    config: ProjectConfig,
+    records_by_name: dict[str, dict[str, object]],
+    generated_order: list[str],
+) -> tuple[dict[str, tuple[str, ...]], list[str]]:
+    entry_agents: list[str] = []
+    window_agents: dict[str, list[str]] = {}
+    any_window_placement = False
+    for agent_name in generated_order:
+        window_name = _placement_window_name(records_by_name.get(agent_name) or {})
+        if window_name is None:
+            entry_agents.append(agent_name)
+            continue
+        any_window_placement = True
+        window_agents.setdefault(window_name, []).append(agent_name)
+    if any_window_placement and entry_agents:
+        entry = str(config.entry_window or 'main')
+        window_agents.setdefault(entry, []).extend(entry_agents)
+        entry_agents = []
+    return {name: tuple(values) for name, values in window_agents.items()}, entry_agents
+
+
+def _placement_window_name(agent: dict[str, object]) -> str | None:
+    window_name = _optional_string(agent.get('window_name'))
+    if window_name is not None:
+        return window_name
+    placement = agent.get('placement') if isinstance(agent.get('placement'), dict) else {}
+    window_name = _optional_string(dict(placement).get('window_name')) if placement else None
+    if window_name is not None:
+        return window_name
+    loop_id = _optional_string(agent.get('loop_id')) or (_optional_string(dict(placement).get('loop_id')) if placement else None)
+    node_id = _optional_string(agent.get('node_id')) or (_optional_string(dict(placement).get('node_id')) if placement else None)
+    if loop_id is not None or node_id is not None:
+        return _execution_node_window_name(loop_id=loop_id, node_id=node_id)
+    return None
+
+
+def _execution_node_window_name(*, loop_id: str | None, node_id: str | None) -> str:
+    return f'node-{_window_slug(loop_id or "loop")}-{_window_slug(node_id or "node")}'
+
+
+def _window_slug(value: str) -> str:
+    text = str(value or '').strip().replace('_', '-')
+    cleaned = ''.join(ch if ch.isalnum() or ch == '-' else '-' for ch in text)
+    cleaned = '-'.join(part for part in cleaned.split('-') if part)
+    if not cleaned:
+        cleaned = 'window'
+    if not cleaned[0].isalpha():
+        cleaned = f'w-{cleaned}'
+    return cleaned
+
+
 def _agent_spec_from_record(agent: dict[str, object]) -> AgentSpec:
     return AgentSpec(
         name=normalize_agent_name(str(agent.get('name') or '')),
@@ -123,6 +183,72 @@ def _append_agents_to_layout(layout_spec: str | None, agent_names: list[str], ag
         spec = agents[agent_name]
         node = _append_layout_leaf(node, agent_name, provider=spec.provider, workspace_mode=spec.workspace_mode.value)
     return node.render()
+
+
+def _apply_window_placement(
+    config: ProjectConfig,
+    window_agents: dict[str, tuple[str, ...]],
+    *,
+    agents: dict[str, AgentSpec],
+) -> tuple[WindowSpec, ...]:
+    windows: list[WindowSpec] = []
+    remaining = {name: tuple(values) for name, values in window_agents.items() if values}
+    for window in tuple(config.windows or ()):
+        agent_names = remaining.pop(window.name, ())
+        if not agent_names:
+            windows.append(window)
+            continue
+        windows.append(_append_agents_to_window(window, agent_names, agents=agents))
+    for window_name, agent_names in remaining.items():
+        windows.append(_new_loop_window(window_name, agent_names, order=len(windows), agents=agents))
+    return tuple(windows)
+
+
+def _append_agents_to_window(
+    window: WindowSpec,
+    agent_names: tuple[str, ...],
+    *,
+    agents: dict[str, AgentSpec],
+) -> WindowSpec:
+    layout_spec = _append_agents_to_layout(window.layout_spec, list(agent_names), agents)
+    return WindowSpec(
+        name=window.name,
+        order=window.order,
+        layout_spec=layout_spec,
+        agent_names=(*window.agent_names, *agent_names),
+        tool_names=window.tool_names,
+    )
+
+
+def _new_loop_window(
+    window_name: str,
+    agent_names: tuple[str, ...],
+    *,
+    order: int,
+    agents: dict[str, AgentSpec],
+) -> WindowSpec:
+    layout = build_pane_growth_layout(agent_names)
+    return WindowSpec(
+        name=window_name,
+        order=order,
+        layout_spec=_with_agent_providers(layout, agents=agents).render(),
+        agent_names=agent_names,
+    )
+
+
+def _with_agent_providers(node, *, agents: dict[str, AgentSpec]):
+    if node.kind == 'leaf':
+        assert node.leaf is not None
+        name = normalize_agent_name(node.leaf.name)
+        spec = agents[name]
+        return _layout_leaf(name, provider=spec.provider, workspace_mode=spec.workspace_mode.value)
+    assert node.left is not None
+    assert node.right is not None
+    return LayoutNode(
+        kind=node.kind,
+        left=_with_agent_providers(node.left, agents=agents),
+        right=_with_agent_providers(node.right, agents=agents),
+    )
 
 
 def _append_layout_leaf(node, agent_name: str, *, provider: str, workspace_mode: str):

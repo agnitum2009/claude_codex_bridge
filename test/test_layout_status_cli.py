@@ -93,6 +93,78 @@ plan-orchestrate = "planner:codex"
     assert payload['namespace']['status'] == 'unmounted'
 
 
+def test_layout_status_marks_loop_capacity_agents_as_loop_source(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-layout-status-loop'
+    _write(
+        project_root / '.ccb' / 'ccb.config',
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "orchestrator:fake"
+""",
+    )
+    layout = PathLayout(project_root)
+    _write_json(
+        layout.runtime_state_root / 'runtime' / 'loops' / 'round1' / 'capacity.json',
+        {
+            'schema_version': 1,
+            'record_type': 'ccb_loop_capacity_state',
+            'loop_capacity_status': 'ensured',
+            'loop_id': 'round1',
+            'agents': [
+                {
+                    'name': 'loop-round1-worker-1',
+                    'profile': 'worker',
+                    'role': 'agentroles.coder',
+                    'provider': 'fake',
+                    'workspace_mode': 'inplace',
+                    'loop_id': 'round1',
+                    'node_id': 'node1',
+                    'window_name': 'node-round1-node1',
+                    'placement': {
+                        'mode': 'execution_node',
+                        'loop_id': 'round1',
+                        'node_id': 'node1',
+                        'window_name': 'node-round1-node1',
+                    },
+                    'state': 'planned',
+                },
+                {
+                    'name': 'loop-round1-code_reviewer-1',
+                    'profile': 'code_reviewer',
+                    'role': 'agentroles.code_reviewer',
+                    'provider': 'fake',
+                    'workspace_mode': 'inplace',
+                    'loop_id': 'round1',
+                    'node_id': 'node1',
+                    'window_name': 'node-round1-node1',
+                    'placement': {
+                        'mode': 'execution_node',
+                        'loop_id': 'round1',
+                        'node_id': 'node1',
+                        'window_name': 'node-round1-node1',
+                    },
+                    'state': 'planned',
+                },
+            ],
+        },
+    )
+
+    result, payload, stderr = _run_phase2(['layout', 'status', '--json'], cwd=project_root)
+
+    assert result == 0, stderr
+    assert payload['loop_agent_count'] == 2
+    windows = {window['name']: window for window in payload['windows']}
+    node_agents = windows['node-round1-node1']['agents']
+    assert [(agent['agent'], agent['source'], agent['loop_id'], agent['node_id']) for agent in node_agents] == [
+        ('loop-round1-worker-1', 'loop', 'round1', 'node1'),
+        ('loop-round1-code_reviewer-1', 'loop', 'round1', 'node1'),
+    ]
+    assert node_agents[0]['profile'] == 'worker'
+    assert node_agents[1]['profile'] == 'code_reviewer'
+
+
 def test_layout_status_skips_tmux_observation_for_unmounted_namespace_state(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-layout-status-unmounted'
     _write(

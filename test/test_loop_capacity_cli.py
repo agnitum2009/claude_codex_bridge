@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from agents.config_loader import load_project_config
+from ccbd.reload_plan import build_reload_dry_run_plan
 from cli.context import CliContextBuilder
 from cli.models import ParsedLoopCapacityCommand, ParsedLoopRunOnceCommand, ParsedLoopRunnerCommand
 from cli.parser import CliParser
@@ -176,6 +178,19 @@ def _run_phase2(argv: list[str], *, cwd: Path) -> tuple[int, dict[str, object], 
     return result, payload, stderr.getvalue()
 
 
+def _namespace(project_id: str):
+    return SimpleNamespace(
+        project_id=project_id,
+        namespace_epoch=1,
+        tmux_socket_path='/tmp/ccb-test-tmux.sock',
+        tmux_session_name='ccb-test-session',
+        workspace_window_name='main',
+        workspace_window_id='@main',
+        workspace_epoch=1,
+        ui_attachable=True,
+    )
+
+
 def test_loop_capacity_parser_supports_scriptable_json_commands() -> None:
     parser = CliParser()
 
@@ -245,6 +260,86 @@ def test_loop_capacity_parser_supports_scriptable_json_commands() -> None:
     assert parser.parse(
         ['loop', 'runner', '--once', '--timeout', '5', '--json']
     ) == ParsedLoopRunnerCommand(project=None, once=True, timeout_s=5.0, json_output=True)
+
+
+def test_loop_capacity_ensure_places_worker_and_reviewer_in_execution_node_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = _project_with_loop_capacity(tmp_path, monkeypatch)
+    _write(
+        project_root / '.ccb' / 'ccb.config',
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "orchestrator:codex"
+
+[loop.capacity]
+enabled = true
+max_nodes = 3
+default_lifetime = "current_round"
+name_template = "loop-{loop_id}-{profile}-{index}"
+reuse = "prefer_idle"
+
+[loop.role_profiles.worker]
+role = "agentroles.coder"
+provider = "codex"
+thinking = "high"
+workspace_mode = "git-worktree"
+workspace_group = "worker_pool"
+max_instances = 2
+reuse = "prefer_idle"
+
+[loop.role_profiles.code_reviewer]
+role = "agentroles.code_reviewer"
+provider = "codex"
+thinking = "medium"
+workspace_mode = "git-worktree"
+workspace_group = "review_pool"
+max_instances = 1
+""",
+    )
+    current = load_project_config(project_root, include_loop_overlays=False).config
+
+    result, payload, stderr = _run_phase2(
+        [
+            'loop',
+            'capacity',
+            'ensure',
+            '--loop-id',
+            'round1',
+            '--profile',
+            'worker=1',
+            '--profile',
+            'code_reviewer=1',
+            '--json',
+        ],
+        cwd=project_root,
+    )
+
+    assert result == 0, stderr
+    assert [(agent['name'], agent['node_id'], agent['placement']['window_name']) for agent in payload['agents']] == [
+        ('loop-round1-worker-1', 'node1', 'node-round1-node1'),
+        ('loop-round1-code_reviewer-1', 'node1', 'node-round1-node1'),
+    ]
+    loaded = load_project_config(project_root).config
+    assert [(window.name, window.agent_names, window.layout_spec) for window in loaded.windows] == [
+        ('main', ('orchestrator',), 'orchestrator:codex'),
+        (
+            'node-round1-node1',
+            ('loop-round1-worker-1', 'loop-round1-code_reviewer-1'),
+            'loop-round1-worker-1:codex(worktree); loop-round1-code_reviewer-1:codex(worktree)',
+        ),
+    ]
+    plan = build_reload_dry_run_plan(current, loaded, project_id='proj-1', current_namespace=_namespace('proj-1'))
+    assert plan['plan_class'] == 'add_window'
+    assert [step['action'] for step in plan['namespace_patch_plan']['steps']] == [
+        'create_window',
+        'create_sidebar_pane',
+        'create_agent_pane',
+        'create_agent_pane',
+    ]
 
 
 def test_loop_run_once_writes_round_artifacts_and_releases_capacity(

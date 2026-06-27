@@ -266,7 +266,20 @@ def _active_dynamic_agent_states(project_root: Path) -> tuple[tuple[Path, dict[s
         if str(payload.get('lifecycle_state') or '') not in ACTIVE_DYNAMIC_AGENT_STATES:
             continue
         states.append((state_path, dict(payload)))
-    return tuple(states)
+    return tuple(sorted(states, key=_dynamic_state_sort_key))
+
+
+def _dynamic_state_sort_key(item: tuple[Path, dict[str, object]]) -> tuple[int, str, int, str]:
+    path, state = item
+    sequence = _optional_int(state.get('created_sequence'))
+    if sequence is not None:
+        return (0, '', sequence, str(path))
+    timestamp = _optional_string(state.get('created_at')) or _optional_string(state.get('updated_at')) or ''
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        mtime_ns = 0
+    return (1, timestamp, mtime_ns, str(path))
 
 
 def _agent_spec_from_state(state_path: Path, state: dict[str, object]) -> AgentSpec:
@@ -309,6 +322,15 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _append_agents_to_layout(layout_spec: str | None, agent_names: list[str], agents: dict[str, AgentSpec]) -> str:

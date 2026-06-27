@@ -19,12 +19,14 @@ def layout_status(context) -> dict[str, object]:
     namespace = _namespace_record(context, local)
     observed = _observe_project_namespace(namespace)
     dynamic_by_agent = _dynamic_records_by_agent(context)
+    loop_by_agent = _loop_records_by_agent(context)
     runtime_store = AgentRuntimeStore(context.paths)
     windows = [
         _window_status(
             window=window,
             agents_by_name=dict(config.agents),
             dynamic_by_agent=dynamic_by_agent,
+            loop_by_agent=loop_by_agent,
             runtime_store=runtime_store,
             observed_by_agent=dict(observed.get('agent_panes') or {}),
             observed_by_window=dict(observed.get('windows') or {}),
@@ -49,6 +51,12 @@ def layout_status(context) -> dict[str, object]:
             for agent in tuple(window.get('agents') or ())
             if agent.get('source') == 'dynamic'
         ),
+        'loop_agent_count': sum(
+            1
+            for window in windows
+            for agent in tuple(window.get('agents') or ())
+            if agent.get('source') == 'loop'
+        ),
         'runtime_agent_count': sum(
             1
             for window in windows
@@ -70,6 +78,7 @@ def _window_status(
     window,
     agents_by_name: dict[str, object],
     dynamic_by_agent: dict[str, dict[str, object]],
+    loop_by_agent: dict[str, dict[str, object]],
     runtime_store: AgentRuntimeStore,
     observed_by_agent: dict[str, dict[str, object]],
     observed_by_window: dict[str, dict[str, object]],
@@ -81,6 +90,7 @@ def _window_status(
             window_name=str(window.name),
             spec=agents_by_name.get(agent_name),
             dynamic=dynamic_by_agent.get(agent_name),
+            loop=loop_by_agent.get(agent_name),
             runtime=runtime_store.load_best_effort(agent_name),
             observed=observed_by_agent.get(agent_name),
         )
@@ -101,34 +111,56 @@ def _window_status(
     }
 
 
-def _agent_status(*, agent_name: str, window_name: str, spec, dynamic, runtime, observed) -> dict[str, object]:
+def _agent_status(*, agent_name: str, window_name: str, spec, dynamic, loop, runtime, observed) -> dict[str, object]:
     dynamic_payload = dict(dynamic or {})
-    placement = dynamic_payload.get('placement') if isinstance(dynamic_payload.get('placement'), dict) else {}
+    loop_payload = dict(loop or {})
+    placement_source = dynamic_payload if dynamic is not None else loop_payload
+    placement = placement_source.get('placement') if isinstance(placement_source.get('placement'), dict) else {}
     pane_id = (
         _runtime_attr(runtime, 'active_pane_id')
         or _runtime_attr(runtime, 'pane_id')
         or _optional_text(dynamic_payload.get('pane_id'))
+        or _optional_text(loop_payload.get('pane_id'))
         or _optional_text(dict(placement).get('pane_id'))
     )
     observed_payload = dict(observed or {})
+    source = 'dynamic' if dynamic is not None else ('loop' if loop is not None else 'configured')
     return {
         'agent': agent_name,
-        'source': 'dynamic' if dynamic is not None else 'configured',
+        'source': source,
         'provider': getattr(spec, 'provider', None),
-        'role': dynamic_payload.get('role') if dynamic is not None else getattr(spec, 'role', None),
-        'profile': dynamic_payload.get('profile') if dynamic is not None else None,
+        'role': (
+            dynamic_payload.get('role')
+            if dynamic is not None
+            else (loop_payload.get('role') if loop is not None else getattr(spec, 'role', None))
+        ),
+        'profile': dynamic_payload.get('profile') if dynamic is not None else loop_payload.get('profile'),
         'role_class': dynamic_payload.get('role_class'),
-        'lifecycle_state': dynamic_payload.get('lifecycle_state') if dynamic is not None else 'configured',
-        'visibility_state': dynamic_payload.get('visibility_state') if dynamic is not None else 'visible',
-        'dispatch_disabled': bool(getattr(spec, 'dispatch_disabled', False) or dynamic_payload.get('dispatch_disabled')),
+        'loop_id': loop_payload.get('loop_id'),
+        'node_id': loop_payload.get('node_id'),
+        'lifecycle_state': (
+            dynamic_payload.get('lifecycle_state')
+            if dynamic is not None
+            else (loop_payload.get('state') if loop is not None else 'configured')
+        ),
+        'visibility_state': (
+            dynamic_payload.get('visibility_state')
+            if dynamic is not None
+            else ('loop' if loop is not None else 'visible')
+        ),
+        'dispatch_disabled': bool(
+            getattr(spec, 'dispatch_disabled', False)
+            or dynamic_payload.get('dispatch_disabled')
+            or loop_payload.get('dispatch_disabled')
+        ),
         'window_name': _runtime_attr(runtime, 'tmux_window_name') or _optional_text(dict(placement).get('window_name')) or window_name,
         'pane_id': pane_id,
         'runtime_state': _runtime_state_value(runtime),
         'queue_depth': _runtime_attr(runtime, 'queue_depth', 0) if runtime is not None else 0,
         'pane_state': _runtime_attr(runtime, 'pane_state') or observed_payload.get('pane_state'),
         'observed': observed_payload or None,
-        'ask_target': dynamic_payload.get('ask_target') or agent_name,
-        'state_path': dynamic_payload.get('state_path'),
+        'ask_target': dynamic_payload.get('ask_target') or loop_payload.get('ask_target') or agent_name,
+        'state_path': dynamic_payload.get('state_path') or loop_payload.get('state_path'),
     }
 
 
@@ -265,6 +297,36 @@ def _dynamic_records_by_agent(context) -> dict[str, dict[str, object]]:
         payload = dict(payload)
         payload.setdefault('state_path', str(path))
         records[agent] = payload
+    return records
+
+
+def _loop_records_by_agent(context) -> dict[str, dict[str, object]]:
+    records = {}
+    root = Path(context.paths.runtime_state_root) / 'runtime' / 'loops'
+    if not root.is_dir():
+        return records
+    for path in sorted(root.glob('*/capacity.json')):
+        try:
+            payload = json.loads(path.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get('loop_capacity_status') or '') != 'ensured':
+            continue
+        loop_state_path = str(path)
+        for raw_agent in tuple(payload.get('agents') or ()):
+            if not isinstance(raw_agent, dict):
+                continue
+            if str(raw_agent.get('state') or '') == 'released':
+                continue
+            agent = _optional_text(raw_agent.get('name'))
+            if agent is None:
+                continue
+            record = dict(raw_agent)
+            record.setdefault('loop_id', payload.get('loop_id'))
+            record.setdefault('state_path', loop_state_path)
+            records[agent] = record
     return records
 
 

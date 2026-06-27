@@ -307,7 +307,17 @@ def _planned_agents(
             if name in names:
                 raise ValueError(f'loop capacity name_template produced duplicate agent name: {name}')
             names.add(name)
-            agents.append(_agent_record(name, profile_name=profile_name, profile=profile, capacity=capacity))
+            agents.append(
+                _agent_record(
+                    name,
+                    profile_name=profile_name,
+                    profile=profile,
+                    capacity=capacity,
+                    loop_id=loop_id,
+                    node_index=index,
+                    created_sequence=len(agents) + 1,
+                )
+            )
     return agents
 
 
@@ -335,7 +345,12 @@ def _agent_record(
     profile_name: str,
     profile: LoopRoleProfileSpec,
     capacity: LoopCapacityConfig,
+    loop_id: str,
+    node_index: int,
+    created_sequence: int,
 ) -> dict[str, object]:
+    node_id = f'node{node_index}'
+    window_name = _execution_node_window_name(loop_id=loop_id, node_id=node_id)
     return {
         'name': name,
         'profile': profile_name,
@@ -349,8 +364,35 @@ def _agent_record(
         'provider_profile': profile.provider_profile.to_record(),
         'reuse': profile.reuse,
         'lifetime': capacity.default_lifetime,
+        'loop_id': loop_id,
+        'node_id': node_id,
+        'node_index': node_index,
+        'created_sequence': created_sequence,
+        'window_name': window_name,
+        'placement': {
+            'mode': 'execution_node',
+            'loop_id': loop_id,
+            'node_id': node_id,
+            'window_name': window_name,
+            'layout_policy': 'append-or-create-window',
+        },
         'state': 'planned',
     }
+
+
+def _execution_node_window_name(*, loop_id: str, node_id: str) -> str:
+    return f'node-{_window_slug(loop_id)}-{_window_slug(node_id)}'
+
+
+def _window_slug(value: str) -> str:
+    text = str(value or '').strip().replace('_', '-')
+    cleaned = ''.join(ch if ch.isalnum() or ch == '-' else '-' for ch in text)
+    cleaned = '-'.join(part for part in cleaned.split('-') if part)
+    if not cleaned:
+        cleaned = 'window'
+    if not cleaned[0].isalpha():
+        cleaned = f'w-{cleaned}'
+    return cleaned
 
 
 def _capacity_record(capacity: LoopCapacityConfig) -> dict[str, object]:
