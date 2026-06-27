@@ -314,6 +314,7 @@ def run_autonomous_smoke(
         "watch_status": last_round.get("watch_status"),
         "watch_reply": last_round.get("watch_reply", ""),
         "capacity_payload": last_round.get("capacity_payload"),
+        "layout_payload": last_round.get("layout_payload"),
         "rounds": rounds,
         "results": results,
     }
@@ -353,6 +354,7 @@ def _run_autonomous_round(
             )
         )
     capacity_payload: dict[str, Any] | None = None
+    layout_payload: dict[str, Any] | None = None
     if parent_job_id:
         capacity_completed = _run_command(
             f"round_{round_index}_capacity_status",
@@ -373,6 +375,15 @@ def _run_autonomous_round(
         )
         results.append(capacity_completed)
         capacity_payload = _json_payload(str(capacity_completed.get("stdout") or ""))
+        layout_completed = _run_command(
+            f"round_{round_index}_layout_status",
+            [str(ccb_test), "--project", str(project_root), "layout", "status", "--json"],
+            cwd=test_root,
+            env=env,
+            timeout=60,
+        )
+        results.append(layout_completed)
+        layout_payload = _json_payload(str(layout_completed.get("stdout") or ""))
     for name, command in (
         (f"round_{round_index}_post_autonomous_ps", [str(ccb_test), "--project", str(project_root), "ps"]),
         (
@@ -385,13 +396,23 @@ def _run_autonomous_round(
     watch_status = _line_value(str(watch.get("stdout") or ""), "status") if watch else None
     reply = _line_value(str(watch.get("stdout") or ""), "reply") if watch else ""
     return {
-        "round_status": "ok" if _autonomous_success(watch_status=watch_status, reply=reply, capacity=capacity_payload) else "failed",
+        "round_status": (
+            "ok"
+            if _autonomous_success(
+                watch_status=watch_status,
+                reply=reply,
+                capacity=capacity_payload,
+                layout=layout_payload,
+            )
+            else "failed"
+        ),
         "round_index": round_index,
         "loop_id": loop_id,
         "parent_job_id": parent_job_id,
         "watch_status": watch_status,
         "watch_reply": reply,
         "capacity_payload": capacity_payload,
+        "layout_payload": layout_payload,
         "results": results,
     }
 
@@ -765,7 +786,13 @@ def _line_value(text: str, key: str) -> str:
     return ""
 
 
-def _autonomous_success(*, watch_status: str | None, reply: str, capacity: dict[str, Any] | None) -> bool:
+def _autonomous_success(
+    *,
+    watch_status: str | None,
+    reply: str,
+    capacity: dict[str, Any] | None,
+    layout: dict[str, Any] | None,
+) -> bool:
     if str(watch_status or "").strip() != "completed":
         return False
     if "AUTONOMOUS_LOOP_STATUS: pass" not in reply:
@@ -775,6 +802,12 @@ def _autonomous_success(*, watch_status: str | None, reply: str, capacity: dict[
     if str(capacity.get("loop_capacity_status") or "") != "released":
         return False
     if int(capacity.get("retained_count") or 0) != 0:
+        return False
+    if not isinstance(layout, dict):
+        return False
+    if str(layout.get("layout_status") or "") != "ok":
+        return False
+    if int(layout.get("loop_agent_count") or 0) != 0:
         return False
     return True
 

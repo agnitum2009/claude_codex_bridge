@@ -592,6 +592,14 @@ Evidence:
   proved `main, helper1, helper2, helper3 -> main, helper1, helper3` reports
   `namespace_reflowed_windows=["main"]`, preserves survivor panes, accepts
   asks to both survivors, and cleans up with `kill_status: ok`.
+- The orchestrator autonomous smoke harness now treats layout residue as a
+  failure even when capacity release succeeds. After each autonomous parent
+  callback chain it runs `layout status --json` and requires
+  `loop_agent_count=0`; script tests cover both clean release and residual
+  loop-agent failure. The source-wrapper fake workflow closure smoke in
+  `/home/bfly/yunwei/test_ccb2/workflow-closure-layout-1782571` also proved
+  generated loop agents release from layout and `ps` state with
+  `dynamic_agents_absent_from_ps=true`.
 - Focused regression after connecting loop capacity to layout placement passed
   with `187 passed` across loop capacity, agent lifecycle, layout status, pane
   growth, layout runtime, reload patch/runtime mount, and config loader tests.

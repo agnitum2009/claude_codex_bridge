@@ -207,6 +207,13 @@ def test_run_autonomous_smoke_reports_success_from_parent_watch_and_capacity(
                 stdout='{"loop_capacity_status":"released","retained_count":0}\n',
                 stderr="",
             )
+        if "layout" in command and "status" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"layout_status":"ok","loop_agent_count":0,"windows":[{"name":"main","agent_names":["orchestrator"]}]}\n',
+                stderr="",
+            )
         return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
@@ -226,11 +233,81 @@ def test_run_autonomous_smoke_reports_success_from_parent_watch_and_capacity(
     assert payload["parent_job_id"] == "job_parent"
     assert payload["watch_status"] == "completed"
     assert payload["capacity_payload"] == {"loop_capacity_status": "released", "retained_count": 0}
+    assert payload["layout_payload"]["layout_status"] == "ok"
+    assert payload["layout_payload"]["loop_agent_count"] == 0
     assert payload["repeat_count"] == 1
     assert len(payload["rounds"]) == 1
     assert payload["rounds"][0]["round_status"] == "ok"
     assert any("ask" in command for command in calls)
     assert any("watch" in command for command in calls)
+    assert any("layout" in command and "status" in command for command in calls)
+
+
+def test_run_autonomous_smoke_fails_when_layout_keeps_loop_agents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_module()
+    monkeypatch.setenv(module.REAL_RUN_ENV, "1")
+    project_root = tmp_path / "orchestrator-capacity-autonomous-layout-residue"
+    (project_root / "roles").mkdir(parents=True)
+
+    def fake_run(command, **_kwargs):
+        if command[-2:] == ["kill", "-f"]:
+            return subprocess.CompletedProcess(command, 0, stdout="kill_status: ok\n", stderr="")
+        if "ask" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="accepted job=job_parent target=orchestrator\n[CCB_ASYNC_SUBMITTED job=job_parent target=orchestrator]\n",
+                stderr="",
+            )
+        if "watch" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    "watch_status: terminal\n"
+                    "job_id: job_parent\n"
+                    "agent_name: orchestrator\n"
+                    "target_name: orchestrator\n"
+                    "status: completed\n"
+                    "reply: AUTONOMOUS_LOOP_STATUS: pass release_status: released released_count: 2 retained_count: 0\n"
+                ),
+                stderr="",
+            )
+        if "capacity" in command and "status" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"loop_capacity_status":"released","retained_count":0}\n',
+                stderr="",
+            )
+        if "layout" in command and "status" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"layout_status":"ok","loop_agent_count":1}\n',
+                stderr="",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    payload = module.run_autonomous_smoke(
+        test_root=tmp_path,
+        project_name="orchestrator-capacity-autonomous-layout-residue",
+        provider="codex",
+        ccb_test=tmp_path / "ccb_test",
+        loop_id="auto1",
+        task="smoke",
+        provider_home_mode="real-home",
+        timeout_s=1,
+    )
+
+    assert payload["autonomous_status"] == "failed"
+    assert payload["rounds"][0]["round_status"] == "failed"
+    assert payload["rounds"][0]["layout_payload"]["loop_agent_count"] == 1
 
 
 def test_run_autonomous_smoke_repeats_rounds_with_stable_loop_id(
@@ -284,6 +361,13 @@ def test_run_autonomous_smoke_repeats_rounds_with_stable_loop_id(
                 stdout='{"loop_capacity_status":"released","retained_count":0}\n',
                 stderr="",
             )
+        if "layout" in command and "status" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"layout_status":"ok","loop_agent_count":0,"windows":[{"name":"main","agent_names":["orchestrator"]}]}\n',
+                stderr="",
+            )
         return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
@@ -310,6 +394,7 @@ def test_run_autonomous_smoke_repeats_rounds_with_stable_loop_id(
     assert sum(1 for command in calls if "ask" in command) == 2
     assert sum(1 for command in calls if "watch" in command) == 2
     assert sum(1 for command in calls if "capacity" in command and "status" in command) == 2
+    assert sum(1 for command in calls if "layout" in command and "status" in command) == 2
 
 
 def test_main_passes_repeat_to_autonomous_runner(

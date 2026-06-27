@@ -439,6 +439,16 @@ Date: 2026-06-24
   `/home/bfly/yunwei/test_ccb2/dynamic-layout-reflow-1782570-same-window`
   proved middle `helper2` removal reports `namespace_reflowed_windows=["main"]`
   while preserving `helper1` and `helper3` and keeping survivor asks reachable.
+- Hardened the orchestrator autonomous smoke harness so a round is only
+  accepted after capacity release and layout cleanup both pass. The harness now
+  captures `ccb layout status --json` after the parent callback chain and
+  requires `layout_status=ok` with `loop_agent_count=0`, preventing a false
+  pass when generated loop agents are released from capacity state but still
+  visible in runtime layout. Source-wrapper prepare/config validation passed in
+  `/home/bfly/yunwei/test_ccb2/orchestrator-capacity-layout-prepare-1782571`,
+  and the fake workflow closure smoke in
+  `/home/bfly/yunwei/test_ccb2/workflow-closure-layout-1782571` proved
+  dynamic generated agents release with no `ps` residue.
 
 ## Next
 
@@ -446,8 +456,9 @@ Date: 2026-06-24
    full live-provider smoke for pane-backed `codex`/`claude` and richer status
    diagnostics that distinguish configured/static, dynamic, loop-generated,
    parked, dispatch-disabled, and failed-apply records.
-2. Promote the repeatable workflow closure smoke into the standard guarded
-   regression path once the release gate shape is selected.
+2. Promote the repeatable workflow closure smoke and the autonomous
+   layout-cleanup gate into the standard guarded regression path once the
+   release gate shape is selected.
 3. Package the `dynamic-agent-lifecycle` skill and update
    `orchestrator-capacity` to share the same lifecycle semantics.
 4. Define the V1 runtime layout manager command/state surface from

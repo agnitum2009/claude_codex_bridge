@@ -346,6 +346,17 @@ Results on 2026-06-24:
   - `python -m pytest test/test_orchestrator_capacity_semantic_smoke_script.py
     test/test_orchestrator_rolepack.py -q` passed with `11 passed`;
   - the relevant regression suite passed with `265 passed`.
+- Layout cleanup hardening:
+  - `scripts/orchestrator_capacity_semantic_smoke.py` now collects
+    `ccb layout status --json` after the autonomous parent callback chain;
+  - autonomous success requires both `loop_capacity_status = released` with
+    `retained_count = 0` and `layout_status = ok` with
+    `loop_agent_count = 0`;
+  - focused script tests now cover the success path and the failure case where
+    capacity is released but layout still reports loop-agent residue;
+  - source-wrapper prepare/config validation passed in
+    `/home/bfly/yunwei/test_ccb2/orchestrator-capacity-layout-prepare-1782571`
+    using the generated project-local role store.
 
 External smoke limitation:
 

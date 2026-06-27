@@ -108,6 +108,22 @@ The terminal `blocked` status is intentional for the fake-provider smoke:
 scripts must not infer `pass` from a generic fake `round_checker` reply when
 no machine-readable `round result: pass` line exists.
 
+Latest layout-cleanup rerun:
+
+```text
+project: /home/bfly/yunwei/test_ccb2/workflow-closure-layout-1782571
+workflow_smoke_status: ok
+release_policy: auto
+release_status: released
+retained_count: 0
+dynamic_agents_absent_from_ps: true
+```
+
+This rerun adds evidence for the dynamic window/pane work: generated worker
+and checker agents are removed from runtime layout and `ps` state after the
+auto-release step, while the fake-provider terminal `blocked` result remains
+the expected round-checker artifact guard.
+
 ## Implementation Finding
 
 The first smoke draft used explicit `[windows]` topology with all workflow
