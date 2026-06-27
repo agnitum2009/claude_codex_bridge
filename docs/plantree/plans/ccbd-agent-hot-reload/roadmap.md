@@ -165,12 +165,17 @@ Date: 2026-06-28
   wrapper smoke
   `/home/bfly/yunwei/test_ccb2/dynamic-layout-mixed-move-add-latest.json`
   passed for `mixed-move-add`.
-- Ran the first real-account live provider smoke for dynamic pane movement:
-  guarded source-wrapper smoke
+- Ran the first real-account live provider smokes for dynamic pane movement
+  and same-window growth/shrink:
   `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-codex-move-agent-latest.json`
-  passed for `codex` with `move-agent`, proving a pane-backed managed Codex
-  agent can be moved into a new window and remain ask-reachable after the
-  transaction.
+  passed for `codex` with `move-agent`;
+  `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-codex-same-window-continuous-latest.json`
+  passed for `codex` with `same-window-continuous` (`1->6->1`);
+  `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-claude-move-agent-latest.json`
+  passed for `claude` with `move-agent`. Together these prove pane-backed
+  managed Codex and Claude agents can remain ask-reachable after move
+  transactions, and Codex can survive same-window dynamic add/reflow/unload
+  cycles while preserving the original main pane.
 
 ## In Progress
 
@@ -180,15 +185,17 @@ Date: 2026-06-28
   release, busy retain, empty dynamic-window cleanup, config-only park/resume
   dispatch toggling, compact-startup pane identity preservation, batch release,
   batch move into explicit review/loop/node windows, and mixed move-plus-add
-  explicit `[windows]` reload. One live `codex` move smoke has passed; broader
-  live `codex`/`claude` provider matrix coverage,
+  explicit `[windows]` reload. Live `codex` move, live `codex` same-window
+  `1->6->1`, and live `claude` move smokes have passed; broader provider
+  lifecycle matrix coverage,
   daemon-pushed sidebar refresh, replacement, arbitrary layout reshapes, and
   background config watching remain deferred.
 
 ## Next
 
 1. Extend live-provider smoke for pane-backed `codex`/`claude` dynamic add,
-   move, release, hide/park/resume. `codex` `move-agent` has passed with
+   move, release, hide/park/resume. `codex` `move-agent`, `codex`
+   `same-window-continuous`, and `claude` `move-agent` have passed with
    real-home auth; remaining flows need the same guarded account-boundary
    treatment before being promoted to release gates.
 2. Run or update the automatic and manual additive reload matrix in

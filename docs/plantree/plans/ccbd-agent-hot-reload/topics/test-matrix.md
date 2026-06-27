@@ -174,9 +174,12 @@ Date: 2026-05-29
   - idle replace advances runtime authority epoch;
   - busy replace enters bounded `pending_replace`;
   - provider session continuity is not claimed without provider-specific proof.
-- Existing agent moved to another window:
-  - rejected as layout/ownership move;
-  - existing pane remains in place.
+- Existing agent moved to another managed window:
+  - explicit dynamic move plans `move_agent`;
+  - the target pane id is preserved while window ownership changes;
+  - source and target windows are reflowed without killing unrelated panes;
+  - ask remains reachable before move, after move, and after moving back;
+  - evacuated dynamic windows are removed only when empty.
 - Busy agent preservation:
   - fake runtime reports `BUSY`;
   - additive reload succeeds for unrelated new agent;
@@ -217,6 +220,19 @@ Date: 2026-05-29
 
 ## Manual `test_ccb2` Tests
 
+- 2026-06-28 live provider smoke evidence:
+  - `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-codex-move-agent-latest.json`
+    passed `codex` `move-agent`: add helper, ask before move, move to `review`,
+    ask after move, move back to `main`, ask after return, unload helper, and
+    return to only `main`;
+  - `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-codex-same-window-continuous-latest.json`
+    passed `codex` `same-window-continuous`: grow `main` from one managed
+    agent pane to six, preserve the original main pane, verify geometry/fixed
+    columns, ask a dynamic helper, unload helpers in reverse order, reflow back
+    to one pane, and keep main ask-reachable;
+  - `/home/bfly/yunwei/test_ccb2/dynamic-layout-live-claude-move-agent-latest.json`
+    passed `claude` `move-agent` with the same pane-preserving move/move-back
+    and unload checks.
 - Phase 3 dry-run checks:
   - start a mounted project and run `ccb reload --dry-run` with no config
     changes; expect `plan_class: no_change`;
