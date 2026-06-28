@@ -144,6 +144,10 @@ Date: 2026-05-29
   - non-dry-run busy `remove_agent` persists an unload drain before returning
     blocked, dispatcher rejects active-drain targets, and a later successful
     idle retry retires the record.
+  - daemon heartbeat auto-retry handles ready active unload drains only when
+    the current disk config still plans `remove_agent`; busy records remain
+    waiting, and stale ready drains are retired if the removal is no longer in
+    the current plan.
   - `project_reload_config` and CLI reload rendering expose active drain count,
     agent, phase/status, busy state, bounded deadlines, and `ccb reload` as the
     explicit retry path.
@@ -185,8 +189,8 @@ Date: 2026-05-29
     drain status until a successful idle retry clears it;
   - active unload drains reject new dispatcher work for the draining agent and
     remove draining agents from broadcast target resolution;
-  - after the runtime becomes idle, a later successful unload retries the same
-    `remove_agent` path and retires the drain record;
+  - after the runtime becomes idle, either a manual retry or daemon heartbeat
+    auto-retry uses the same `remove_agent` path and retires the drain record;
   - existing unrelated processes are not killed by reload.
 - Existing agent provider/workspace/model/key/url change after replacement is
   enabled:

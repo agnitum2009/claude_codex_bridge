@@ -27,6 +27,7 @@ def run_additive_reload_apply(
     app,
     new_config,
     *,
+    lock_already_held: bool = False,
     current_namespace=None,
     apply_namespace_patch_fn=None,
     run_runtime_mount_fn=None,
@@ -36,6 +37,19 @@ def run_additive_reload_apply(
     update_lease_config_signature_fn=None,
     update_lifecycle_config_signature_fn=None,
 ):
+    if lock_already_held:
+        return _run_locked(
+            app,
+            new_config,
+            current_namespace=current_namespace,
+            apply_namespace_patch_fn=apply_namespace_patch_fn,
+            run_runtime_mount_fn=run_runtime_mount_fn,
+            run_start_flow_fn=run_start_flow_fn,
+            publish_transaction_fn=publish_transaction_fn,
+            publish_graph_fn=publish_graph_fn,
+            update_lease_config_signature_fn=update_lease_config_signature_fn,
+            update_lifecycle_config_signature_fn=update_lifecycle_config_signature_fn,
+        )
     lock = getattr(app, 'start_maintenance_lock', None)
     if lock is None:
         return _run_locked(

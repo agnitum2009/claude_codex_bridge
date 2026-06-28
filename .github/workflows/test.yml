@@ -250,6 +250,7 @@ jobs:
             --provider fake \
             --command-timeout 180 \
             --busy-latency-ms 5000 \
+            --auto-retry \
             --reset > "$RUNNER_TEMP/reload-busy-drain-smoke.json"
           python - "$RUNNER_TEMP/reload-busy-drain-smoke.json" <<'PY'
           import json
@@ -264,7 +265,7 @@ jobs:
           assert checks["project_view_records_active_drain"] is True
           assert checks["new_ask_rejected_while_draining"] is True
           assert checks["busy_job_terminal"] is True
-          assert checks["retry_reload_published"] is True
+          assert checks["auto_retry_published"] is True
           assert checks["project_view_drain_cleared"] is True
           assert checks["agent2_removed_from_view"] is True
           print(
@@ -276,7 +277,7 @@ jobs:
                           "blocked_reload_reports_active_drain": checks["blocked_reload_reports_active_drain"],
                           "project_view_records_active_drain": checks["project_view_records_active_drain"],
                           "new_ask_rejected_while_draining": checks["new_ask_rejected_while_draining"],
-                          "retry_reload_published": checks["retry_reload_published"],
+                          "auto_retry_published": checks["auto_retry_published"],
                           "agent2_removed_from_view": checks["agent2_removed_from_view"],
                       },
                   },

@@ -206,6 +206,13 @@ Rules:
   `reload_drain` plus `dispatch_blocked_by_reload_drain=true`. Project-view
   cache reuse must account for the drain file revision so sidebar state does
   not remain stale after a busy unload is recorded or retired.
+- `ccbd` heartbeat may automatically retry a ready active unload drain by
+  reusing the same guarded additive reload transaction after dispatcher
+  completion polling shows the removed agent has no outstanding work. This is
+  limited to current `remove_agent` plans for active unload drain records; it
+  must not auto-apply replace or arbitrary layout changes. If the disk config
+  no longer requests that removal, the stale ready drain is retired so it stops
+  blocking dispatch.
 - `ccb reload --dry-run` / `project_reload_config(dry_run=true)` is a diagnostics-grade planning surface: it validates the current `.ccb/ccb.config`, returns old/new config signatures, plan class, no-mutation `safe_to_apply=false`, future classification safety, operations, optional drain intent suggestions for unload/replace, active reload drain status when present, reasons, warnings, and errors, and updates reload timing fields without mutating tmux/runtime/lifecycle/service graph
 - `ccb reload` / `project_reload_config(dry_run=false)` is an explicit additive apply surface: `no_change` returns `status=noop` without graph publish, and only `view_only_change`, `maintenance_change`, append-only `add_agent`, `add_window`, idle `remove_agent`, `add_tool_window`, and `remove_tool_window` may publish. `maintenance_change` publishes a new service graph/config signature without tmux namespace mutation, runtime mount/unload, or agent pane restart. Non-additive `replace_agent`, `move_agent`, unsupported tool changes, and arbitrary `layout_change` must stop before graph publish and report structured diagnostics. Successful apply diagnostics must include stage, graph versions, publish flags, keeper handoff safety, project-view cache invalidation state, and active reload drain status. Failure diagnostics must preserve stage-specific namespace/runtime residue and active reload drain status while leaving the old published graph/config visible.
 - heartbeat wall duration may include lifecycle wrapper work outside the named step map; project-view build duration is updated only on cache misses, while project-view response duration is updated on cache hits and misses

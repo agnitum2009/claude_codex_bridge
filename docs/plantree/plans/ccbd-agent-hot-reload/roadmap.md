@@ -248,6 +248,20 @@ Date: 2026-06-28
   `77 passed`), and external source-wrapper fake smoke
   `scripts/reload_busy_drain_smoke.py --provider fake --project-name
   reload-busy-drain-smoke --reset` from `/home/bfly/yunwei/test_ccb2`.
+- Added daemon heartbeat auto-retry for ready active unload drains: after
+  completion polling shows the draining agent has no outstanding work, heartbeat
+  reuses the guarded additive reload transaction for the current disk
+  `remove_agent` plan and retires the drain through the existing unload path.
+  Busy drains remain waiting, and stale ready drains are retired when the user
+  restores the agent in `.ccb/ccb.config` before auto-retry. Verification
+  passed with `pytest -q test/test_ccbd_reload_drain_auto_retry.py
+  test/test_reload_busy_drain_smoke_script.py` (`9 passed`), the reload/drain
+  focused slice (`80 passed`), project-view/heartbeat lock checks (`69
+  passed`), `pytest -q test/test_v2_ask_service.py` (`30 passed`), and external
+  source-wrapper fake smoke
+  `scripts/reload_busy_drain_smoke.py --provider fake --auto-retry
+  --project-name reload-busy-drain-auto-retry-smoke --reset` from
+  `/home/bfly/yunwei/test_ccb2`.
 
 ## In Progress
 
@@ -257,13 +271,12 @@ Date: 2026-06-28
   release, busy retain, empty dynamic-window cleanup, config-only park/resume
   dispatch toggling, compact-startup pane identity preservation, bounded
   busy-unload drain recording/status surfacing in reload and project-view
-  surfaces, batch release, batch move into explicit
+  surfaces, heartbeat auto-retry for ready unload drains, batch release, batch move into explicit
   review/loop/node windows, and mixed move-plus-add explicit `[windows]`
   reload. Live `codex` and `claude` move, same-window `1->6->1`, and lifecycle
   park/resume smokes have passed; broader provider lifecycle matrix coverage,
-  daemon-pushed sidebar refresh, automatic background drain retry,
-  replacement, arbitrary layout reshapes, and background config watching remain
-  deferred.
+  daemon-pushed sidebar refresh, replacement, arbitrary layout reshapes, and
+  background config watching remain deferred.
 
 ## Next
 
@@ -283,11 +296,7 @@ Date: 2026-06-28
 3. Validate whether sidebar's existing project-view polling/refresh path is
    enough for drain status visibility; add a lightweight daemon-pushed sidebar
    refresh signal only if manual validation proves it is needed.
-4. Add automatic drain retry only after explicit retry remains stable; the
-   first bridge records bounded drains, blocks new work, surfaces status, and
-   lets `ccb reload` retry when the agent becomes idle, but does not yet run a
-   background idle watcher.
-5. Expose replacement only after unload semantics are safe; busy replacement
+4. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
 
 ## Deferred

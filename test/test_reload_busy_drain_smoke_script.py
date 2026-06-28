@@ -199,10 +199,11 @@ def test_main_passes_arguments_to_runner(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(module, "run_busy_remove_drain_smoke", fake_runner)
 
-    assert module.main(["--provider", "fake", "--command-timeout", "77", "--project-name", "drain"]) == 0
+    assert module.main(["--provider", "fake", "--command-timeout", "77", "--project-name", "drain", "--auto-retry"]) == 0
     assert captured["provider"] == "fake"
     assert captured["project_name"] == "drain"
     assert captured["command_timeout_s"] == 77
+    assert captured["auto_retry"] is True
 
 
 def test_tests_workflow_runs_reload_busy_drain_fake_smoke() -> None:
@@ -214,9 +215,10 @@ def test_tests_workflow_runs_reload_busy_drain_fake_smoke() -> None:
     assert "matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'" in text
     assert "--provider fake" in text
     assert "--busy-latency-ms 5000" in text
+    assert "--auto-retry" in text
     assert 'payload["reload_busy_drain_smoke_status"] == "ok"' in text
     assert 'checks["blocked_reload_reports_active_drain"] is True' in text
     assert 'checks["project_view_records_active_drain"] is True' in text
     assert 'checks["new_ask_rejected_while_draining"] is True' in text
-    assert 'checks["retry_reload_published"] is True' in text
+    assert 'checks["auto_retry_published"] is True' in text
     assert 'checks["agent2_removed_from_view"] is True' in text

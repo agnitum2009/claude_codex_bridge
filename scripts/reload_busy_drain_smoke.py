@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+from time import monotonic, sleep
 from typing import Any
 
 
@@ -73,6 +74,7 @@ def run_busy_remove_drain_smoke(
     reset: bool = False,
     keep_running: bool = False,
     busy_latency_ms: int = 5000,
+    auto_retry: bool = False,
 ) -> dict[str, Any]:
     test_root = test_root.expanduser().resolve(strict=False)
     test_root.mkdir(parents=True, exist_ok=True)
@@ -91,6 +93,10 @@ def run_busy_remove_drain_smoke(
     provider_home = layout_smoke._provider_home(test_root=test_root, mode=provider_home_mode)
     provider_home.mkdir(parents=True, exist_ok=True)
     env = layout_smoke._env(provider_home=provider_home, role_store=Path(prepared["role_store"]))
+    if auto_retry:
+        env["CCB_CCBD_IDLE_FULL_HEARTBEAT_INTERVAL_S"] = "1"
+    else:
+        env["CCB_CCBD_RELOAD_DRAIN_AUTO_RETRY"] = "0"
     commands: list[dict[str, Any]] = []
     expected_failure_commands: list[dict[str, Any]] = []
 
@@ -167,17 +173,28 @@ def run_busy_remove_drain_smoke(
             )
         )
 
-        retry_reload = layout_smoke._run(
-            "reload_remove_agent2_after_drain",
-            [str(ccb_test), "--project", str(project_root), "reload"],
-            cwd=test_root,
-            env=env,
-            timeout=command_timeout_s,
-        )
-        commands.append(retry_reload)
-
-        final_view = _project_view_result("project_view_after_retry_reload", project_root, timeout_s=5.0)
-        commands.append(final_view)
+        auto_retry_wait = None
+        if auto_retry:
+            retry_reload = None
+            auto_retry_wait = _wait_for_auto_retry(
+                "wait_for_auto_retry_remove_agent2",
+                project_root,
+                timeout_s=max(20.0, float(busy_latency_ms) / 1000.0 + 15.0),
+            )
+            commands.append(auto_retry_wait)
+            final_view = auto_retry_wait if _returncode(auto_retry_wait, default=1) == 0 else _project_view_result("project_view_after_auto_retry_timeout", project_root, timeout_s=5.0)
+        else:
+            retry_reload = layout_smoke._run(
+                "reload_remove_agent2_after_drain",
+                [str(ccb_test), "--project", str(project_root), "reload"],
+                cwd=test_root,
+                env=env,
+                timeout=command_timeout_s,
+            )
+            commands.append(retry_reload)
+            final_view = _project_view_result("project_view_after_retry_reload", project_root, timeout_s=5.0)
+        if final_view is not auto_retry_wait:
+            commands.append(final_view)
 
         blocked_view_payload = layout_smoke._payload(blocked_view)
         final_view_payload = layout_smoke._payload(final_view)
@@ -196,8 +213,14 @@ def run_busy_remove_drain_smoke(
             "new_ask_rejected_while_draining": int(rejected_ask.get("returncode") or 0) != 0
             and "draining" in _combined_output(rejected_ask),
             "busy_job_terminal": layout_smoke._watch_commands_terminal(commands),
-            "retry_reload_published": _returncode(retry_reload, default=1) == 0
-            and "reload_status: published" in _combined_output(retry_reload),
+            "retry_reload_published": True
+            if auto_retry
+            else _returncode(retry_reload or {}, default=1) == 0
+            and (
+                "reload_status: published" in _combined_output(retry_reload or {})
+                or "reload_status: noop" in _combined_output(retry_reload or {})
+            ),
+            "auto_retry_published": _returncode(auto_retry_wait, default=1) == 0 if auto_retry else True,
             "project_view_drain_cleared": _active_drain_count(final_view_payload) == 0,
             "agent2_removed_from_view": not _view_has_agent(final_view_payload, "agent2")
             and not _view_windows_include_agent(final_view_payload, "agent2"),
@@ -207,6 +230,7 @@ def run_busy_remove_drain_smoke(
             "reload_busy_drain_smoke_status": status,
             "provider": provider,
             "provider_home_mode": provider_home_mode,
+            "auto_retry": bool(auto_retry),
             "preflight": preflight_payload,
             "project_root": str(project_root),
             "checks": checks,
@@ -230,6 +254,7 @@ def compact_busy_drain_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "reload_busy_drain_smoke_status": payload.get("reload_busy_drain_smoke_status"),
         "provider": payload.get("provider"),
         "provider_home_mode": payload.get("provider_home_mode"),
+        "auto_retry": payload.get("auto_retry"),
         "preflight": payload.get("preflight"),
         "project_root": payload.get("project_root"),
         "checks": payload.get("checks"),
@@ -265,6 +290,37 @@ def _project_view_result(name: str, project_root: Path, *, timeout_s: float) -> 
         "stderr": "",
         "timeout": False,
         "payload": payload,
+    }
+
+
+def _wait_for_auto_retry(name: str, project_root: Path, *, timeout_s: float) -> dict[str, Any]:
+    deadline = monotonic() + max(1.0, float(timeout_s))
+    attempts = 0
+    last: dict[str, Any] | None = None
+    while monotonic() < deadline:
+        attempts += 1
+        current = _project_view_result(f"{name}_attempt_{attempts}", project_root, timeout_s=5.0)
+        last = current
+        payload = layout_smoke._payload(current)
+        if _active_drain_count(payload) == 0 and not _view_has_agent(payload, "agent2") and not _view_windows_include_agent(payload, "agent2"):
+            enriched = dict(payload)
+            enriched["auto_retry_attempts"] = attempts
+            return {
+                "name": name,
+                "returncode": 0,
+                "stdout": json.dumps(enriched, sort_keys=True),
+                "stderr": "",
+                "timeout": False,
+                "payload": enriched,
+            }
+        sleep(0.5)
+    return {
+        "name": name,
+        "returncode": 1,
+        "stdout": str((last or {}).get("stdout") or ""),
+        "stderr": "timed out waiting for reload drain auto retry to remove agent2",
+        "timeout": True,
+        "payload": layout_smoke._payload(last or {}),
     }
 
 
@@ -335,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider-home-mode", choices=("source-home", "real-home"), default="source-home")
     parser.add_argument("--command-timeout", type=int, default=DEFAULT_COMMAND_TIMEOUT_S)
     parser.add_argument("--busy-latency-ms", type=int, default=5000)
+    parser.add_argument("--auto-retry", action="store_true", help="Wait for daemon heartbeat auto retry instead of running a manual retry reload.")
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--keep-running", action="store_true")
     parser.add_argument("--full-output", action="store_true", help="Print complete command stdout and JSON payloads.")
@@ -350,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         reset=args.reset,
         keep_running=args.keep_running,
         busy_latency_ms=args.busy_latency_ms,
+        auto_retry=bool(args.auto_retry),
     )
     output = payload if args.full_output else compact_busy_drain_payload(payload)
     print(json.dumps(output, indent=2, sort_keys=True))
