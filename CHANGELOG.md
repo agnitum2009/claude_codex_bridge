@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v8.0.3 (2026-06-28)
+
+### npm Release Metadata Fix
+
+- **npm Provenance Metadata Fixed**: package metadata now points to the
+  canonical GitHub repository used by GitHub Actions, allowing npm provenance
+  validation to match the release workflow source.
+- **Release Surface Synchronized**: VERSION, package metadata, mobile app
+  version metadata, README links, workflow defaults, and APK download URLs are
+  aligned for 8.0.3.
+
 ## v8.0.2 (2026-06-28)
 
 ### CCB Mobile Tailnet Onboarding Fixes

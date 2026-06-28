@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.0.2-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.3-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -222,10 +222,10 @@ Run `ccb update rich` to install the optional rich workbench; it bundles Yazi wh
 
 ### Mobile App (Android Alpha)
 
-CCB 8.0.2 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
+CCB 8.0.3 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
 and publishes an Android APK as a GitHub Release asset:
 
-- [Download CCB Mobile v8.0.2 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.2/ccb-mobile-v8.0.2.apk)
+- [Download CCB Mobile v8.0.3 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.3/ccb-mobile-v8.0.3.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server/gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -770,6 +770,16 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v8.0.3</b> - npm Release Metadata Fix</summary>
+
+- Fixes npm provenance metadata so `@seemseam/ccb` publishes from the canonical
+  GitHub repository used by GitHub Actions.
+- Synchronizes VERSION, package metadata, mobile app version metadata, README
+  links, workflow defaults, and APK download URLs for 8.0.3.
+
+</details>
+
+<details>
 <summary><b>v8.0.2</b> - Mobile Tailnet Onboarding Fixes</summary>
 
 - Handles the Tailscale Serve one-time approval flow without exposing raw
