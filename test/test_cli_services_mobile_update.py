@@ -340,6 +340,12 @@ def test_onboarding_logged_in_starts_gateway_serve_and_prints_qr() -> None:
         (
             "tailscale",
             "serve",
+            "status",
+            "--json",
+        ),
+        (
+            "tailscale",
+            "serve",
             "--bg",
             "--https=8787",
             "http://127.0.0.1:8787",
@@ -358,6 +364,50 @@ def test_onboarding_logged_in_starts_gateway_serve_and_prints_qr() -> None:
     assert "no Funnel, tokens, ACLs, or grants" in text
     assert "ccb mobile serve" not in text
     assert "terminal WS:" not in text
+
+
+def test_onboarding_logged_in_reuses_existing_tailscale_serve_config() -> None:
+    output: list[str] = []
+    run_commands: list[tuple[str, ...]] = []
+    handle = _FakeGatewayHandle()
+    serve_status = {
+        "TCP": {"8787": {"HTTPS": True}},
+        "Web": {
+            "desktop.tailnet.ts.net:8787": {
+                "Handlers": {"/": {"Proxy": "http://127.0.0.1:8787"}}
+            }
+        },
+    }
+
+    def _run(command, **_kwargs):
+        run_commands.append(tuple(command))
+        if tuple(command) == ("tailscale", "serve", "status", "--json"):
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps(serve_status), stderr=""
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    code = mobile_update.run_mobile_update_onboarding(
+        detect_tailscale_fn=lambda: mobile_update.TailscaleStatus(
+            installed=True,
+            path="/usr/bin/tailscale",
+            logged_in=True,
+            hostname="desktop.tailnet.ts.net.",
+        ),
+        prepare_gateway_fn=lambda _command: handle,
+        run_fn=_run,
+        print_fn=output.append,
+        serve_forever=False,
+        qr_ansi=False,
+    )
+
+    text = "\n".join(output)
+    assert code == 0
+    assert run_commands == [("tailscale", "serve", "status", "--json")]
+    assert handle.closed is True
+    assert "CCB Mobile is ready" in text
+    assert "Scan this QR in CCB Mobile" in text
+    assert "Could not start Tailscale Serve" not in text
 
 
 def test_onboarding_logged_in_requires_pairing_qr_payload() -> None:

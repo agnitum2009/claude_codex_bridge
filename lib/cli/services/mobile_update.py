@@ -317,6 +317,19 @@ def _run_tailscale_serve(
     *,
     run_fn: Callable[..., subprocess.CompletedProcess[object]],
 ) -> subprocess.CompletedProcess[object]:
+    if _tailscale_serve_status_matches(command, run_fn=run_fn):
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+    result = _invoke_tailscale_serve(command, run_fn=run_fn)
+    if result.returncode != 0 and _tailscale_serve_status_matches(command, run_fn=run_fn):
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+    return result
+
+
+def _invoke_tailscale_serve(
+    command: tuple[str, ...],
+    *,
+    run_fn: Callable[..., subprocess.CompletedProcess[object]],
+) -> subprocess.CompletedProcess[object]:
     try:
         return run_fn(
             command,
@@ -329,6 +342,70 @@ def _run_tailscale_serve(
         if _tailscale_serve_enable_url(text):
             return subprocess.CompletedProcess(command, 1, stdout=text, stderr="")
         raise
+
+
+def _tailscale_serve_status_matches(
+    command: tuple[str, ...],
+    *,
+    run_fn: Callable[..., subprocess.CompletedProcess[object]],
+) -> bool:
+    expected = _tailscale_serve_expected_target(command)
+    if expected is None:
+        return False
+    port, target = expected
+    try:
+        result = run_fn(
+            (command[0], "serve", "status", "--json"),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        payload = json.loads(str(result.stdout or "{}"))
+    except json.JSONDecodeError:
+        return False
+    tcp = payload.get("TCP")
+    if not isinstance(tcp, Mapping):
+        return False
+    tcp_entry = tcp.get(port)
+    if not isinstance(tcp_entry, Mapping) or tcp_entry.get("HTTPS") is not True:
+        return False
+    web = payload.get("Web")
+    if not isinstance(web, Mapping):
+        return False
+    expected_proxy = _normalize_serve_proxy(target)
+    for site in web.values():
+        if not isinstance(site, Mapping):
+            continue
+        handlers = site.get("Handlers")
+        if not isinstance(handlers, Mapping):
+            continue
+        root_handler = handlers.get("/")
+        if not isinstance(root_handler, Mapping):
+            continue
+        if _normalize_serve_proxy(root_handler.get("Proxy")) == expected_proxy:
+            return True
+    return False
+
+
+def _tailscale_serve_expected_target(command: tuple[str, ...]) -> tuple[str, str] | None:
+    port = None
+    for item in command:
+        if item.startswith("--https="):
+            port = item.split("=", 1)[1].strip()
+            break
+    target = command[-1] if command else ""
+    if not port or not target or target.startswith("-"):
+        return None
+    return port, target
+
+
+def _normalize_serve_proxy(value: object) -> str:
+    return str(value or "").strip().rstrip("/")
 
 
 def _completed_process_detail(result: subprocess.CompletedProcess[object]) -> str:
