@@ -166,14 +166,14 @@ def test_onboarding_not_installed_prints_install_and_phone_steps() -> None:
     text = "\n".join(output)
     assert code == 0
     assert install_calls == 0
-    assert "Tailscale is not installed" in text
+    assert "Step 1/3: install Tailscale on this computer" in text
     assert mobile_update.TAILSCALE_DOWNLOAD_URL in text
     assert "Skipping automatic install" in text
-    assert "Install Tailscale on the phone" in text
+    assert "Install Tailscale and sign in to the same tailnet" in text
     assert f"Download APK: {mobile_update.DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL}" in text
     assert "adb install -r build/app/outputs/flutter-apk/app-debug.apk" not in text
     assert mobile_update.CCB_MOBILE_APP_DOWNLOAD_URL_ENV in text
-    assert "Funnel and 0.0.0.0 listeners are not used" in text
+    assert "no Funnel, tokens, ACLs, or grants" in text
 
 
 def test_onboarding_not_installed_can_install_after_prompt(
@@ -203,7 +203,8 @@ def test_onboarding_not_installed_can_install_after_prompt(
     assert "curl -fsSL https://tailscale.com/install.sh | sh" in text
     assert "official Tailscale install script" in text
     assert "Tailscale install command completed" in text
-    assert "Then run `tailscale up`" in text
+    assert "Next: run `tailscale up`" in text
+    assert "The QR appears after this computer is signed in to Tailscale" in text
 
 
 def test_onboarding_not_installed_can_install_from_explicit_env(
@@ -269,9 +270,9 @@ def test_onboarding_logged_out_prints_login_and_can_open_url() -> None:
     assert opened == [mobile_update.TAILSCALE_LOGIN_URL]
     assert "tailscale up" in text
     assert "Login/register" in text
-    assert "After login completes, run `ccb update mobile` again" in text
+    assert "Next: run `ccb update mobile` again" in text
     assert "starts the gateway and prints the QR" in text
-    assert "Open CCB Mobile and scan the pairing QR" in text
+    assert "Open CCB Mobile, tap Scan computer QR" in text
 
 
 def test_onboarding_prints_configured_mobile_app_download_url() -> None:
@@ -302,7 +303,7 @@ def test_onboarding_prints_configured_mobile_app_download_url() -> None:
     assert "Download APK: https://example.test/ccb-mobile.apk" in text
     assert mobile_update.DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL not in text
     assert "adb install -r build/app/outputs/flutter-apk/app-debug.apk" not in text
-    assert "Open CCB Mobile and scan the pairing QR" in text
+    assert "Open CCB Mobile, tap Scan computer QR" in text
 
 
 def test_onboarding_logged_in_starts_gateway_serve_and_prints_qr() -> None:
@@ -346,17 +347,47 @@ def test_onboarding_logged_in_starts_gateway_serve_and_prints_qr() -> None:
     ]
     assert handle.closed is True
     assert "CCB Mobile is ready" in text
-    assert "Gateway: https://desktop.tailnet.ts.net:8787" in text
-    assert "Projects: 2" in text
-    assert "test_ccb2 (healthy)" in text
-    assert "ccb_mobile (healthy)" in text
+    assert "Computer gateway: https://desktop.tailnet.ts.net:8787" in text
+    assert "Mounted projects available in the app: 2" in text
+    assert "test_ccb2 (healthy)" not in text
+    assert "ccb_mobile (healthy)" not in text
     assert "Scan this QR in CCB Mobile" in text
     assert "██" in text
     assert "Gateway URL: https://desktop.tailnet.ts.net:8787" in text
     assert "Pairing Code: pair-code" in text
-    assert "Funnel and 0.0.0.0 listeners are not used" in text
+    assert "no Funnel, tokens, ACLs, or grants" in text
     assert "ccb mobile serve" not in text
     assert "terminal WS:" not in text
+
+
+def test_onboarding_logged_in_requires_pairing_qr_payload() -> None:
+    output: list[str] = []
+    handle = _FakeGatewayHandle()
+    handle.summary = dict(handle.summary)
+    handle.summary["pairing"] = {}
+
+    code = mobile_update.run_mobile_update_onboarding(
+        detect_tailscale_fn=lambda: mobile_update.TailscaleStatus(
+            installed=True,
+            path="/usr/bin/tailscale",
+            logged_in=True,
+            hostname="desktop.tailnet.ts.net.",
+        ),
+        prepare_gateway_fn=lambda _command: handle,
+        run_fn=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, stdout="", stderr=""
+        ),
+        print_fn=output.append,
+        serve_forever=False,
+        qr_ansi=False,
+    )
+
+    text = "\n".join(output)
+    assert code == 1
+    assert handle.closed is True
+    assert "Could not generate CCB Mobile pairing QR" in text
+    assert "CCB Mobile is ready" not in text
+    assert "Scan this QR in CCB Mobile" not in text
 
 
 def test_onboarding_logged_in_serve_failure_closes_gateway() -> None:

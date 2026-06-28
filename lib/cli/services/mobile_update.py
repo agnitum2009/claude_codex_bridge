@@ -20,8 +20,8 @@ TAILSCALE_LOGIN_URL = "https://login.tailscale.com/start"
 DEFAULT_MOBILE_GATEWAY_LISTEN = "127.0.0.1:8787"
 CCB_MOBILE_APP_DOWNLOAD_URL_ENV = "CCB_MOBILE_APP_DOWNLOAD_URL"
 DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL = (
-    "https://github.com/SeemSeam/claude_codex_bridge/releases/download/"
-    "v8.0.0/ccb-mobile-v8.0.0.apk"
+    "https://github.com/bfly123/claude_code_bridge/releases/download/"
+    "v8.0.1/ccb-mobile-v8.0.1.apk"
 )
 TAILSCALE_LINUX_INSTALL_COMMAND = (
     "sh",
@@ -72,16 +72,16 @@ def run_mobile_update_onboarding(
     status = detect_tailscale_fn()
 
     print_fn("CCB Mobile setup")
+    print_fn("This command prepares your computer for CCB Mobile pairing.")
     print_fn(
-        "Safety: gateway stays loopback-only. Funnel and 0.0.0.0 listeners are not used."
+        "Security: loopback-only gateway through Tailscale Serve; no Funnel, tokens, ACLs, or grants."
     )
-    print_fn("No Tailscale tokens, passwords, ACLs, or grants are stored or changed.")
     print_fn("")
 
     if not status.installed:
-        print_fn("Tailscale is not installed.")
-        print_fn(f"Install Tailscale: {TAILSCALE_DOWNLOAD_URL}")
-        print_fn(f"Suggested install: {_tailscale_install_hint()}")
+        print_fn("Step 1/3: install Tailscale on this computer.")
+        print_fn(f"Download: {TAILSCALE_DOWNLOAD_URL}")
+        print_fn(f"Suggested command: {_tailscale_install_hint()}")
         install_result = _maybe_install_tailscale(
             environ=env,
             install_tailscale_fn=install_tailscale_fn,
@@ -91,19 +91,19 @@ def run_mobile_update_onboarding(
         )
         if install_result is not None and install_result != 0:
             return install_result
-        print_fn("Then run `tailscale up`, then run `ccb update mobile` again.")
+        print_fn("Next: run `tailscale up`, then run `ccb update mobile` again.")
+        print_fn("The QR appears after this computer is signed in to Tailscale.")
         print_fn("")
         _print_mobile_app_steps(print_fn, environ=env)
         return 0
 
     print_fn(f"Tailscale: {status.path or 'tailscale'}")
     if not status.logged_in:
-        print_fn("Tailscale is not logged in.")
+        print_fn("Step 1/3: sign in to Tailscale on this computer.")
         print_fn("Run: tailscale up")
         print_fn(f"Login/register: {TAILSCALE_LOGIN_URL}")
-        print_fn(
-            "After login completes, run `ccb update mobile` again. The next run starts the gateway and prints the QR."
-        )
+        print_fn("Next: run `ccb update mobile` again.")
+        print_fn("The next run starts the gateway and prints the QR.")
         if _should_open_login(env):
             open_url_fn(TAILSCALE_LOGIN_URL)
             print_fn("Opened the Tailscale login/register page.")
@@ -140,14 +140,20 @@ def run_mobile_update_onboarding(
         )
         return int(serve_result.returncode or 1)
 
+    try:
+        qr_payload = _pairing_qr_text(handle.summary)
+    except ValueError as exc:
+        _close_handle(handle)
+        print_fn(f"Could not generate CCB Mobile pairing QR: {exc}")
+        return 1
+
     print_fn("")
     print_fn("CCB Mobile is ready.")
-    _print_gateway_ready(handle.summary, print_fn=print_fn)
+    _print_ready_summary(handle.summary, print_fn=print_fn)
     print_fn("")
     _print_mobile_app_steps(print_fn, environ=env)
     print_fn("")
     print_fn("Scan this QR in CCB Mobile:")
-    qr_payload = _pairing_qr_text(handle.summary)
     use_ansi = (
         (print_fn is print and sys.stdout.isatty()) if qr_ansi is None else qr_ansi
     )
@@ -313,25 +319,11 @@ def _close_handle(handle: object) -> None:
         close()
 
 
-def _print_gateway_ready(
+def _print_ready_summary(
     summary: Mapping[str, object], *, print_fn: Callable[[str], None]
 ) -> None:
-    print_fn(f"Gateway: {summary.get('gateway_url', '')}")
-    print_fn(f"Mode: {summary.get('mode', '')}")
-    print_fn(f"Projects: {summary.get('project_count', 0)}")
-    projects = summary.get("projects")
-    if isinstance(projects, (list, tuple)):
-        for item in projects:
-            if not isinstance(item, Mapping):
-                continue
-            name = str(
-                item.get("display_name") or item.get("name") or item.get("id") or ""
-            ).strip()
-            health = str(item.get("health") or "").strip()
-            line = f"  - {name}" if name else "  - project"
-            if health:
-                line += f" ({health})"
-            print_fn(line)
+    print_fn(f"Computer gateway: {summary.get('gateway_url', '')}")
+    print_fn(f"Mounted projects available in the app: {summary.get('project_count', 0)}")
 
 
 def _pairing_qr_text(summary: Mapping[str, object]) -> str:
@@ -366,7 +358,7 @@ def _print_pairing_fallback(
     pairing = summary.get("pairing")
     if not isinstance(pairing, Mapping):
         return
-    print_fn("If scanning fails, enter these in CCB Mobile:")
+    print_fn("If scanning fails, use Manual Pairing in CCB Mobile:")
     print_fn(
         f"  Gateway URL: {pairing.get('gateway_url') or summary.get('gateway_url') or ''}"
     )
@@ -480,15 +472,15 @@ def _print_mobile_app_steps(
         _clean_text(environ.get(CCB_MOBILE_APP_DOWNLOAD_URL_ENV))
         or DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL
     )
-    print_fn("Phone setup:")
-    print_fn("   1. Install Tailscale on the phone and sign in to the same tailnet.")
-    print_fn("   2. Install CCB Mobile on the phone:")
+    print_fn("On your phone:")
+    print_fn("   1. Install Tailscale and sign in to the same tailnet.")
+    print_fn("   2. Install CCB Mobile:")
     print_fn(f"      Download APK: {app_download_url}")
     print_fn(
         f"      Override this link with {CCB_MOBILE_APP_DOWNLOAD_URL_ENV} if your team mirrors the APK."
     )
-    print_fn("   3. Enable the Tailscale VPN on the phone.")
-    print_fn("   4. Open CCB Mobile and scan the pairing QR.")
+    print_fn("   3. Turn on the Tailscale VPN.")
+    print_fn("   4. Open CCB Mobile, tap Scan computer QR, and scan the QR below.")
 
 
 def _should_open_login(environ: Mapping[str, str]) -> bool:
