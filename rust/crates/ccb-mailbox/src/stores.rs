@@ -23,15 +23,12 @@ impl MailboxStore {
 
     pub fn load(&self, agent_name: &str) -> crate::Result<Option<MailboxRecord>> {
         let path = self.layout.agent_mailbox_path(agent_name);
-        if !path.exists() {
-            return Ok(None);
-        }
-        self.json.load(&path).map(Some).map_err(Into::into)
+        crate::record_codec::load(&self.json, &path, crate::record_codec::MAILBOX_RECORD)
     }
 
     pub fn save(&self, record: &MailboxRecord) -> crate::Result<()> {
         let path = self.layout.agent_mailbox_path(&record.agent_name);
-        self.json.save(&path, record).map_err(Into::into)
+        crate::record_codec::save(&self.json, &path, crate::record_codec::MAILBOX_RECORD, record)
     }
 
     pub fn compare_and_save(
@@ -67,7 +64,9 @@ impl MailboxStore {
                 }
             })
         {
-            if let Ok(record) = self.json.load::<MailboxRecord>(&path) {
+            if let Ok(Some(record)) =
+                crate::record_codec::load::<MailboxRecord>(&self.json, &path, crate::record_codec::MAILBOX_RECORD)
+            {
                 records.push(record);
             }
         }
@@ -93,12 +92,22 @@ impl InboundEventStore {
 
     pub fn append(&self, record: &InboundEventRecord) -> crate::Result<()> {
         let path = self.layout.agent_inbox_path(&record.agent_name);
-        self.jsonl.append(&path, record).map_err(Into::into)
+        crate::record_codec::append(
+            &self.jsonl,
+            &path,
+            crate::record_codec::INBOUND_EVENT_RECORD,
+            record,
+        )
     }
 
     pub fn list_agent(&self, agent_name: &str) -> Vec<InboundEventRecord> {
         let path = self.layout.agent_inbox_path(agent_name);
-        self.jsonl.read_all(&path).unwrap_or_default()
+        crate::record_codec::read_all(
+            &self.jsonl,
+            &path,
+            crate::record_codec::INBOUND_EVENT_RECORD,
+        )
+        .unwrap_or_default()
     }
 
     pub fn read_since(
@@ -107,9 +116,13 @@ impl InboundEventStore {
         start_line: usize,
     ) -> (usize, Vec<InboundEventRecord>) {
         let path = self.layout.agent_inbox_path(agent_name);
-        self.jsonl
-            .read_since(&path, start_line)
-            .unwrap_or_else(|_| (0, Vec::new()))
+        crate::record_codec::read_since(
+            &self.jsonl,
+            &path,
+            crate::record_codec::INBOUND_EVENT_RECORD,
+            start_line,
+        )
+        .unwrap_or_else(|_| (0, Vec::new()))
     }
 
     pub fn get_latest(
@@ -118,11 +131,13 @@ impl InboundEventStore {
         inbound_event_id: &str,
     ) -> Option<InboundEventRecord> {
         let path = self.layout.agent_inbox_path(agent_name);
-        self.jsonl
-            .find_last(&path, |payload: &InboundEventRecord| {
-                payload.inbound_event_id == inbound_event_id
-            })
-            .unwrap_or_default()
+        crate::record_codec::find_last(
+            &self.jsonl,
+            &path,
+            crate::record_codec::INBOUND_EVENT_RECORD,
+            |payload: &InboundEventRecord| payload.inbound_event_id == inbound_event_id,
+        )
+        .unwrap_or_default()
     }
 
     pub fn get_latest_for_attempt(
@@ -131,11 +146,13 @@ impl InboundEventStore {
         attempt_id: &str,
     ) -> Option<InboundEventRecord> {
         let path = self.layout.agent_inbox_path(agent_name);
-        self.jsonl
-            .find_last(&path, |payload: &InboundEventRecord| {
-                payload.attempt_id.as_deref() == Some(attempt_id)
-            })
-            .unwrap_or_default()
+        crate::record_codec::find_last(
+            &self.jsonl,
+            &path,
+            crate::record_codec::INBOUND_EVENT_RECORD,
+            |payload: &InboundEventRecord| payload.attempt_id.as_deref() == Some(attempt_id),
+        )
+        .unwrap_or_default()
     }
 }
 
@@ -156,15 +173,17 @@ impl DeliveryLeaseStore {
 
     pub fn load(&self, agent_name: &str) -> crate::Result<Option<DeliveryLease>> {
         let path = self.layout.mailbox_lease_path(agent_name);
-        if !path.exists() {
-            return Ok(None);
-        }
-        self.json.load(&path).map(Some).map_err(Into::into)
+        crate::record_codec::load(&self.json, &path, crate::record_codec::DELIVERY_LEASE)
     }
 
     pub fn save(&self, record: &DeliveryLease) -> crate::Result<()> {
         let path = self.layout.mailbox_lease_path(&record.agent_name);
-        self.json.save(&path, record).map_err(Into::into)
+        crate::record_codec::save(
+            &self.json,
+            &path,
+            crate::record_codec::DELIVERY_LEASE,
+            record,
+        )
     }
 
     pub fn remove(&self, agent_name: &str) -> crate::Result<()> {
@@ -193,7 +212,9 @@ impl DeliveryLeaseStore {
                 }
             })
         {
-            if let Ok(lease) = self.json.load::<DeliveryLease>(&path) {
+            if let Ok(Some(lease)) =
+                crate::record_codec::load::<DeliveryLease>(&self.json, &path, crate::record_codec::DELIVERY_LEASE)
+            {
                 leases.push(lease);
             }
         }

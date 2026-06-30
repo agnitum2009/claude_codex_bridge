@@ -61,7 +61,9 @@ fn mailbox_error_to_pyerr(e: ccb_mailbox::MailboxError) -> PyErr {
         ccb_mailbox::MailboxError::Storage(_) | ccb_mailbox::MailboxError::Io(_) => {
             PyErr::new::<PyOSError, _>(e.to_string())
         }
-        ccb_mailbox::MailboxError::Json(_) => PyErr::new::<PyValueError, _>(e.to_string()),
+        ccb_mailbox::MailboxError::Json(_) | ccb_mailbox::MailboxError::RecordCodec(_) => {
+            PyErr::new::<PyValueError, _>(e.to_string())
+        }
         ccb_mailbox::MailboxError::NotFound(_) => PyErr::new::<PyRuntimeError, _>(e.to_string()),
     }
 }
@@ -339,6 +341,127 @@ impl PyMailboxKernelService {
             .map_err(mailbox_error_to_pyerr)?;
         to_py_object(py, record)
     }
+
+    #[pyo3(signature = (
+        agent_name,
+        queue_delta=0,
+        pending_reply_delta=0,
+        active_inbound_event_id=None,
+        last_started_at=None,
+        last_finished_at=None,
+        updated_at=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn apply_incremental_summary_update(
+        &self,
+        py: Python<'_>,
+        agent_name: &str,
+        queue_delta: i32,
+        pending_reply_delta: i32,
+        active_inbound_event_id: Option<&Bound<'_, PyAny>>,
+        last_started_at: Option<&str>,
+        last_finished_at: Option<&str>,
+        updated_at: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let active = map_optional_event_id(active_inbound_event_id)?;
+        let record = self
+            .inner
+            .apply_incremental_summary_update(
+                agent_name,
+                queue_delta,
+                pending_reply_delta,
+                active,
+                last_started_at,
+                last_finished_at,
+                updated_at,
+            )
+            .map_err(mailbox_error_to_pyerr)?;
+        to_py_object(py, record)
+    }
+
+    #[pyo3(signature = (
+        agent_name,
+        queue_delta=0,
+        pending_reply_delta=0,
+        active_inbound_event_id=None,
+        last_started_at=None,
+        last_finished_at=None,
+        updated_at=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn upsert_mailbox_summary(
+        &self,
+        py: Python<'_>,
+        agent_name: &str,
+        queue_delta: i32,
+        pending_reply_delta: i32,
+        active_inbound_event_id: Option<&Bound<'_, PyAny>>,
+        last_started_at: Option<&str>,
+        last_finished_at: Option<&str>,
+        updated_at: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        self.apply_incremental_summary_update(
+            py,
+            agent_name,
+            queue_delta,
+            pending_reply_delta,
+            active_inbound_event_id,
+            last_started_at,
+            last_finished_at,
+            updated_at,
+        )
+    }
+
+    #[pyo3(signature = (
+        agent_name,
+        inbound_event_id,
+        payload_ref=None,
+        status=0,
+        updated_at=None,
+        clear_progress=false
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn rewrite_head(
+        &self,
+        py: Python<'_>,
+        agent_name: &str,
+        inbound_event_id: &str,
+        payload_ref: Option<&str>,
+        status: u32,
+        updated_at: Option<&str>,
+        clear_progress: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let status = inbound_event_status_from_int(status)?;
+        let record = self.inner.rewrite_head(
+            agent_name,
+            inbound_event_id,
+            payload_ref,
+            status,
+            updated_at,
+            clear_progress,
+        );
+        option_to_py_object(py, record)
+    }
+}
+
+/// Map the Python `active_inbound_event_id` argument to the Rust kernel's
+/// `Option<Option<String>>` shape:
+/// - absent or `Ellipsis` -> `None` (keep prior)
+/// - `None` -> `Some(None)` (clear active id)
+/// - string -> `Some(Some(id))`
+fn map_optional_event_id(
+    value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<Option<String>>> {
+    let Some(obj) = value else {
+        return Ok(None);
+    };
+    if obj.is_ellipsis() {
+        return Ok(None);
+    }
+    if obj.is_none() {
+        return Ok(Some(None));
+    }
+    Ok(Some(Some(obj.extract::<String>()?)))
 }
 
 // ---------------------------------------------------------------------------

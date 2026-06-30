@@ -26,6 +26,7 @@ pub mod mailbox;
 pub mod model_codecs;
 pub mod model_enums;
 pub mod queries;
+pub mod record_codec;
 pub mod service;
 pub mod service_state;
 pub mod summary;
@@ -67,6 +68,8 @@ pub enum MailboxError {
     Json(#[from] serde_json::Error),
     #[error("not found: {0}")]
     NotFound(String),
+    #[error("record codec error: {0}")]
+    RecordCodec(String),
 }
 
 pub type Result<T> = std::result::Result<T, MailboxError>;
