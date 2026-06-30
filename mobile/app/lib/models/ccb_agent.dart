@@ -9,6 +9,11 @@ class CcbAgent {
     this.paneId,
     this.runtimeHealth,
     this.activityState,
+    this.activitySymbol,
+    this.activityColor,
+    this.activitySource,
+    this.activityReason,
+    this.lastProgressAt,
   });
 
   final String name;
@@ -20,6 +25,11 @@ class CcbAgent {
   final String? paneId;
   final String? runtimeHealth;
   final String? activityState;
+  final String? activitySymbol;
+  final String? activityColor;
+  final String? activitySource;
+  final String? activityReason;
+  final String? lastProgressAt;
 
   factory CcbAgent.fromJson(Map<String, Object?> json) {
     return CcbAgent(
@@ -31,7 +41,13 @@ class CcbAgent {
       queueDepth: _int(json['queue_depth']),
       paneId: _optionalText(json['pane_id']),
       runtimeHealth: _optionalText(json['runtime_health']),
-      activityState: _optionalText(json['state']),
+      activityState:
+          _optionalText(json['activity_state']) ?? _optionalText(json['state']),
+      activitySymbol: _optionalText(json['activity_symbol']),
+      activityColor: _optionalText(json['activity_color']),
+      activitySource: _optionalText(json['activity_source']),
+      activityReason: _optionalText(json['activity_reason']),
+      lastProgressAt: _optionalText(json['last_progress_at']),
     );
   }
 }

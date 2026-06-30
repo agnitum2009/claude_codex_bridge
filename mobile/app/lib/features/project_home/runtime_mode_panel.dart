@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/runtime_mode.dart';
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../pairing/gateway_pairing.dart';
 import '../../transport/gateway_route_diagnostics.dart';
 import 'project_home_gateway_profiles.dart';
@@ -34,6 +35,7 @@ class RuntimeModePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     final modes = AppRuntimeMode.values;
     final selectedMode = modes.contains(mode) ? mode : AppRuntimeMode.fake;
     return ExpansionTile(
@@ -41,9 +43,9 @@ class RuntimeModePanel extends StatelessWidget {
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
       leading: Icon(mode.icon),
-      title: const Text('Runtime'),
+      title: Text(strings.runtime),
       subtitle: Text(
-        _runtimeSubtitle(),
+        _runtimeSubtitle(context),
         key: const ValueKey('runtime-mode-status'),
       ),
       children: [
@@ -58,7 +60,7 @@ class RuntimeModePanel extends StatelessWidget {
                 ButtonSegment<AppRuntimeMode>(
                   value: item,
                   icon: Icon(item.icon),
-                  label: Text(item.label),
+                  label: Text(strings.runtimeModeLabel(item.label)),
                 ),
             ],
           ),
@@ -90,7 +92,7 @@ class RuntimeModePanel extends StatelessWidget {
                     }
                   },
           decoration: InputDecoration(
-            labelText: 'Gateway profile',
+            labelText: strings.gatewayProfile,
             prefixIcon:
                 loadingProfiles
                     ? const SizedBox.square(
@@ -109,7 +111,7 @@ class RuntimeModePanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  _diagnosticsStatus(),
+                  _diagnosticsStatus(context),
                   key: const ValueKey('gateway-route-diagnostics-status'),
                 ),
               ),
@@ -124,7 +126,9 @@ class RuntimeModePanel extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                         : const Icon(Icons.network_check),
-                label: Text(checkingRoute ? 'Checking' : 'Check Route'),
+                label: Text(
+                  checkingRoute ? strings.checking : strings.checkRoute,
+                ),
               ),
             ],
           ),
@@ -133,17 +137,18 @@ class RuntimeModePanel extends StatelessWidget {
     );
   }
 
-  String _runtimeSubtitle() {
+  String _runtimeSubtitle(BuildContext context) {
     if (mode == AppRuntimeMode.pairedGateway && selectedProfile != null) {
       return projectHomeGatewayProfileLabel(selectedProfile!);
     }
-    return mode.label;
+    return CcbMobileLocalizations.of(context).runtimeModeLabel(mode.label);
   }
 
-  String _diagnosticsStatus() {
+  String _diagnosticsStatus(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     if (checkingRoute) {
-      return 'Checking route';
+      return strings.checkingRoute;
     }
-    return routeDiagnostics?.summary ?? 'Route unchecked';
+    return routeDiagnostics?.summary ?? strings.routeUnchecked;
   }
 }

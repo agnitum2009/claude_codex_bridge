@@ -29,10 +29,6 @@ class AgentChatController {
     return 'terminal-live-output-$agentName-${_messageCounter++}';
   }
 
-  String nextTerminalLiveNoticeId(String agentName) {
-    return 'terminal-live-notice-$agentName-${_messageCounter++}';
-  }
-
   CcbAgentConversation? remoteConversationFor(String agentName) {
     return _remoteConversations[agentName];
   }

@@ -14,10 +14,6 @@ void main() {
         controller.nextTerminalLiveOutputId('lead'),
         'terminal-live-output-lead-1',
       );
-      expect(
-        controller.nextTerminalLiveNoticeId('lead'),
-        'terminal-live-notice-lead-2',
-      );
 
       controller.beginLoadingConversation('lead');
       controller.beginSubmitting('lead');

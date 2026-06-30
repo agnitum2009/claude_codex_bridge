@@ -13,18 +13,21 @@ List<CcbConversationItem> selectedAgentTimelineItems({
   required List<CcbContentItem> contentItems,
   required ReadableTerminalHistory? terminalHistory,
   required CcbAgentConversation? remoteConversation,
-  required String? conversationError,
   required List<CcbConversationItem> localMessages,
+  bool preferSupplementalTerminalHistoryAtEnd = false,
+  bool isLoadingConversation = false,
 }) {
   final remoteItems = remoteConversation?.items;
   final hasRemoteTerminalConversation =
       remoteItems?.any(isTerminalDerivedConversationItem) ?? false;
   final hasProviderNativeConversation =
       remoteItems?.any(isProviderNativeConversationItem) ?? false;
-  final supplementalTerminalItems =
+  final canSupplementTerminalHistory =
       remoteConversation != null &&
-              !hasRemoteTerminalConversation &&
-              !hasProviderNativeConversation
+      !hasRemoteTerminalConversation &&
+      !hasProviderNativeConversation;
+  final supplementalTerminalItems =
+      canSupplementTerminalHistory
           ? terminalHistoryConversationItems(
             agentName: agent.name,
             terminalHistory: terminalHistory,
@@ -35,18 +38,15 @@ List<CcbConversationItem> selectedAgentTimelineItems({
       ..._remoteItemsWithSupplementalTerminalHistory(
         remoteItems: remoteItems,
         supplementalTerminalItems: supplementalTerminalItems,
+        appendSupplementalTerminalHistory:
+            preferSupplementalTerminalHistoryAtEnd,
       ),
-    if (remoteConversation == null)
+    if (remoteConversation == null && !isLoadingConversation)
       ...conversationItemsFor(
         view: view,
         agent: agent,
         contentItems: contentItems,
         terminalHistory: terminalHistory,
-      ),
-    if (conversationError != null)
-      conversationRefreshErrorItem(
-        agentName: agent.name,
-        error: conversationError,
       ),
     ...localMessages,
   ];
@@ -55,9 +55,13 @@ List<CcbConversationItem> selectedAgentTimelineItems({
 List<CcbConversationItem> _remoteItemsWithSupplementalTerminalHistory({
   required List<CcbConversationItem> remoteItems,
   required List<CcbConversationItem> supplementalTerminalItems,
+  required bool appendSupplementalTerminalHistory,
 }) {
   if (supplementalTerminalItems.isEmpty) {
     return remoteItems;
+  }
+  if (appendSupplementalTerminalHistory) {
+    return [...remoteItems, ...supplementalTerminalItems];
   }
   final firstUserMessage = remoteItems.indexWhere(
     (item) => item.kind == CcbConversationItemKind.userMessage,
@@ -70,18 +74,4 @@ List<CcbConversationItem> _remoteItemsWithSupplementalTerminalHistory({
     ...supplementalTerminalItems,
     ...remoteItems.skip(firstUserMessage),
   ];
-}
-
-CcbConversationItem conversationRefreshErrorItem({
-  required String agentName,
-  required String error,
-}) {
-  return CcbConversationItem(
-    id: 'conversation-error-$agentName',
-    agentName: agentName,
-    kind: CcbConversationItemKind.systemNotice,
-    title: 'Conversation refresh failed',
-    body: error,
-    source: 'repository',
-  );
 }

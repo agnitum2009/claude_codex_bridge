@@ -115,6 +115,46 @@ void main() {
     expect(find.text('hello'), findsOneWidget);
   });
 
+  testWidgets('expanded long bubbles are height limited and scrollable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final item = CcbConversationItem(
+      id: 'long-reply',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: List.generate(80, (index) => 'line $index').join('\n'),
+      source: 'completion_snapshot',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    final viewportFinder = find.byKey(
+      const ValueKey('conversation-body-viewport-long-reply'),
+    );
+    expect(viewportFinder, findsOneWidget);
+    expect(
+      tester.getSize(viewportFinder).height,
+      conversationBodyViewportMaxHeight(const Size(400, 800)),
+    );
+    expect(find.byType(Scrollbar), findsOneWidget);
+  });
+
   test('unconfirmed pane sends use check pane label', () {
     expect(
       conversationStateLabel(CcbConversationDeliveryState.unconfirmed),

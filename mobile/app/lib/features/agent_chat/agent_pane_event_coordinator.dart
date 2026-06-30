@@ -26,19 +26,18 @@ class AgentPaneEventCoordinator {
   final AgentPaneEventTimelineNearEnd _isTimelineNearEnd;
   final AgentPaneEventScrollTimelineToEnd _scrollTimelineToEnd;
 
-  void apply(PaneChatEvent event) {
+  bool apply(PaneChatEvent event) {
     if (!_isMounted()) {
-      return;
+      return false;
     }
     final agentName = event.agentName;
     final update = localMessagesAfterPaneChatEvent(
       event: event,
       currentMessages: _chatController.localMessagesFor(agentName),
       nextOutputId: () => _chatController.nextTerminalLiveOutputId(agentName),
-      nextNoticeId: () => _chatController.nextTerminalLiveNoticeId(agentName),
     );
     if (!update.changed) {
-      return;
+      return false;
     }
     final shouldScroll = _isTimelineNearEnd(agentName);
     _mutateState(() {
@@ -52,5 +51,6 @@ class AgentPaneEventCoordinator {
     if (shouldScroll) {
       _scrollTimelineToEnd(agentName);
     }
+    return true;
   }
 }

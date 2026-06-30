@@ -49,11 +49,22 @@ class PaneChatController {
   final _sessions = <String, TerminalSession>{};
   final _outputStreams = <String, StreamSubscription<Uint8List>>{};
   final _pendingEchoes = <String, List<String>>{};
+  final _writeQueues = <String, Future<void>>{};
   var _disposed = false;
 
   Stream<PaneChatEvent> get events => _events.stream;
 
   Future<void> send({
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required String body,
+  }) {
+    return _enqueueWrite(agent.name, () async {
+      await _sendNow(agent: agent, view: view, body: body);
+    });
+  }
+
+  Future<void> _sendNow({
     required CcbAgent agent,
     required CcbProjectView view,
     required String body,
@@ -104,6 +115,137 @@ class PaneChatController {
       }
       rethrow;
     }
+  }
+
+  Future<void> sendKey({
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required List<int> bytes,
+  }) {
+    return _enqueueWrite(agent.name, () async {
+      await _sendKeyNow(agent: agent, view: view, bytes: bytes);
+    });
+  }
+
+  Future<void> sendTextThenKey({
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required String body,
+    required List<int> bytes,
+  }) {
+    return _enqueueWrite(agent.name, () async {
+      await _sendTextThenKeyNow(
+        agent: agent,
+        view: view,
+        body: body,
+        bytes: bytes,
+      );
+    });
+  }
+
+  Future<void> _sendKeyNow({
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required List<int> bytes,
+  }) async {
+    if (_disposed) {
+      throw const TerminalTransportException('pane chat controller is closed');
+    }
+    if (bytes.isEmpty) {
+      return;
+    }
+    late final TerminalSession session;
+    try {
+      session = await _sessionFor(agent: agent, view: view);
+    } catch (error) {
+      throw PaneChatSendException(
+        stage: PaneChatSendFailureStage.open,
+        cause: error,
+        inputMayHaveReachedPane: false,
+      );
+    }
+    try {
+      await session.writeBytes(bytes);
+    } catch (error) {
+      throw PaneChatSendException(
+        stage: PaneChatSendFailureStage.enter,
+        cause: error,
+        inputMayHaveReachedPane: false,
+      );
+    }
+  }
+
+  Future<void> _sendTextThenKeyNow({
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required String body,
+    required List<int> bytes,
+  }) async {
+    if (_disposed) {
+      throw const TerminalTransportException('pane chat controller is closed');
+    }
+    if (body.isEmpty) {
+      await _sendKeyNow(agent: agent, view: view, bytes: bytes);
+      return;
+    }
+    late final TerminalSession session;
+    try {
+      session = await _sessionFor(agent: agent, view: view);
+    } catch (error) {
+      throw PaneChatSendException(
+        stage: PaneChatSendFailureStage.open,
+        cause: error,
+        inputMayHaveReachedPane: false,
+      );
+    }
+    final pendingEcho = _normalizedEchoText(body);
+    if (pendingEcho != null) {
+      _pendingEchoes.update(
+        agent.name,
+        (items) => [...items, pendingEcho],
+        ifAbsent: () => [pendingEcho],
+      );
+    }
+    try {
+      try {
+        await session.paste(body);
+      } catch (error) {
+        throw PaneChatSendException(
+          stage: PaneChatSendFailureStage.paste,
+          cause: error,
+          inputMayHaveReachedPane: true,
+        );
+      }
+      try {
+        await session.writeBytes(bytes);
+      } catch (error) {
+        throw PaneChatSendException(
+          stage: PaneChatSendFailureStage.enter,
+          cause: error,
+          inputMayHaveReachedPane: true,
+        );
+      }
+    } catch (_) {
+      if (pendingEcho != null) {
+        _consumePendingEcho(agent.name, pendingEcho);
+      }
+      rethrow;
+    }
+  }
+
+  Future<T> _enqueueWrite<T>(String agentName, Future<T> Function() operation) {
+    final previous = _writeQueues[agentName] ?? Future<void>.value();
+    final result = previous.onError((_, _) {}).then((_) => operation());
+    final marker = result.then<void>((_) {}, onError: (_, _) {});
+    _writeQueues[agentName] = marker;
+    unawaited(
+      marker.whenComplete(() {
+        if (identical(_writeQueues[agentName], marker)) {
+          _writeQueues.remove(agentName);
+        }
+      }),
+    );
+    return result;
   }
 
   Future<void> closeSessions() async {

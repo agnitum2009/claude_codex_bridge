@@ -1,13 +1,15 @@
 name: ccb_mobile
 description: Native mobile controller for server-side CCB tmux projects.
 publish_to: "none"
-version: 8.0.4+8000004
+version: 8.0.5+8000005
 
 environment:
   sdk: ">=3.7.0 <4.0.0"
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   flutter_riverpod: ^3.3.2
   flutter_secure_storage: ^10.3.1

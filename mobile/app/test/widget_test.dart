@@ -326,13 +326,18 @@ void main() {
     sendButton.onPressed!();
     await tester.pumpAndSettle();
 
-    expect(gatewayRepository.submittedMessages, hasLength(1));
+    expect(gatewayRepository.submittedMessages, isEmpty);
+    expect(gatewayTerminalTransport.requests, hasLength(1));
     expect(
-      gatewayRepository.submittedMessages.single.body,
-      'paired gateway chat',
+      gatewayTerminalTransport.requests.single.attachCommand,
+      'gateway terminal stream proj-demo/lead',
     );
-    expect(gatewayTerminalTransport.requests, isEmpty);
-    expect(gatewayTerminalTransport.sessions, isEmpty);
+    expect(gatewayTerminalTransport.sessions.single.pasted, [
+      'paired gateway chat',
+    ]);
+    expect(gatewayTerminalTransport.sessions.single.written, [
+      [13],
+    ]);
     expect(find.text('paired gateway chat'), findsOneWidget);
     expect(gatewayRepository.conversationCalls, isNotEmpty);
 
@@ -345,7 +350,7 @@ void main() {
       find.byKey(const ValueKey('ccb-live-terminal-view')),
       findsOneWidget,
     );
-    expect(gatewayTerminalTransport.requests, hasLength(1));
+    expect(gatewayTerminalTransport.requests, hasLength(2));
     expect(
       gatewayTerminalTransport.requests.last.attachCommand,
       'gateway terminal stream proj-demo/lead',

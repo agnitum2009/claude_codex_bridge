@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project.dart';
 import '../../models/ccb_project_view.dart';
@@ -50,6 +52,7 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -61,7 +64,7 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: IconButton(
                   key: const ValueKey('project-list-refresh-action'),
-                  tooltip: 'Refresh projects',
+                  tooltip: strings.refreshProjects,
                   onPressed: onRefreshProjects,
                   icon: const Icon(Icons.refresh),
                 ),
@@ -69,9 +72,9 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
               Expanded(
                 child:
                     projects.isEmpty
-                        ? const Center(
-                          key: ValueKey('project-list-empty'),
-                          child: Text('No CCB projects found'),
+                        ? Center(
+                          key: const ValueKey('project-list-empty'),
+                          child: Text(strings.noCcbProjectsFound),
                         )
                         : ListView.separated(
                           key: const ValueKey('project-list'),
@@ -161,6 +164,7 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
     required this.onWindowSelected,
     required this.onAgentSelected,
     required this.onRefreshView,
+    required this.onTimelineScrollDirectionChanged,
     super.key,
   });
 
@@ -178,6 +182,7 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
   final ValueChanged<String> onWindowSelected;
   final ValueChanged<String> onAgentSelected;
   final Future<CcbProjectView?> Function() onRefreshView;
+  final ValueChanged<ScrollDirection> onTimelineScrollDirectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -219,6 +224,8 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
                   agent: selectedAgent,
                   enableComposerCollapse: true,
                   onRefreshView: onRefreshView,
+                  onUserScrollDirectionChanged:
+                      onTimelineScrollDirectionChanged,
                 ),
               ),
             ],
@@ -357,6 +364,7 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
                         agent: selectedAgent,
                         enableComposerCollapse: false,
                         onRefreshView: onRefreshView,
+                        onUserScrollDirectionChanged: null,
                       ),
                     ),
                   ],

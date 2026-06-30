@@ -148,4 +148,38 @@ void main() {
       CcbNotificationSeverity.critical,
     );
   });
+
+  test('project view maps source activity fields onto agents', () {
+    final view = CcbProjectView.fromProjectViewPayload({
+      'view': {
+        'project': {
+          'id': 'proj-activity',
+          'root': '/tmp/proj-activity',
+          'display_name': 'activity',
+        },
+        'namespace': {'epoch': 2},
+        'agents': [
+          {
+            'name': 'lead',
+            'provider': 'codex',
+            'window': 'main',
+            'activity_state': 'pending',
+            'activity_symbol': '↻',
+            'activity_color': 'yellow',
+            'activity_source': 'codex_runtime',
+            'activity_reason': 'codex_runtime_reconnecting',
+            'last_progress_at': '2026-06-29T10:00:00Z',
+          },
+        ],
+      },
+    });
+
+    final agent = view.agentByName('lead')!;
+    expect(agent.activityState, 'pending');
+    expect(agent.activitySymbol, '↻');
+    expect(agent.activityColor, 'yellow');
+    expect(agent.activitySource, 'codex_runtime');
+    expect(agent.activityReason, 'codex_runtime_reconnecting');
+    expect(agent.lastProgressAt, '2026-06-29T10:00:00Z');
+  });
 }

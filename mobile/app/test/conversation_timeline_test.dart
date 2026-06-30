@@ -74,6 +74,48 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets('maps user drag notifications to scroll direction', (
+    tester,
+  ) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      Builder(
+        builder: (builderContext) {
+          context = builderContext;
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+    final metrics = _metrics(100);
+
+    expect(
+      userScrollDirectionForNotification(
+        ScrollUpdateNotification(
+          metrics: metrics,
+          context: context,
+          dragDetails: DragUpdateDetails(
+            globalPosition: Offset.zero,
+            delta: Offset(0, -12),
+          ),
+        ),
+      ),
+      ScrollDirection.reverse,
+    );
+    expect(
+      userScrollDirectionForNotification(
+        ScrollUpdateNotification(
+          metrics: metrics,
+          context: context,
+          dragDetails: DragUpdateDetails(
+            globalPosition: Offset.zero,
+            delta: Offset(0, 12),
+          ),
+        ),
+      ),
+      ScrollDirection.forward,
+    );
+  });
 }
 
 bool _nearStart(double pixels) {

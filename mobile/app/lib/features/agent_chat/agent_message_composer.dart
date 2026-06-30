@@ -3,9 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
 
-class AgentMessageComposer extends StatelessWidget {
+class AgentMessageComposer extends StatefulWidget {
   const AgentMessageComposer({
     required this.agentName,
     required this.controller,
@@ -20,6 +21,8 @@ class AgentMessageComposer extends StatelessWidget {
     required this.onPickFile,
     required this.onRemoveAttachment,
     required this.onSend,
+    required this.onSendTab,
+    required this.onSendEscape,
     super.key,
   });
 
@@ -36,12 +39,68 @@ class AgentMessageComposer extends StatelessWidget {
   final VoidCallback onPickFile;
   final ValueChanged<String> onRemoveAttachment;
   final VoidCallback onSend;
+  final VoidCallback onSendTab;
+  final VoidCallback onSendEscape;
+
+  @override
+  State<AgentMessageComposer> createState() => _AgentMessageComposerState();
+}
+
+class _AgentMessageComposerState extends State<AgentMessageComposer> {
+  FocusNode? _ownedFocusNode;
+
+  FocusNode get _effectiveFocusNode =>
+      widget.focusNode ?? (_ownedFocusNode ??= FocusNode());
+
+  @override
+  void initState() {
+    super.initState();
+    _effectiveFocusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant AgentMessageComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode == widget.focusNode) {
+      return;
+    }
+    oldWidget.focusNode?.removeListener(_handleFocusChanged);
+    _ownedFocusNode?.removeListener(_handleFocusChanged);
+    if (widget.focusNode != null) {
+      _ownedFocusNode?.dispose();
+      _ownedFocusNode = null;
+    }
+    _effectiveFocusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode?.removeListener(_handleFocusChanged);
+    _ownedFocusNode
+      ?..removeListener(_handleFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (collapsed) {
-      final draft = controller.text.trim();
+    final strings = CcbMobileLocalizations.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final availableHeight =
+        mediaQuery.size.height - mediaQuery.viewInsets.bottom;
+    final showQuickKeyToolbar =
+        _effectiveFocusNode.hasFocus &&
+        mediaQuery.orientation == Orientation.portrait &&
+        availableHeight >= 320;
+    if (widget.collapsed) {
+      final draft = widget.controller.text.trim();
       return Material(
         key: const ValueKey('agent-chat-composer-collapsed'),
         color: colorScheme.surface,
@@ -51,7 +110,7 @@ class AgentMessageComposer extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: InkWell(
-          onTap: onExpand,
+          onTap: widget.onExpand,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
             child: SizedBox(
@@ -62,7 +121,9 @@ class AgentMessageComposer extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      draft.isEmpty ? 'Message $agentName' : draft,
+                      draft.isEmpty
+                          ? strings.messageAgent(widget.agentName)
+                          : draft,
                       key: const ValueKey('agent-chat-composer-collapsed-text'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -70,14 +131,14 @@ class AgentMessageComposer extends StatelessWidget {
                   ),
                   IconButton(
                     key: const ValueKey('agent-composer-expand-action'),
-                    tooltip: 'Open message input',
+                    tooltip: strings.openMessageInput,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints.tightFor(
                       width: 40,
                       height: 40,
                     ),
                     padding: EdgeInsets.zero,
-                    onPressed: onExpand,
+                    onPressed: widget.onExpand,
                     icon: const Icon(Icons.keyboard_arrow_up),
                   ),
                 ],
@@ -99,7 +160,7 @@ class AgentMessageComposer extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (draftAttachments.isNotEmpty)
+            if (widget.draftAttachments.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Wrap(
@@ -107,11 +168,46 @@ class AgentMessageComposer extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 4,
                   children: [
-                    for (final attachment in draftAttachments)
+                    for (final attachment in widget.draftAttachments)
                       _DraftAttachmentPreview(
                         attachment: attachment,
-                        onRemove: () => onRemoveAttachment(attachment.fileId),
+                        onRemove:
+                            () => widget.onRemoveAttachment(attachment.fileId),
                       ),
+                  ],
+                ),
+              ),
+            if (showQuickKeyToolbar)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  key: const ValueKey('agent-quick-key-toolbar'),
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    IconButton(
+                      key: const ValueKey('agent-quick-key-tab'),
+                      tooltip: strings.sendTab,
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 36,
+                        height: 36,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: widget.isSending ? null : widget.onSendTab,
+                      icon: const Icon(Icons.keyboard_tab),
+                    ),
+                    IconButton(
+                      key: const ValueKey('agent-quick-key-esc'),
+                      tooltip: strings.sendEsc,
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 36,
+                        height: 36,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: widget.isSending ? null : widget.onSendEscape,
+                      icon: const Icon(Icons.close),
+                    ),
                   ],
                 ),
               ),
@@ -120,7 +216,7 @@ class AgentMessageComposer extends StatelessWidget {
               children: [
                 IconButton(
                   key: const ValueKey('agent-attachment-button'),
-                  tooltip: 'Attach file',
+                  tooltip: strings.attachFile,
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints.tightFor(
                     width: 40,
@@ -128,7 +224,9 @@ class AgentMessageComposer extends StatelessWidget {
                   ),
                   padding: EdgeInsets.zero,
                   onPressed:
-                      isSending ? null : () => _showAttachmentSheet(context),
+                      widget.isSending
+                          ? null
+                          : () => _showAttachmentSheet(context),
                   icon: const Icon(Icons.attach_file),
                 ),
                 Expanded(
@@ -141,8 +239,8 @@ class AgentMessageComposer extends StatelessWidget {
                       actions: {
                         _SendMessageIntent: CallbackAction<_SendMessageIntent>(
                           onInvoke: (_) {
-                            if (!isSending) {
-                              onSend();
+                            if (!widget.isSending) {
+                              widget.onSend();
                             }
                             return null;
                           },
@@ -150,8 +248,8 @@ class AgentMessageComposer extends StatelessWidget {
                       },
                       child: TextField(
                         key: const ValueKey('agent-message-composer'),
-                        controller: controller,
-                        focusNode: focusNode,
+                        controller: widget.controller,
+                        focusNode: _effectiveFocusNode,
                         minLines: 1,
                         maxLines: 5,
                         textInputAction: TextInputAction.newline,
@@ -161,37 +259,40 @@ class AgentMessageComposer extends StatelessWidget {
                           contentPadding: const EdgeInsets.symmetric(
                             vertical: 8,
                           ),
-                          hintText: 'Message $agentName',
+                          hintText: strings.messageAgent(widget.agentName),
                         ),
                       ),
                     ),
                   ),
                 ),
-                if (collapsible)
+                if (widget.collapsible)
                   IconButton(
                     key: const ValueKey('agent-composer-collapse-action'),
-                    tooltip: 'Collapse message input',
+                    tooltip: strings.collapseMessageInput,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints.tightFor(
                       width: 40,
                       height: 40,
                     ),
                     padding: EdgeInsets.zero,
-                    onPressed: onCollapse,
+                    onPressed: widget.onCollapse,
                     icon: const Icon(Icons.keyboard_arrow_down),
                   ),
                 IconButton.filled(
                   key: const ValueKey('agent-message-send-button'),
-                  tooltip: isSending ? 'Sending message' : 'Send message',
+                  tooltip:
+                      widget.isSending
+                          ? strings.sendingMessage
+                          : strings.sendMessage,
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints.tightFor(
                     width: 40,
                     height: 40,
                   ),
                   padding: EdgeInsets.zero,
-                  onPressed: isSending ? null : onSend,
+                  onPressed: widget.isSending ? null : widget.onSend,
                   icon:
-                      isSending
+                      widget.isSending
                           ? const SizedBox.square(
                             dimension: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -207,6 +308,7 @@ class AgentMessageComposer extends StatelessWidget {
   }
 
   void _showAttachmentSheet(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -219,25 +321,25 @@ class AgentMessageComposer extends StatelessWidget {
               ListTile(
                 key: const ValueKey('agent-attachment-pick-image'),
                 leading: const Icon(Icons.image_outlined),
-                title: const Text('Photo/Image'),
+                title: Text(strings.photoImage),
                 onTap: () {
                   Navigator.of(context).pop();
-                  onPickImage();
+                  widget.onPickImage();
                 },
               ),
               ListTile(
                 key: const ValueKey('agent-attachment-pick-file'),
                 leading: const Icon(Icons.attach_file),
-                title: const Text('File'),
+                title: Text(strings.file),
                 onTap: () {
                   Navigator.of(context).pop();
-                  onPickFile();
+                  widget.onPickFile();
                 },
               ),
               ListTile(
                 key: const ValueKey('agent-attachment-cancel'),
                 leading: const Icon(Icons.close),
-                title: const Text('Cancel'),
+                title: Text(strings.cancel),
                 onTap: () => Navigator.of(context).pop(),
               ),
             ],
@@ -263,6 +365,7 @@ class _DraftAttachmentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     final localPath = attachment.localPath;
     if (attachment.isImage && localPath != null) {
       return SizedBox(
@@ -296,7 +399,7 @@ class _DraftAttachmentPreview extends StatelessWidget {
                   height: 28,
                 ),
                 padding: EdgeInsets.zero,
-                tooltip: 'Remove attachment',
+                tooltip: strings.removeAttachment,
                 onPressed: onRemove,
                 icon: const Icon(Icons.close, size: 16),
               ),

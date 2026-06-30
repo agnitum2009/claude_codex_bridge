@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <application
-        android:label="CCB Mobile"
+        android:label="ccb_mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

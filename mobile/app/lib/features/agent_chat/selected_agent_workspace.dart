@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:file_picker/file_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
@@ -23,12 +24,15 @@ import 'agent_pane_event_coordinator.dart';
 import 'agent_pane_message_submitter.dart';
 import 'agent_terminal_history_refresh_coordinator.dart';
 import 'conversation_refresh_scheduler.dart';
+import 'pane_chat_controller.dart';
 import 'selected_agent_workspace_model.dart';
 import 'selected_agent_workspace_view.dart';
 
 const agentMessageMaxAttachments = 5;
 const agentMessageMaxAttachmentBytes = 25 * 1024 * 1024;
 const selectedAgentUserRefreshCooldown = Duration(seconds: 5);
+const selectedAgentTabKeyBytes = [9];
+const selectedAgentEscapeKeyBytes = [27];
 
 class SelectedAgentWorkspace extends StatefulWidget {
   const SelectedAgentWorkspace({
@@ -39,6 +43,7 @@ class SelectedAgentWorkspace extends StatefulWidget {
     required this.agent,
     required this.enableComposerCollapse,
     required this.onRefreshView,
+    this.onUserScrollDirectionChanged,
     this.localMessageStore,
   });
 
@@ -49,6 +54,7 @@ class SelectedAgentWorkspace extends StatefulWidget {
   final CcbAgent? agent;
   final bool enableComposerCollapse;
   final Future<CcbProjectView?> Function()? onRefreshView;
+  final ValueChanged<ScrollDirection>? onUserScrollDirectionChanged;
   final AgentLocalMessageStore? localMessageStore;
 
   @override
@@ -78,7 +84,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
         scrollTimelineToEnd: _scrollTimelineToEnd,
       );
   late final AgentPaneMessageSubmitter _paneMessageSubmitter =
-      AgentPaneMessageSubmitter(onEvent: _paneEventCoordinator.apply);
+      AgentPaneMessageSubmitter(onEvent: _handlePaneChatEvent);
   late final AgentTerminalHistoryRefreshCoordinator
   _terminalHistoryRefreshCoordinator = AgentTerminalHistoryRefreshCoordinator(
     chatController: _chatController,
@@ -100,11 +106,15 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       );
   late final ConversationRefreshScheduler _conversationRefreshScheduler =
       ConversationRefreshScheduler(
-        onRefresh: _loadConversation,
+        onRefresh: _refreshScheduledConversation,
         isActive: (agentName) => mounted && widget.agent?.name == agentName,
+        onStateChanged: _handleRefreshScheduleChanged,
       );
   final Set<String> _downloadingAttachmentIds = {};
   final Map<String, String> _downloadedAttachmentPaths = {};
+  final Set<String> _awaitingPaneResponseAgentNames = {};
+  final Set<String> _localExceptionStatusAgentNames = {};
+  final Map<String, String> _recentPaneOutputText = {};
   final Map<String, DateTime> _lastUserRefreshAt = {};
   final Set<String> _pendingClearNewMessageAgents = {};
   var _nextDraftAttachmentIndex = 0;
@@ -145,7 +155,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
   void dispose() {
     unawaited(_paneMessageSubmitter.closeSessions());
     _uiControllers.dispose();
-    _conversationRefreshScheduler.cancelAll();
+    _conversationRefreshScheduler.cancelAll(notify: false);
     super.dispose();
   }
 
@@ -246,12 +256,15 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
   }
 
   Future<void> _refreshSelectedAgentConversationAndHistory(
-    CcbAgent agent,
-  ) async {
+    CcbAgent agent, {
+    CcbProjectView? viewOverride,
+  }) async {
     if (!mounted || widget.agent?.name != agent.name) {
       return;
     }
-    await _loadConversation(agent.name);
+    final view = viewOverride ?? widget.view;
+    final targetAgent = view.agentByName(agent.name) ?? agent;
+    await _loadConversation(agent.name, viewOverride: view);
     if (!mounted || widget.agent?.name != agent.name) {
       return;
     }
@@ -262,13 +275,30 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
         conversationHasProviderNativeItems(remoteConversation)) {
       return;
     }
-    await _refreshTerminalHistory(agent);
+    await _refreshTerminalHistory(targetAgent, viewOverride: view);
+  }
+
+  Future<void> _refreshSelectedAgentConversationAndPaneHistory(
+    CcbAgent agent, {
+    CcbProjectView? viewOverride,
+  }) async {
+    if (!mounted || widget.agent?.name != agent.name) {
+      return;
+    }
+    final view = viewOverride ?? widget.view;
+    final targetAgent = view.agentByName(agent.name) ?? agent;
+    await _loadConversation(agent.name, viewOverride: view);
+    if (!mounted || widget.agent?.name != agent.name) {
+      return;
+    }
+    await _refreshTerminalHistory(targetAgent, viewOverride: view);
   }
 
   void _collapseComposer(String agentName) {
     if (!widget.enableComposerCollapse) {
       return;
     }
+    _draftFocusNode(agentName).unfocus();
     setState(() {
       _chatController.collapseComposer(agentName);
     });
@@ -278,18 +308,25 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     setState(() {
       _chatController.expandComposer(agentName);
     });
+    _draftFocusNode(agentName).requestFocus();
   }
 
-  Future<void> _loadConversation(String agentName) async {
+  Future<void> _loadConversation(
+    String agentName, {
+    CcbProjectView? viewOverride,
+  }) async {
     await _conversationRefreshCoordinator.load(
       repository: widget.repository,
-      view: widget.view,
+      view: viewOverride ?? widget.view,
       agentName: agentName,
       refreshView: widget.onRefreshView,
     );
   }
 
-  Future<void> _refreshTerminalHistory(CcbAgent agent) async {
+  Future<void> _refreshTerminalHistory(
+    CcbAgent agent, {
+    CcbProjectView? viewOverride,
+  }) async {
     if (_refreshingTerminalHistory) {
       return;
     }
@@ -298,7 +335,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       await _terminalHistoryRefreshCoordinator.refresh(
         repository: widget.repository,
         agent: agent,
-        view: widget.view,
+        view: viewOverride ?? widget.view,
       );
     } finally {
       _refreshingTerminalHistory = false;
@@ -308,6 +345,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
   Future<void> _sendMessage(CcbAgent agent) async {
     final controller = _draftController(agent.name);
     final attachments = _draftAttachments(agent.name);
+    var acceptedPaneMessage = false;
 
     await _messageSubmitCoordinator.send(
       agent: agent,
@@ -321,8 +359,80 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       onAccepted: () {
         controller.clear();
         _uiControllers.clearDraftAttachments(agent.name);
+        _localExceptionStatusAgentNames.remove(agent.name);
+        _recentPaneOutputText.remove(agent.name);
+        if (widget.usePaneInputForMessages) {
+          acceptedPaneMessage = true;
+          _awaitingPaneResponseAgentNames.add(agent.name);
+        }
       },
     );
+    if (!acceptedPaneMessage ||
+        !mounted ||
+        widget.agent?.name != agent.name ||
+        _conversationRefreshScheduler.isPending(agent.name)) {
+      return;
+    }
+    setState(() {
+      _awaitingPaneResponseAgentNames.remove(agent.name);
+    });
+  }
+
+  Future<void> _sendPaneKey(
+    CcbAgent agent, {
+    required List<int> bytes,
+    required String label,
+  }) async {
+    final outcome = await _paneMessageSubmitter.sendKey(
+      transport: widget.terminalTransport,
+      agent: agent,
+      view: widget.view,
+      refreshView: widget.onRefreshView,
+      bytes: bytes,
+    );
+    if (!mounted || widget.agent?.name != agent.name) {
+      return;
+    }
+    if (!outcome.sent) {
+      _showSnack('Could not send $label: ${outcome.error}');
+      return;
+    }
+    _refreshLatest(agent.name);
+    _scheduleConversationRefresh(agent.name);
+  }
+
+  Future<void> _sendDraftThenPaneKey(
+    CcbAgent agent, {
+    required List<int> bytes,
+    required String label,
+  }) async {
+    final controller = _draftController(agent.name);
+    final body = controller.text;
+    if (body.isEmpty) {
+      await _sendPaneKey(agent, bytes: bytes, label: label);
+      return;
+    }
+    final outcome = await _paneMessageSubmitter.sendTextThenKey(
+      transport: widget.terminalTransport,
+      agent: agent,
+      view: widget.view,
+      refreshView: widget.onRefreshView,
+      body: body,
+      bytes: bytes,
+    );
+    if (!mounted || widget.agent?.name != agent.name) {
+      return;
+    }
+    if (!outcome.sent) {
+      _showSnack('Could not send $label: ${outcome.error}');
+      return;
+    }
+    setState(() {
+      controller.clear();
+      _awaitingPaneResponseAgentNames.add(agent.name);
+    });
+    _refreshLatest(agent.name);
+    _scheduleConversationRefresh(agent.name);
   }
 
   Future<void> _pickAttachments({
@@ -491,6 +601,19 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _appendRecentPaneOutput({
+    required String agentName,
+    required String output,
+  }) {
+    final previous = _recentPaneOutputText[agentName];
+    final combined =
+        previous == null || previous.isEmpty ? output : '$previous $output';
+    final start = combined.length > 1000 ? combined.length - 1000 : 0;
+    final recent = combined.substring(start);
+    _recentPaneOutputText[agentName] = recent;
+    return recent;
+  }
+
   Future<void> _retryMessage(CcbConversationItem item) async {
     await _messageSubmitCoordinator.retry(
       item: item,
@@ -502,8 +625,57 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     );
   }
 
+  void _handlePaneChatEvent(PaneChatEvent event) {
+    if (event.kind == PaneChatEventKind.output) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final recentOutput = _appendRecentPaneOutput(
+          agentName: event.agentName,
+          output: event.body,
+        );
+        if (_paneOutputHasTerminalException(recentOutput)) {
+          _awaitingPaneResponseAgentNames.remove(event.agentName);
+          _localExceptionStatusAgentNames.add(event.agentName);
+        } else {
+          _awaitingPaneResponseAgentNames.add(event.agentName);
+        }
+      });
+      return;
+    }
+    final wasAwaiting = _awaitingPaneResponseAgentNames.remove(event.agentName);
+    final changed = _paneEventCoordinator.apply(event);
+    if (wasAwaiting && mounted && !changed) {
+      setState(() {});
+    }
+  }
+
   void _scheduleConversationRefresh(String agentName) {
+    _localExceptionStatusAgentNames.remove(agentName);
+    _recentPaneOutputText.remove(agentName);
+    _awaitingPaneResponseAgentNames.add(agentName);
     _conversationRefreshScheduler.schedule(agentName);
+  }
+
+  Future<void> _refreshScheduledConversation(String agentName) async {
+    final agent = widget.agent;
+    if (agent == null || agent.name != agentName) {
+      return;
+    }
+    await _refreshLatestForAgent(agent, refreshViewFirst: true);
+  }
+
+  void _handleRefreshScheduleChanged() {
+    if (!mounted) {
+      return;
+    }
+    final selectedAgentName = widget.agent?.name;
+    if (selectedAgentName != null &&
+        !_conversationRefreshScheduler.isPending(selectedAgentName)) {
+      _awaitingPaneResponseAgentNames.remove(selectedAgentName);
+    }
+    setState(() {});
   }
 
   void _refreshLatest(String agentName) {
@@ -511,7 +683,36 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     if (agent == null || agent.name != agentName) {
       return;
     }
-    unawaited(_refreshSelectedAgentConversationAndHistory(agent));
+    unawaited(_refreshLatestForAgent(agent, refreshViewFirst: true));
+  }
+
+  Future<void> _refreshLatestForAgent(
+    CcbAgent agent, {
+    required bool refreshViewFirst,
+  }) async {
+    var view = widget.view;
+    if (refreshViewFirst) {
+      final refreshed = await widget.onRefreshView?.call();
+      if (!mounted || widget.agent?.name != agent.name) {
+        return;
+      }
+      if (refreshed != null) {
+        view = refreshed;
+        _syncLocalExecutionStateFromView(
+          view: refreshed,
+          agentName: agent.name,
+        );
+      }
+    }
+    await (widget.usePaneInputForMessages
+        ? _refreshSelectedAgentConversationAndPaneHistory(
+          agent,
+          viewOverride: view,
+        )
+        : _refreshSelectedAgentConversationAndHistory(
+          agent,
+          viewOverride: view,
+        ));
   }
 
   void _refreshLatestFromUserScroll(String agentName) {
@@ -526,6 +727,28 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     }
     _lastUserRefreshAt[agentName] = now;
     _refreshLatest(agentName);
+  }
+
+  void _syncLocalExecutionStateFromView({
+    required CcbProjectView view,
+    required String agentName,
+  }) {
+    final refreshedAgent = view.agentByName(agentName);
+    if (refreshedAgent == null) {
+      return;
+    }
+    final status = agentExecutionStatus(
+      agent: refreshedAgent,
+      isAwaitingAgentResponse: false,
+      isLoadingConversation: false,
+    );
+    if (status?.state == 'working') {
+      return;
+    }
+    _awaitingPaneResponseAgentNames.remove(agentName);
+    if (status?.state == 'idle') {
+      _localExceptionStatusAgentNames.remove(agentName);
+    }
   }
 
   bool _isTimelineNearEnd(String agentName) {
@@ -611,6 +834,12 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       view: widget.view,
       agent: selectedAgent,
       chatController: _chatController,
+      isAwaitingAgentResponse: _awaitingPaneResponseAgentNames.contains(
+        selectedAgent.name,
+      ),
+      hasLocalExecutionException: _localExceptionStatusAgentNames.contains(
+        selectedAgent.name,
+      ),
     );
     return SelectedAgentWorkspaceView(
       repository: widget.repository,
@@ -648,6 +877,9 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       onUserNearEnd: () {
         _refreshLatestFromUserScroll(selectedAgent.name);
       },
+      onUserScrollDirectionChanged: (direction) {
+        widget.onUserScrollDirectionChanged?.call(direction);
+      },
       onNearStart: () {
         _loadOlderConversation(selectedAgent.name);
       },
@@ -662,6 +894,20 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
       },
       onSend: () {
         _sendMessage(selectedAgent);
+      },
+      onSendTab: () {
+        _sendDraftThenPaneKey(
+          selectedAgent,
+          bytes: selectedAgentTabKeyBytes,
+          label: 'Tab',
+        );
+      },
+      onSendEscape: () {
+        _sendPaneKey(
+          selectedAgent,
+          bytes: selectedAgentEscapeKeyBytes,
+          label: 'Esc',
+        );
       },
     );
   }
@@ -716,6 +962,19 @@ bool _isSupportedAttachment({
     return mimeType.startsWith('image/');
   }
   return _mimeTypeForExtension(extension) != null;
+}
+
+bool _paneOutputHasTerminalException(String output) {
+  final text = output.trim().toLowerCase();
+  if (text.isEmpty || text.contains('esc to interrupt')) {
+    return false;
+  }
+  return text.contains('conversation interrupted') ||
+      text.contains('request interrupted') ||
+      text.contains('interrupted by user') ||
+      text.contains('cancelled') ||
+      text.contains('canceled') ||
+      text.contains('aborted');
 }
 
 String _safeFileName(String fileName) {

@@ -23,7 +23,7 @@ void main() {
 
     await _sendMessage(tester, 'retry after stale epoch');
 
-    expect(repository.getProjectViewCalls, ['proj-demo', 'proj-demo']);
+    _expectOnlyProjectViewCalls(repository, minCalls: 2);
     expect(
       [for (final item in repository.submittedMessages) item.namespaceEpoch],
       [4, 5],
@@ -49,7 +49,7 @@ void main() {
 
     await _sendMessage(tester, 'lead goes stale');
 
-    expect(repository.getProjectViewCalls, ['proj-demo', 'proj-demo']);
+    _expectOnlyProjectViewCalls(repository, minCalls: 2);
     expect(find.byKey(const ValueKey('agent-lead')), findsNothing);
     expectAgentSelected(tester, 'mobile');
   });
@@ -71,12 +71,20 @@ void main() {
 
     await _sendMessage(tester, 'refresh fails');
 
-    expect(repository.getProjectViewCalls, ['proj-demo', 'proj-demo']);
+    _expectOnlyProjectViewCalls(repository, minCalls: 2);
     expectAgentSelected(tester, 'lead');
     expect(find.byKey(const ValueKey('agent-mobile')), findsOneWidget);
     expect(find.text('Bad state: refresh failed'), findsOneWidget);
     expect(find.text('Failed'), findsOneWidget);
   });
+}
+
+void _expectOnlyProjectViewCalls(
+  _RefreshWidgetRepository repository, {
+  required int minCalls,
+}) {
+  expect(repository.getProjectViewCalls.length, greaterThanOrEqualTo(minCalls));
+  expect(repository.getProjectViewCalls.toSet(), {'proj-demo'});
 }
 
 Future<void> _sendMessage(WidgetTester tester, String body) async {

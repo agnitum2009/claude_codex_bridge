@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../transport/route_provider.dart';
 import 'gateway_pairing_panel.dart';
 
@@ -33,6 +34,7 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = CcbMobileLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -46,14 +48,14 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Connect CCB Mobile',
+              strings.connectTitle,
               key: const ValueKey('project-home-onboarding-title'),
               style: theme.textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Use your phone as a live view and input surface for CCB projects running on your computer.',
+              strings.connectDescription,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -62,35 +64,33 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
             const SizedBox(height: 24),
             _OnboardingStep(
               icon: Icons.vpn_key_outlined,
-              title: 'Install Tailscale',
-              body:
-                  'Install Tailscale on this phone and sign in to the same tailnet as your computer.',
+              title: strings.installTailscaleTitle,
+              body: strings.installTailscaleBody,
               code: projectHomeTailscaleDownloadUrl,
             ),
             _OnboardingStep(
               icon: Icons.terminal,
-              title: 'Run one command on the computer',
-              body:
-                  'In any CCB-enabled terminal, run this command. It starts the server-wide gateway and prints a pairing QR.',
+              title: strings.runComputerCommandTitle,
+              body: strings.runComputerCommandBody,
               code: 'ccb update mobile',
             ),
             _OnboardingStep(
               icon: Icons.qr_code_scanner,
-              title: 'Scan the QR',
-              body:
-                  'Keep Tailscale VPN enabled on the phone, then scan the QR shown by the computer.',
+              title: strings.scanQrTitle,
+              body: strings.scanQrBody,
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               key: const ValueKey('project-home-onboarding-scan-button'),
               onPressed: claiming || loadingProfiles ? null : onScan,
-              icon: claiming
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.qr_code_scanner),
-              label: Text(claiming ? 'Pairing' : 'Scan computer QR'),
+              icon:
+                  claiming
+                      ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : const Icon(Icons.qr_code_scanner),
+              label: Text(claiming ? strings.pairing : strings.scanComputerQr),
             ),
             const SizedBox(height: 16),
             ValueListenableBuilder<RouteProviderKind>(

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
 import 'conversation_item_presentation.dart';
+
+const double _minLimitedConversationBodyHeight = 220;
+const double _maxLimitedConversationBodyHeight = 420;
+const double _conversationBodyViewportScreenFraction = 0.42;
 
 class ConversationBubble extends StatelessWidget {
   const ConversationBubble({
@@ -32,21 +37,30 @@ class ConversationBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final strings = CcbMobileLocalizations.of(context);
     final isUser = item.kind == CcbConversationItemKind.userMessage;
     final collapsible = conversationShouldCollapse(
       item,
       hasCustomChild: child != null,
     );
     final sourceLabel = visibleConversationSourceLabel(item);
-    final body = child ?? ConversationBody(
-      item: item,
-      onDownloadArtifact: onDownloadAttachment == null ? null : (fileId) {
-        final attachment = item.attachments.where((a) => a.fileId == fileId).firstOrNull;
-        if (attachment != null) {
-          onDownloadAttachment!(attachment);
-        }
-      },
-    );
+    final body =
+        child ??
+        ConversationBody(
+          item: item,
+          onDownloadArtifact:
+              onDownloadAttachment == null
+                  ? null
+                  : (fileId) {
+                    final attachment =
+                        item.attachments
+                            .where((a) => a.fileId == fileId)
+                            .firstOrNull;
+                    if (attachment != null) {
+                      onDownloadAttachment!(attachment);
+                    }
+                  },
+        );
     final bubbleColor =
         isUser ? colorScheme.primaryContainer : colorScheme.surfaceContainerLow;
     final borderColor = switch (item.state) {
@@ -101,7 +115,9 @@ class ConversationBubble extends StatelessWidget {
                             height: 32,
                           ),
                           tooltip:
-                              expanded ? 'Collapse message' : 'Expand message',
+                              expanded
+                                  ? strings.collapseMessage
+                                  : strings.expandMessage,
                           onPressed: _toggleExpanded,
                           icon: Icon(
                             expanded ? Icons.expand_less : Icons.expand_more,
@@ -122,7 +138,7 @@ class ConversationBubble extends StatelessWidget {
                   if (collapsible && !expanded)
                     ConversationPreview(item: item)
                   else
-                    body,
+                    ConversationBodyViewport(item: item, child: body),
                   if (item.attachments.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     ConversationAttachmentList(
@@ -140,7 +156,7 @@ class ConversationBubble extends StatelessWidget {
                         key: ValueKey('retry-message-${item.id}'),
                         onPressed: onRetry,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                        label: Text(strings.retry),
                       ),
                     ),
                   ],
@@ -148,6 +164,81 @@ class ConversationBubble extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+double conversationBodyViewportMaxHeight(Size screenSize) {
+  final proportionalHeight =
+      screenSize.height * _conversationBodyViewportScreenFraction;
+  return proportionalHeight
+      .clamp(
+        _minLimitedConversationBodyHeight,
+        _maxLimitedConversationBodyHeight,
+      )
+      .toDouble();
+}
+
+@visibleForTesting
+bool conversationBodyNeedsViewportLimit(
+  CcbConversationItem item, {
+  required bool hasCustomChild,
+}) {
+  if (hasCustomChild) {
+    return true;
+  }
+  return conversationShouldCollapse(item, hasCustomChild: hasCustomChild);
+}
+
+class ConversationBodyViewport extends StatefulWidget {
+  const ConversationBodyViewport({
+    required this.item,
+    required this.child,
+    super.key,
+  });
+
+  final CcbConversationItem item;
+  final Widget child;
+
+  @override
+  State<ConversationBodyViewport> createState() =>
+      _ConversationBodyViewportState();
+}
+
+class _ConversationBodyViewportState extends State<ConversationBodyViewport> {
+  late final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!conversationBodyNeedsViewportLimit(
+      widget.item,
+      hasCustomChild: widget.child is! ConversationBody,
+    )) {
+      return widget.child;
+    }
+    final maxHeight = conversationBodyViewportMaxHeight(
+      MediaQuery.sizeOf(context),
+    );
+    return SizedBox(
+      key: ValueKey('conversation-body-viewport-${widget.item.id}'),
+      height: maxHeight,
+      child: Scrollbar(
+        controller: _scrollController,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          primary: false,
+          padding: EdgeInsets.zero,
+          child: widget.child,
         ),
       ),
     );
@@ -211,6 +302,7 @@ class ConversationAttachmentChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = CcbMobileLocalizations.of(context);
     final failed = attachment.state == CcbMessageAttachmentState.failed;
     final busy =
         attachment.state == CcbMessageAttachmentState.queued ||
@@ -259,8 +351,8 @@ class ConversationAttachmentChip extends StatelessWidget {
           failed
               ? errorMessage
               : downloaded
-              ? 'Open attachment'
-              : 'Download attachment',
+              ? strings.openAttachment
+              : strings.downloadAttachment,
     );
   }
 }

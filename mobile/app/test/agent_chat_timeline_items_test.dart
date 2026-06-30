@@ -28,7 +28,6 @@ void main() {
           ],
           terminalHistory: _history(),
           remoteConversation: null,
-          conversationError: null,
           localMessages: const [],
         );
 
@@ -53,7 +52,6 @@ void main() {
           contentItems: const [],
           terminalHistory: _history(),
           remoteConversation: remote,
-          conversationError: null,
           localMessages: [_localMessage()],
         );
 
@@ -82,7 +80,6 @@ void main() {
         contentItems: const [],
         terminalHistory: _history(),
         remoteConversation: remote,
-        conversationError: null,
         localMessages: const [],
       );
 
@@ -110,7 +107,6 @@ void main() {
           contentItems: const [],
           terminalHistory: _history(),
           remoteConversation: remote,
-          conversationError: null,
           localMessages: [_localMessage()],
         );
 
@@ -118,7 +114,32 @@ void main() {
       },
     );
 
-    test('does not duplicate terminal history when remote already has it', () {
+    test(
+      'does not append refreshed terminal history to provider native transcript',
+      () {
+        final remote = _conversation([
+          _remoteReply(
+            id: 'native-reply',
+            body: 'native body',
+            source: 'provider_native/codex',
+          ),
+        ]);
+
+        final items = selectedAgentTimelineItems(
+          view: _view(),
+          agent: _agent(),
+          contentItems: const [],
+          terminalHistory: _history(),
+          remoteConversation: remote,
+          localMessages: const [],
+          preferSupplementalTerminalHistoryAtEnd: true,
+        );
+
+        expect(items.map((item) => item.id), ['native-reply']);
+      },
+    );
+
+    test('does not show refresh errors as timeline cards', () {
       final remote = _conversation([
         CcbConversationItem(
           id: 'remote-terminal',
@@ -136,17 +157,65 @@ void main() {
         contentItems: const [],
         terminalHistory: _history(),
         remoteConversation: remote,
-        conversationError: 'refresh failed',
         localMessages: [_localMessage()],
       );
 
-      expect(items.map((item) => item.id), [
-        'remote-terminal',
-        'conversation-error-lead',
-        'local-1',
-      ]);
-      expect(items[1].kind, CcbConversationItemKind.systemNotice);
-      expect(items[1].source, 'repository');
+      expect(items.map((item) => item.id), ['remote-terminal', 'local-1']);
+      expect(
+        items.where((item) => item.title == 'Conversation refresh failed'),
+        isEmpty,
+      );
+    });
+
+    test(
+      'does not append refreshed terminal history when remote already has it',
+      () {
+        final remote = _conversation([
+          CcbConversationItem(
+            id: 'remote-terminal',
+            agentName: 'lead',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Terminal output',
+            body: 'already present',
+            source: 'tmux output / tmux_scrollback / %2',
+          ),
+        ]);
+
+        final items = selectedAgentTimelineItems(
+          view: _view(),
+          agent: _agent(),
+          contentItems: const [],
+          terminalHistory: _history(),
+          remoteConversation: remote,
+          localMessages: const [],
+          preferSupplementalTerminalHistoryAtEnd: true,
+        );
+
+        expect(items.map((item) => item.id), ['remote-terminal']);
+      },
+    );
+
+    test('hides ProjectView fallback while remote conversation is loading', () {
+      final items = selectedAgentTimelineItems(
+        view: _view(),
+        agent: _agent(),
+        contentItems: const [
+          CcbContentItem(
+            id: 'content-1',
+            kind: 'reply',
+            format: 'markdown',
+            text: 'stale fallback body',
+            title: 'Reply',
+            source: 'artifact',
+          ),
+        ],
+        terminalHistory: _history(),
+        remoteConversation: null,
+        localMessages: const [],
+        isLoadingConversation: true,
+      );
+
+      expect(items, isEmpty);
     });
 
     test('falls back to empty status when there is no content or history', () {
@@ -156,7 +225,6 @@ void main() {
         contentItems: const [],
         terminalHistory: null,
         remoteConversation: null,
-        conversationError: null,
         localMessages: const [],
       );
 

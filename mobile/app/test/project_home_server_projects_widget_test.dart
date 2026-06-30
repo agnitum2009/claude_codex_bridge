@@ -10,6 +10,7 @@ void main() {
   testWidgets(
     'paired gateway lists server projects before opening real project',
     (tester) async {
+      await setTestSurfaceSize(tester, const Size(390, 844));
       final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
       final profileStore = await _profileStoreWith([profile]);
       final gatewayRepository = _ServerProjectsRepository([
@@ -70,6 +71,30 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.tap(find.byKey(const ValueKey('agent-message-composer')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+      await tester.pumpAndSettle();
+
+      expect(gatewayTerminalTransport.requests, hasLength(1));
+      expect(
+        gatewayTerminalTransport.requests.single.attachCommand,
+        'gateway terminal stream test_ccb2/mobile',
+      );
+      expect(gatewayTerminalTransport.sessions.single.pasted, isEmpty);
+      expect(gatewayTerminalTransport.sessions.single.written, [
+        [9],
+      ]);
+
+      await tester.tap(find.byKey(const ValueKey('agent-quick-key-esc')));
+      await tester.pumpAndSettle();
+
+      expect(gatewayTerminalTransport.requests, hasLength(1));
+      expect(gatewayTerminalTransport.sessions.single.written, [
+        [9],
+        [27],
+      ]);
+
       await tester.enterText(
         find.byKey(const ValueKey('agent-message-composer')),
         'server route smoke',
@@ -77,13 +102,31 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('agent-message-send-button')));
       await tester.pumpAndSettle();
 
-      expect(gatewayRepository.submittedMessages, hasLength(1));
-      expect(
-        gatewayRepository.submittedMessages.single.body,
+      expect(gatewayRepository.submittedMessages, isEmpty);
+      expect(gatewayTerminalTransport.requests, hasLength(1));
+      expect(gatewayTerminalTransport.sessions.single.pasted, [
         'server route smoke',
+      ]);
+      expect(gatewayTerminalTransport.sessions.single.written, [
+        [9],
+        [27],
+        [13],
+      ]);
+      expect(
+        find.byKey(const ValueKey('agent-working-status')),
+        findsOneWidget,
       );
-      expect(gatewayTerminalTransport.requests, isEmpty);
-      expect(gatewayTerminalTransport.sessions, isEmpty);
+      expect(find.text('Working'), findsOneWidget);
+
+      gatewayTerminalTransport.sessions.single.addOutput('pane output ready');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('agent-working-status')),
+        findsOneWidget,
+      );
+      expect(find.text('Working'), findsOneWidget);
+      expect(find.text('pane output ready'), findsNothing);
     },
   );
 
@@ -200,6 +243,68 @@ void main() {
     );
   });
 
+  testWidgets(
+    'paired gateway project load failure can return to project list',
+    (tester) async {
+      final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
+      final profileStore = await _profileStoreWith([profile]);
+      final gatewayRepository = _ServerProjectsRepository([
+        _projectFixture(
+          id: 'test_ccb2',
+          displayName: 'test_ccb2',
+          root: '/srv/ccb/test_ccb2',
+        ),
+      ]);
+      gatewayRepository.getProjectViewErrors['test_ccb2'] = StateError(
+        'project unavailable',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectHomeScreen(
+            repository: FakeMobileCcbRepository.demo(),
+            profileStore: profileStore,
+            gatewayRepositoryFactory: (_) => gatewayRepository,
+            gatewayTerminalTransportFactory:
+                (_) => RecordingTerminalTransport(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _activatePairedGatewayListOnly(tester);
+      await tester.tap(find.byKey(const ValueKey('project-open-test_ccb2')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('project-view-load-error')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('project unavailable'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('project-view-back-to-list-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('project-view-use-fake-button')),
+        findsNothing,
+      );
+
+      gatewayRepository.getProjectViewErrors.clear();
+      await tester.tap(
+        find.byKey(const ValueKey('project-view-back-to-list-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('project-list')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('project-open-test_ccb2')),
+        findsOneWidget,
+      );
+      expect(gatewayRepository.listProjectsCalls, 2);
+    },
+  );
+
   testWidgets('paired back returns to server project list', (tester) async {
     final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
     final profileStore = await _profileStoreWith([profile]);
@@ -300,6 +405,7 @@ class _ServerProjectsRepository implements MobileCcbRepository {
   final Map<String, FakeMobileCcbRepository> _delegates;
   final getProjectViewCalls = <String>[];
   final submittedMessages = <CcbAgentMessageSubmitRequest>[];
+  final getProjectViewErrors = <String, Object>{};
   Object? listProjectsError;
   var listProjectsCalls = 0;
 
@@ -323,8 +429,12 @@ class _ServerProjectsRepository implements MobileCcbRepository {
   }
 
   @override
-  Future<CcbProjectView> getProjectView(String projectId) {
+  Future<CcbProjectView> getProjectView(String projectId) async {
     getProjectViewCalls.add(projectId);
+    final error = getProjectViewErrors[projectId];
+    if (error != null) {
+      throw error;
+    }
     return _delegate(projectId).getProjectView(projectId);
   }
 

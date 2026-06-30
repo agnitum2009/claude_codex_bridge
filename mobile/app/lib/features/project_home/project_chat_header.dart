@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_project_view.dart';
 
 class ProjectChatHeader extends StatelessWidget {
@@ -19,6 +20,7 @@ class ProjectChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final strings = CcbMobileLocalizations.of(context);
     return SizedBox(
       key: const ValueKey('project-chat-header'),
       height: 56,
@@ -29,7 +31,7 @@ class ProjectChatHeader extends StatelessWidget {
             if (onBack != null)
               IconButton(
                 key: const ValueKey('project-back-button'),
-                tooltip: 'Projects',
+                tooltip: strings.projects,
                 onPressed: onBack,
                 icon: const Icon(Icons.arrow_back),
               ),
@@ -47,13 +49,13 @@ class ProjectChatHeader extends StatelessWidget {
             ),
             IconButton(
               key: const ValueKey('open-agent-terminal-button'),
-              tooltip: 'Open Terminal',
+              tooltip: strings.openTerminal,
               onPressed: onOpenTerminal,
               icon: const Icon(Icons.terminal),
             ),
             IconButton(
               key: const ValueKey('connection-details-action'),
-              tooltip: 'Diagnostics',
+              tooltip: strings.diagnostics,
               onPressed: onOpenConnectionDetails,
               icon: const Icon(Icons.more_vert),
             ),

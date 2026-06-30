@@ -73,7 +73,9 @@ class ProjectHomeRuntimeSessionCoordinator {
       repository: repository,
       preferredProjectId: activation.activeProjectId,
       terminalTransport: terminalTransportFactory(profile),
-      projectsFuture: repository.listProjects().timeout(projectListTimeout),
+      projectsFuture: Future<List<CcbProject>>(
+        () => repository.listProjects(),
+      ).timeout(projectListTimeout),
     );
   }
 }

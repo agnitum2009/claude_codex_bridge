@@ -89,6 +89,54 @@ void main() {
     expect(find.text('demo'), findsNothing);
   });
 
+  testWidgets('stored profile project list failure can return to setup', (
+    tester,
+  ) async {
+    final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
+    final profileStore = await _profileStoreWith([profile]);
+    final gatewayRepository = _ProjectListRepository(
+      const [],
+      listProjectsError: StateError('dns lookup failed'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectHomeScreen(
+          repository: FakeMobileCcbRepository.demo(),
+          profileStore: profileStore,
+          gatewayRepositoryFactory: (_) => gatewayRepository,
+          gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
+          showOnboardingWhenUnpaired: true,
+          autoActivateStoredProfile: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gatewayRepository.listProjectsCalls, 1);
+    expect(
+      find.byKey(const ValueKey('project-list-load-error')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('dns lookup failed'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('project-list-back-to-setup-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('project-home-onboarding')),
+      findsOneWidget,
+    );
+    expect(find.text('Connect CCB Mobile'), findsOneWidget);
+    expect(find.byKey(const ValueKey('project-list-load-error')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('project-home-onboarding-scan-button')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('onboarding scan claims profile and opens server projects', (
     tester,
   ) async {
@@ -115,30 +163,29 @@ void main() {
             scanCalls += 1;
             return _pairingPayload();
           },
-          pairingClaimAndStore:
-              ({
-                required pairing,
-                required deviceName,
-                required store,
-                deviceId,
-              }) async {
-                claimCalls += 1;
-                final paired = GatewayPairedHost(
-                  profile: GatewayHostProfile(
-                    hostId: 'server-host',
-                    deviceId: deviceId ?? 'phone',
-                    routeProvider: RouteProvider(
-                      kind: pairing.routeProvider,
-                      gatewayUrl: pairing.gatewayUrl,
-                    ),
-                    scopes: pairing.scopes,
-                  ),
-                  deviceToken: 'token',
-                  projectId: 'server-host',
-                );
-                await store.save(paired);
-                return paired;
-              },
+          pairingClaimAndStore: ({
+            required pairing,
+            required deviceName,
+            required store,
+            deviceId,
+          }) async {
+            claimCalls += 1;
+            final paired = GatewayPairedHost(
+              profile: GatewayHostProfile(
+                hostId: 'server-host',
+                deviceId: deviceId ?? 'phone',
+                routeProvider: RouteProvider(
+                  kind: pairing.routeProvider,
+                  gatewayUrl: pairing.gatewayUrl,
+                ),
+                scopes: pairing.scopes,
+              ),
+              deviceToken: 'token',
+              projectId: 'server-host',
+            );
+            await store.save(paired);
+            return paired;
+          },
           gatewayRepositoryFactory: (_) => gatewayRepository,
           gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
           showOnboardingWhenUnpaired: true,
@@ -207,14 +254,19 @@ GatewayPairedHost _pairedHost({
 }
 
 class _ProjectListRepository extends RecordingGatewayRepository {
-  _ProjectListRepository(this.projects);
+  _ProjectListRepository(this.projects, {this.listProjectsError});
 
   final List<CcbProject> projects;
+  Object? listProjectsError;
   var listProjectsCalls = 0;
 
   @override
   Future<List<CcbProject>> listProjects() async {
     listProjectsCalls += 1;
+    final error = listProjectsError;
+    if (error != null) {
+      throw error;
+    }
     return projects;
   }
 }

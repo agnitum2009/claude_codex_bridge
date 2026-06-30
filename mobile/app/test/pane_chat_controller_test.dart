@@ -57,6 +57,47 @@ void main() {
     await controller.dispose();
   });
 
+  test('sends Tab key without paste or enter', () async {
+    final view = CcbProjectView.fromProjectViewPayload(demoProjectViewFixture);
+    final agent = view.agentByName('mobile')!;
+    final transport = _RecordingTerminalTransport();
+    final controller = PaneChatController(transport: transport);
+
+    await controller.sendKey(agent: agent, view: view, bytes: const [9]);
+
+    expect(transport.requests, hasLength(1));
+    final session = transport.sessions.single;
+    expect(session.pasted, isEmpty);
+    expect(session.written, [
+      [9],
+    ]);
+
+    await controller.dispose();
+  });
+
+  test('types text then sends Tab key without Enter', () async {
+    final view = CcbProjectView.fromProjectViewPayload(demoProjectViewFixture);
+    final agent = view.agentByName('mobile')!;
+    final transport = _RecordingTerminalTransport();
+    final controller = PaneChatController(transport: transport);
+
+    await controller.sendTextThenKey(
+      agent: agent,
+      view: view,
+      body: 'queue this',
+      bytes: const [9],
+    );
+
+    expect(transport.requests, hasLength(1));
+    final session = transport.sessions.single;
+    expect(session.pasted, ['queue this']);
+    expect(session.written, [
+      [9],
+    ]);
+
+    await controller.dispose();
+  });
+
   test('suppresses exact terminal echo while preserving real output', () async {
     final view = CcbProjectView.fromProjectViewPayload(demoProjectViewFixture);
     final agent = view.agentByName('mobile')!;

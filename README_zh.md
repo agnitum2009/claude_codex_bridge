@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.0.4-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.5-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -210,10 +210,10 @@ ccb
 
 ### Mobile App（Android Alpha）
 
-CCB 8.0.4 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](mobile/)，
+CCB 8.0.5 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](mobile/)，
 并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.0.4 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.4/ccb-mobile-v8.0.4.apk)
+- [下载 CCB Mobile v8.0.5 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.5/ccb-mobile-v8.0.5.apk)
 - App 源码：[`mobile/app`](mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -742,6 +742,18 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v8.0.5</b> - CCB Mobile 真实项目对话稳定性</summary>
+
+- 改进 Android CCB Mobile 真实项目 pane-native 对话、状态恢复、
+  terminal stream、扫码/手动配对、输入体验、多语言和时间线噪音过滤。
+- 合入 CCB source 线上的 server-wide 项目列表、原生 provider transcript、
+  provider runtime status 和 mobile terminal pane input 修复。
+- 同步 VERSION、package metadata、mobile app version metadata、README 链接、
+  workflow 默认值和 APK 下载链接到 8.0.5。
+
+</details>
+
+<details>
 <summary><b>v8.0.4</b> - CCB Mobile 项目列表稳定性</summary>
 
 - server-wide mobile gateway 的 `/v1/projects` 现在会并发检查已挂载项目健康状态，

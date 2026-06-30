@@ -64,6 +64,86 @@ class AgentPaneMessageSubmitter {
     }
   }
 
+  Future<AgentPaneKeySubmitOutcome> sendKey({
+    required TerminalTransport? transport,
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required AgentViewRefresh? refreshView,
+    required List<int> bytes,
+    bool allowStaleRefresh = true,
+  }) async {
+    try {
+      final readyTransport = transport;
+      if (readyTransport == null) {
+        throw const TerminalTransportException(
+          'selected-agent terminal transport is not ready',
+        );
+      }
+      await _controllerFor(
+        readyTransport,
+      ).sendKey(agent: agent, view: view, bytes: bytes);
+      return const AgentPaneKeySubmitOutcome.sent();
+    } catch (error) {
+      if (allowStaleRefresh &&
+          !paneInputMayHaveReachedPane(error) &&
+          isStaleNamespaceEpochError(error)) {
+        final refreshed = await refreshView?.call();
+        if (refreshed != null && refreshed.agentByName(agent.name) != null) {
+          return sendKey(
+            transport: transport,
+            agent: agent,
+            view: refreshed,
+            refreshView: refreshView,
+            bytes: bytes,
+            allowStaleRefresh: false,
+          );
+        }
+      }
+      return AgentPaneKeySubmitOutcome.failed(error);
+    }
+  }
+
+  Future<AgentPaneKeySubmitOutcome> sendTextThenKey({
+    required TerminalTransport? transport,
+    required CcbAgent agent,
+    required CcbProjectView view,
+    required AgentViewRefresh? refreshView,
+    required String body,
+    required List<int> bytes,
+    bool allowStaleRefresh = true,
+  }) async {
+    try {
+      final readyTransport = transport;
+      if (readyTransport == null) {
+        throw const TerminalTransportException(
+          'selected-agent terminal transport is not ready',
+        );
+      }
+      await _controllerFor(
+        readyTransport,
+      ).sendTextThenKey(agent: agent, view: view, body: body, bytes: bytes);
+      return const AgentPaneKeySubmitOutcome.sent();
+    } catch (error) {
+      if (allowStaleRefresh &&
+          !paneInputMayHaveReachedPane(error) &&
+          isStaleNamespaceEpochError(error)) {
+        final refreshed = await refreshView?.call();
+        if (refreshed != null && refreshed.agentByName(agent.name) != null) {
+          return sendTextThenKey(
+            transport: transport,
+            agent: agent,
+            view: refreshed,
+            refreshView: refreshView,
+            body: body,
+            bytes: bytes,
+            allowStaleRefresh: false,
+          );
+        }
+      }
+      return AgentPaneKeySubmitOutcome.failed(error);
+    }
+  }
+
   Future<void> closeSessions() async {
     final events = _events;
     _events = null;
@@ -87,6 +167,18 @@ class AgentPaneMessageSubmitter {
     _events = controller.events.listen(_onEvent);
     return controller;
   }
+}
+
+class AgentPaneKeySubmitOutcome {
+  const AgentPaneKeySubmitOutcome._({required this.sent, this.error});
+
+  const AgentPaneKeySubmitOutcome.sent() : this._(sent: true);
+
+  const AgentPaneKeySubmitOutcome.failed(Object error)
+    : this._(sent: false, error: error);
+
+  final bool sent;
+  final Object? error;
 }
 
 class AgentPaneMessageSubmitOutcome {

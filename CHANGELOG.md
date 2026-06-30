@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v8.0.5 (2026-06-30)
+
+### CCB Mobile Real Project Chat Stabilization
+
+- **Mobile App Chat Polished**: improves real-project pane-native message
+  sending, status recovery, terminal stream handling, QR/manual pairing, input
+  ergonomics, localization, and noisy timeline filtering for Android.
+- **Server-Wide Mobile Gateway Integrated**: includes the latest server-wide
+  project listing, native provider transcript, provider runtime status, and
+  mobile terminal pane input fixes from the CCB source line.
+- **Release Surface Synchronized**: VERSION, package metadata, mobile app
+  version metadata, README links, workflow defaults, and APK download URLs are
+  aligned for 8.0.5.
+
 ## v8.0.4 (2026-06-28)
 
 ### CCB Mobile Project List Stability

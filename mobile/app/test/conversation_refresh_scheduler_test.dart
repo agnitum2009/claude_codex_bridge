@@ -4,25 +4,37 @@ import 'package:ccb_mobile/features/agent_chat/conversation_refresh_scheduler.da
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('default delays observe recent replies without long polling', () {
+  test('default delays start within active-send latency budget', () {
     expect(defaultConversationRefreshDelays, const [
+      Duration(milliseconds: 100),
+      Duration(milliseconds: 250),
+      Duration(milliseconds: 500),
       Duration(seconds: 1),
       Duration(seconds: 2),
+      Duration(seconds: 3),
       Duration(seconds: 5),
-      Duration(seconds: 10),
-      Duration(seconds: 20),
-      Duration(seconds: 40),
-      Duration(seconds: 60),
+      Duration(seconds: 8),
+      Duration(seconds: 13),
+      Duration(seconds: 21),
+      Duration(seconds: 34),
+      Duration(seconds: 55),
+      Duration(seconds: 90),
+      Duration(seconds: 180),
+      Duration(seconds: 300),
+      Duration(seconds: 600),
+      Duration(seconds: 900),
     ]);
+    expect(
+      defaultConversationRefreshDelays.first,
+      lessThanOrEqualTo(const Duration(milliseconds: 100)),
+    );
   });
 
-  test('schedules the configured refresh delays for the active agent', () {
+  test('does not arm refresh timers until explicitly scheduled', () {
     final timers = <_FakeTimer>[];
-    final refreshedAgents = <String>[];
-    final scheduler = ConversationRefreshScheduler(
-      isActive: (agentName) => agentName == 'mobile_probe',
-      onRefresh: refreshedAgents.add,
-      delays: const [Duration(milliseconds: 10), Duration(milliseconds: 20)],
+    ConversationRefreshScheduler(
+      isActive: (_) => true,
+      onRefresh: (_) {},
       timerFactory: (delay, callback) {
         final timer = _FakeTimer(delay: delay, callback: callback);
         timers.add(timer);
@@ -30,18 +42,47 @@ void main() {
       },
     );
 
-    scheduler.schedule('mobile_probe');
-
-    expect(timers.map((timer) => timer.delay), const [
-      Duration(milliseconds: 10),
-      Duration(milliseconds: 20),
-    ]);
-
-    timers[0].fire();
-    timers[1].fire();
-
-    expect(refreshedAgents, const ['mobile_probe', 'mobile_probe']);
+    expect(timers, isEmpty);
   });
+
+  test(
+    'schedules the configured refresh delays for the active agent',
+    () async {
+      final timers = <_FakeTimer>[];
+      final refreshedAgents = <String>[];
+      var stateChanges = 0;
+      final scheduler = ConversationRefreshScheduler(
+        isActive: (agentName) => agentName == 'mobile_probe',
+        onRefresh: refreshedAgents.add,
+        onStateChanged: () {
+          stateChanges += 1;
+        },
+        delays: const [Duration(milliseconds: 10), Duration(milliseconds: 20)],
+        timerFactory: (delay, callback) {
+          final timer = _FakeTimer(delay: delay, callback: callback);
+          timers.add(timer);
+          return timer;
+        },
+      );
+
+      scheduler.schedule('mobile_probe');
+
+      expect(scheduler.isPending('mobile_probe'), isTrue);
+      expect(stateChanges, 1);
+      expect(timers.map((timer) => timer.delay), const [
+        Duration(milliseconds: 10),
+        Duration(milliseconds: 20),
+      ]);
+
+      timers[0].fire();
+      timers[1].fire();
+      await pumpEventQueue();
+
+      expect(refreshedAgents, const ['mobile_probe', 'mobile_probe']);
+      expect(scheduler.isPending('mobile_probe'), isFalse);
+      expect(stateChanges, 3);
+    },
+  );
 
   test('skips refresh when the scheduled agent is no longer active', () {
     final timers = <_FakeTimer>[];

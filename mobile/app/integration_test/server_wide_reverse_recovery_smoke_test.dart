@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -39,6 +41,7 @@ void main() {
     print('CCB_RECOVERY_READY_REMOVE_REVERSE project-list');
     await tester.pump(const Duration(seconds: 2));
 
+    final projectListFailure = Stopwatch()..start();
     await _tapVisible(tester, const ValueKey('project-list-refresh-action'));
     await _waitFor(
       tester,
@@ -46,11 +49,13 @@ void main() {
       timeout: const Duration(seconds: 45),
       diagnostics: () => _chatDiagnostics(tester),
     );
+    projectListFailure.stop();
 
     // ignore: avoid_print
     print('CCB_RECOVERY_READY_RESTORE_REVERSE project-list');
     await tester.pump(const Duration(seconds: 2));
 
+    final projectListRecovery = Stopwatch()..start();
     await _tapVisible(tester, const ValueKey('project-list-retry-button'));
     await _waitForProjectList(tester);
     await _waitForRenderedText(
@@ -58,6 +63,7 @@ void main() {
       _projectName,
       timeout: const Duration(seconds: 45),
     );
+    projectListRecovery.stop();
 
     await _openServerProject(tester, _projectId, _projectName);
     await _selectAgent(tester, _agentName);
@@ -69,11 +75,13 @@ void main() {
     print('CCB_RECOVERY_READY_REMOVE_REVERSE');
     await tester.pump(const Duration(seconds: 2));
 
+    final conversationFailure = Stopwatch()..start();
     await _tapVisible(
       tester,
       const ValueKey('agent-conversation-refresh-action'),
     );
     await _waitForConversationRefreshFailure(tester);
+    conversationFailure.stop();
 
     // The host-side runner restores the adb reverse mapping after this line.
     // The next explicit refresh must clear the failure item without reopening
@@ -83,6 +91,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     await _waitForRefreshEnabled(tester);
+    final conversationRecovery = Stopwatch()..start();
     await _tapVisible(
       tester,
       const ValueKey('agent-conversation-refresh-action'),
@@ -93,6 +102,7 @@ void main() {
       timeout: const Duration(seconds: 45),
       diagnostics: () => _chatDiagnostics(tester),
     );
+    conversationRecovery.stop();
 
     expect(
       find.byKey(const ValueKey('agent-message-composer')),
@@ -101,6 +111,11 @@ void main() {
     expect(find.textContaining('CCB_REQ_ID'), findsNothing);
     expect(find.text('mobile_gateway'), findsNothing);
     expect(find.text('completion_snapshot'), findsNothing);
+
+    // ignore: avoid_print
+    print(
+      'CCB_RECOVERY_TIMING_JSON ${jsonEncode({'project_list_refresh_to_error_ms': projectListFailure.elapsedMilliseconds, 'project_list_retry_to_recovered_ms': projectListRecovery.elapsedMilliseconds, 'conversation_refresh_to_error_ms': conversationFailure.elapsedMilliseconds, 'conversation_retry_to_recovered_ms': conversationRecovery.elapsedMilliseconds})}',
+    );
   });
 }
 

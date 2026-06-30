@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project_view.dart';
 
@@ -21,6 +22,7 @@ class ProjectListScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -35,7 +37,7 @@ class ProjectListScaffold extends StatelessWidget {
                   children: [
                     IconButton(
                       key: const ValueKey('notification-center-action'),
-                      tooltip: 'Notifications',
+                      tooltip: strings.notifications,
                       onPressed: onOpenNotifications,
                       icon: Icon(
                         view.notifications.isEmpty
@@ -45,7 +47,7 @@ class ProjectListScaffold extends StatelessWidget {
                     ),
                     IconButton(
                       key: const ValueKey('connection-details-action'),
-                      tooltip: 'Diagnostics',
+                      tooltip: strings.diagnostics,
                       onPressed: onOpenConnectionDetails,
                       icon: const Icon(Icons.more_horiz),
                     ),
@@ -93,7 +95,8 @@ class ProjectListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final activeAgent = selectedAgent?.name ?? 'no agent';
+    final strings = CcbMobileLocalizations.of(context);
+    final activeAgent = selectedAgent?.name ?? strings.noAgent;
     final activeWindow = view.activeWindow ?? selectedAgent?.window ?? 'main';
     final root = view.project.root.trim();
     return ListTile(

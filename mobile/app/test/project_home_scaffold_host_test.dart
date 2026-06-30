@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ccb_mobile/ccb_mobile.dart';
@@ -21,6 +22,7 @@ void main() {
       var expanded = false;
       var selectedWindowName = '';
       var selectedAgentName = '';
+      var scrollDirection = ScrollDirection.idle;
 
       await _pump(
         tester,
@@ -53,6 +55,9 @@ void main() {
             selectedAgentName = agentName;
           },
           onRefreshView: () async => null,
+          onTimelineScrollDirectionChanged: (direction) {
+            scrollDirection = direction;
+          },
         ),
       );
 
@@ -82,6 +87,10 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('window-tab-review')));
       await tester.tap(find.byKey(const ValueKey('agent-lead')));
+      await tester.drag(
+        find.byKey(const ValueKey('agent-chat-timeline-mobile')),
+        const Offset(0, -72),
+      );
 
       expect(backCalls, 1);
       expect(detailsCalls, 1);
@@ -90,6 +99,7 @@ void main() {
       expect(expanded, isFalse);
       expect(selectedWindowName, 'review');
       expect(selectedAgentName, 'lead');
+      expect(scrollDirection, ScrollDirection.reverse);
     });
 
     testWidgets('mobile host disables terminal without selected agent', (
@@ -112,6 +122,7 @@ void main() {
           onWindowSelected: (_) {},
           onAgentSelected: (_) {},
           onRefreshView: () async => null,
+          onTimelineScrollDirectionChanged: (_) {},
         ),
       );
 

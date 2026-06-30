@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../transport/route_provider.dart';
 
 class GatewayPairingPanel extends StatelessWidget {
@@ -26,12 +27,13 @@ class GatewayPairingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = CcbMobileLocalizations.of(context);
     return ExpansionTile(
       key: const ValueKey('gateway-pairing-panel'),
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
       leading: const Icon(Icons.qr_code_scanner),
-      title: const Text('Pair Gateway'),
+      title: Text(strings.pairGateway),
       subtitle: Text(
         gatewayUrlController.text,
         key: const ValueKey('gateway-pairing-status'),
@@ -42,9 +44,9 @@ class GatewayPairingPanel extends StatelessWidget {
           controller: gatewayUrlController,
           keyboardType: TextInputType.url,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: 'Gateway URL',
-            prefixIcon: Icon(Icons.link),
+          decoration: InputDecoration(
+            labelText: strings.gatewayUrl,
+            prefixIcon: const Icon(Icons.link),
           ),
         ),
         const SizedBox(height: 8),
@@ -52,9 +54,9 @@ class GatewayPairingPanel extends StatelessWidget {
           key: const ValueKey('pairing-code-field'),
           controller: pairingCodeController,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: 'Pairing code',
-            prefixIcon: Icon(Icons.pin),
+          decoration: InputDecoration(
+            labelText: strings.pairingCode,
+            prefixIcon: const Icon(Icons.pin),
           ),
         ),
         const SizedBox(height: 8),
@@ -65,9 +67,9 @@ class GatewayPairingPanel extends StatelessWidget {
                 key: const ValueKey('pairing-device-name-field'),
                 controller: deviceNameController,
                 textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Device name',
-                  prefixIcon: Icon(Icons.phone_android),
+                decoration: InputDecoration(
+                  labelText: strings.deviceName,
+                  prefixIcon: const Icon(Icons.phone_android),
                 ),
               ),
             ),
@@ -90,7 +92,7 @@ class GatewayPairingPanel extends StatelessWidget {
                     onRouteKindChanged(value);
                   }
                 },
-                decoration: const InputDecoration(labelText: 'Route'),
+                decoration: InputDecoration(labelText: strings.route),
               ),
             ),
           ],
@@ -102,7 +104,7 @@ class GatewayPairingPanel extends StatelessWidget {
               key: const ValueKey('gateway-pairing-scan-button'),
               onPressed: claiming ? null : onScan,
               icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scan QR'),
+              label: Text(strings.scanQr),
             ),
             const SizedBox(width: 12),
             FilledButton.icon(
@@ -115,7 +117,7 @@ class GatewayPairingPanel extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                       : const Icon(Icons.add_link),
-              label: const Text('Claim'),
+              label: Text(strings.claim),
             ),
           ],
         ),

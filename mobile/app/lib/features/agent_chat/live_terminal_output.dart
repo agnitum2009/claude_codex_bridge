@@ -44,7 +44,8 @@ String compactLiveTerminalOutput(String body) {
   );
   final lines = [
     for (final line in plain.split('\n'))
-      if (line.trim().isNotEmpty) line.trimRight(),
+      if (line.trim().isNotEmpty && !_isTerminalLifecycleNoise(line))
+        line.trimRight(),
   ];
   if (lines.isEmpty) {
     return '';
@@ -65,4 +66,11 @@ String stripAnsiControlSequences(String text) {
   return text
       .replaceAll(_ansiOscPattern, '')
       .replaceAll(_ansiControlPattern, '');
+}
+
+bool _isTerminalLifecycleNoise(String line) {
+  return switch (line.trim()) {
+    'server exited unexpectedly' => true,
+    _ => false,
+  };
 }

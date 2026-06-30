@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/rendering.dart' show ScrollCacheExtent, ScrollDirection;
 
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_content_item.dart';
@@ -29,6 +29,7 @@ class ConversationTimeline extends StatelessWidget {
     required this.onNearEnd,
     required this.onUserNearEnd,
     required this.onNearStart,
+    required this.onUserScrollDirectionChanged,
     required this.hasOlderItems,
     required this.onDownloadAttachment,
     super.key,
@@ -50,6 +51,7 @@ class ConversationTimeline extends StatelessWidget {
   final VoidCallback onNearEnd;
   final VoidCallback onUserNearEnd;
   final VoidCallback onNearStart;
+  final ValueChanged<ScrollDirection> onUserScrollDirectionChanged;
   final bool hasOlderItems;
   final ValueChanged<CcbMessageAttachment> onDownloadAttachment;
 
@@ -60,6 +62,12 @@ class ConversationTimeline extends StatelessWidget {
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         final userDriven = isUserDrivenScrollNotification(notification);
+        if (userDriven) {
+          final direction = userScrollDirectionForNotification(notification);
+          if (direction != ScrollDirection.idle) {
+            onUserScrollDirectionChanged(direction);
+          }
+        }
         if (isScrollMetricsNearEnd(notification.metrics)) {
           onNearEnd();
           if (userDriven) {
@@ -192,6 +200,33 @@ bool isUserDrivenScrollNotification(ScrollNotification notification) {
           notification.dragDetails != null) ||
       (notification is OverscrollNotification &&
           notification.dragDetails != null);
+}
+
+ScrollDirection userScrollDirectionForNotification(
+  ScrollNotification notification,
+) {
+  if (notification is ScrollUpdateNotification) {
+    final delta = notification.dragDetails?.delta.dy;
+    if (delta == null) {
+      return ScrollDirection.idle;
+    }
+    if (delta < 0) {
+      return ScrollDirection.reverse;
+    }
+    if (delta > 0) {
+      return ScrollDirection.forward;
+    }
+  }
+  if (notification is OverscrollNotification &&
+      notification.dragDetails != null) {
+    if (notification.overscroll > 0) {
+      return ScrollDirection.reverse;
+    }
+    if (notification.overscroll < 0) {
+      return ScrollDirection.forward;
+    }
+  }
+  return ScrollDirection.idle;
 }
 
 bool isScrollMetricsNearEnd(ScrollMetrics metrics) {

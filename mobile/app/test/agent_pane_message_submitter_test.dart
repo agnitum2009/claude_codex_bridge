@@ -60,6 +60,54 @@ void main() {
       },
     );
 
+    test('sends Tab key through existing pane session', () async {
+      final transport = _RecordingTerminalTransport();
+      final submitter = AgentPaneMessageSubmitter(onEvent: (_) {});
+
+      final outcome = await submitter.sendKey(
+        transport: transport,
+        agent: _leadAgent,
+        view: _view(4),
+        refreshView: null,
+        bytes: const [9],
+      );
+
+      expect(outcome.sent, isTrue);
+      expect(transport.requests.single.target.namespaceEpoch, 4);
+      expect(transport.sessions.single.pasted, isEmpty);
+      expect(transport.sessions.single.written, [
+        [9],
+      ]);
+
+      await submitter.closeSessions();
+    });
+
+    test(
+      'types text then sends Tab key through existing pane session',
+      () async {
+        final transport = _RecordingTerminalTransport();
+        final submitter = AgentPaneMessageSubmitter(onEvent: (_) {});
+
+        final outcome = await submitter.sendTextThenKey(
+          transport: transport,
+          agent: _leadAgent,
+          view: _view(4),
+          refreshView: null,
+          body: 'draft before tab',
+          bytes: const [9],
+        );
+
+        expect(outcome.sent, isTrue);
+        expect(transport.requests.single.target.namespaceEpoch, 4);
+        expect(transport.sessions.single.pasted, ['draft before tab']);
+        expect(transport.sessions.single.written, [
+          [9],
+        ]);
+
+        await submitter.closeSessions();
+      },
+    );
+
     test(
       'refreshes view once when opening terminal hits stale epoch',
       () async {

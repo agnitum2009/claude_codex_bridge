@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../../app/app_factories.dart';
 import '../../app/runtime_mode.dart';
 import '../../debug/debug_profile_seed.dart';
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_notification.dart';
 import '../../models/ccb_project.dart';
@@ -128,6 +130,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   final _runningLifecycleActionNotifier = ValueNotifier<CcbLifecycleAction?>(
     null,
   );
+  bool _showPairingSetup = false;
   WideSidebarState _wideSidebarState = WideSidebarState.expanded;
   WideSidebarState _wideSidebarDragStartState = WideSidebarState.expanded;
   double _wideSidebarDragDelta = 0;
@@ -164,6 +167,9 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_showPairingSetup) {
+      return _buildOnboardingScaffold();
+    }
     if (_shouldShowUnpairedLoading) {
       return const ProjectHomeOnboardingLoadingScaffold();
     }
@@ -202,7 +208,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           selectedAgent: selectedAgent,
           repository: _activeRepository,
           terminalTransport: _terminalTransport,
-          usePaneInputForMessages: false,
+          usePaneInputForMessages: _mode == AppRuntimeMode.pairedGateway,
           mobileAgentsCollapsed: _mobileAgentsCollapsed,
           onBack: _closeProject,
           onOpenTerminal: (agentName) {
@@ -218,6 +224,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           },
           onAgentSelected: _selectAgent,
           onRefreshView: _refreshActiveView,
+          onTimelineScrollDirectionChanged:
+              _handleMobileTimelineScrollDirection,
         );
       },
     );
@@ -281,6 +289,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   Widget _buildProjectLoadError(Object error) {
+    final strings = CcbMobileLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -295,7 +304,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
                   const Icon(Icons.cloud_off_outlined, size: 48),
                   const SizedBox(height: 16),
                   Text(
-                    'Could not load project',
+                    strings.couldNotLoadProject,
                     key: const ValueKey('project-view-load-error'),
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
@@ -313,16 +322,24 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
                     key: const ValueKey('project-view-retry-button'),
                     onPressed: _retryActiveProjectView,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
+                    label: Text(strings.retry),
                   ),
                   const SizedBox(height: 8),
-                  TextButton(
-                    key: const ValueKey('project-view-use-fake-button'),
-                    onPressed: () {
-                      _setRuntimeMode(AppRuntimeMode.fake);
-                    },
-                    child: const Text('Use fake demo'),
-                  ),
+                  if (_mode == AppRuntimeMode.pairedGateway)
+                    TextButton.icon(
+                      key: const ValueKey('project-view-back-to-list-button'),
+                      onPressed: _returnToServerProjectList,
+                      icon: const Icon(Icons.list_alt_outlined),
+                      label: Text(strings.backToProjects),
+                    )
+                  else
+                    TextButton(
+                      key: const ValueKey('project-view-use-fake-button'),
+                      onPressed: () {
+                        _setRuntimeMode(AppRuntimeMode.fake);
+                      },
+                      child: Text(strings.useFakeDemo),
+                    ),
                 ],
               ),
             ),
@@ -340,6 +357,15 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
 
   void _retryServerProjects() {
     setState(() {
+      _serverProjectsFuture = _loadServerProjects();
+    });
+  }
+
+  void _returnToServerProjectList() {
+    setState(() {
+      _activeProjectId = '';
+      _openedProjectId = null;
+      _selectedAgentName = null;
       _serverProjectsFuture = _loadServerProjects();
     });
   }
@@ -368,6 +394,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   Widget _buildProjectCatalogError(Object error) {
+    final strings = CcbMobileLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -382,7 +409,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
                   const Icon(Icons.cloud_off_outlined, size: 48),
                   const SizedBox(height: 16),
                   Text(
-                    'Could not load projects',
+                    strings.couldNotLoadProjects,
                     key: const ValueKey('project-list-load-error'),
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
@@ -400,7 +427,14 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
                     key: const ValueKey('project-list-retry-button'),
                     onPressed: _retryServerProjects,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
+                    label: Text(strings.retry),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('project-list-back-to-setup-button'),
+                    onPressed: _returnToPairingSetup,
+                    icon: const Icon(Icons.settings_outlined),
+                    label: Text(strings.backToSetup),
                   ),
                 ],
               ),
@@ -417,7 +451,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       selectedAgent: agent,
       repository: _activeRepository,
       terminalTransport: _terminalTransport,
-      usePaneInputForMessages: false,
+      usePaneInputForMessages: _mode == AppRuntimeMode.pairedGateway,
       sidebarState: _wideSidebarState,
       onOpenProject: () {
         _openProject(view);
@@ -533,6 +567,16 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     });
   }
 
+  void _handleMobileTimelineScrollDirection(ScrollDirection direction) {
+    if (direction == ScrollDirection.reverse) {
+      _collapseMobileAgents();
+      return;
+    }
+    if (direction == ScrollDirection.forward) {
+      _expandMobileAgents();
+    }
+  }
+
   void _selectWindow(CcbProjectView view, String windowName) {
     if (_mode == AppRuntimeMode.pairedGateway) {
       _focusWindow(view, windowName);
@@ -565,12 +609,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
 
   void _closeProject() {
     if (_mode == AppRuntimeMode.pairedGateway) {
-      setState(() {
-        _activeProjectId = '';
-        _openedProjectId = null;
-        _selectedAgentName = null;
-        _serverProjectsFuture = _loadServerProjects();
-      });
+      _returnToServerProjectList();
       return;
     }
     final outcome = closeProjectHomeProject();
@@ -638,9 +677,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           _loadingProfiles = false;
           _profilesInitialized = true;
         });
-        final activateProfile = widget.autoActivateStoredProfile
-            ? result.selectedProfile
-            : null;
+        final activateProfile =
+            widget.autoActivateStoredProfile ? result.selectedProfile : null;
         if (activateProfile != null) {
           _activateGatewayProfile(activateProfile);
         }
@@ -664,6 +702,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         );
         setState(() {
           _mode = mode;
+          _showPairingSetup = false;
           _activeRepository = session.repository;
           _activeProjectId = session.activeProjectId;
           _serverProjectsFuture = null;
@@ -704,9 +743,15 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       repositoryFactory: widget.gatewayRepositoryFactory,
       terminalTransportFactory: widget.gatewayTerminalTransportFactory,
     );
+    // FutureBuilder attaches on the next build; register an error listener now
+    // so immediate DNS/socket failures render in the error page.
+    unawaited(
+      session.projectsFuture.catchError((Object _) => const <CcbProject>[]),
+    );
     final profile = session.activation.profile;
     setState(() {
       _mode = AppRuntimeMode.pairedGateway;
+      _showPairingSetup = false;
       _selectedProfile = profile;
       _routeDiagnostics = null;
       _activeRepository = session.repository;
@@ -715,6 +760,22 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       _openedProjectId = null;
       _selectedAgentName = null;
       _terminalTransport = session.terminalTransport;
+    });
+    _lifecycleResultNotifier.value = null;
+  }
+
+  void _returnToPairingSetup() {
+    setState(() {
+      _mode = AppRuntimeMode.fake;
+      _showPairingSetup = true;
+      _activeRepository = widget.repository;
+      _activeProjectId = _defaultProjectId;
+      _serverProjectsFuture = null;
+      _openedProjectId = null;
+      _selectedAgentName = null;
+      _terminalTransport = null;
+      _routeDiagnostics = null;
+      _viewFuture = _loadActiveProjectView();
     });
     _lifecycleResultNotifier.value = null;
   }

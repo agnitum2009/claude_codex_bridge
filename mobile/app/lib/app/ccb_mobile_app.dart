@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../features/project_home/project_home_screen.dart';
+import '../l10n/ccb_mobile_localizations.dart';
 import '../repository/fake_mobile_ccb_repository.dart';
 
 class CcbMobileApp extends StatelessWidget {
@@ -12,7 +14,9 @@ class CcbMobileApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final repository = FakeMobileCcbRepository.demo();
     return MaterialApp(
-      title: 'CCB Mobile',
+      onGenerateTitle: (context) => CcbMobileLocalizations.of(context).appTitle,
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: CcbMobileLocalizations.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff116149)),
         useMaterial3: true,

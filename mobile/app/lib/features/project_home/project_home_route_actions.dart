@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_notification.dart';
 import '../../models/ccb_project_view.dart';
 import '../../repository/mobile_ccb_repository.dart';
@@ -69,26 +70,27 @@ Future<bool?> confirmProjectHomeStop(
   BuildContext context, {
   required CcbProjectView view,
 }) {
+  final strings = CcbMobileLocalizations.of(context);
   return showDialog<bool>(
     context: context,
     builder:
         (context) => AlertDialog(
-          title: const Text('Stop project'),
-          content: Text('Stop ${view.project.displayName}?'),
+          title: Text(strings.stopProject),
+          content: Text(strings.stopProjectQuestion(view.project.displayName)),
           actions: [
             TextButton(
               key: const ValueKey('cancel-lifecycle-stop-button'),
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
-              child: const Text('Cancel'),
+              child: Text(strings.cancel),
             ),
             FilledButton(
               key: const ValueKey('confirm-lifecycle-stop-button'),
               onPressed: () {
                 Navigator.of(context).pop(true);
               },
-              child: const Text('Stop'),
+              child: Text(strings.stop),
             ),
           ],
         ),

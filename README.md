@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.0.4-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.5-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -222,10 +222,10 @@ Run `ccb update rich` to install the optional rich workbench; it bundles Yazi wh
 
 ### Mobile App (Android Alpha)
 
-CCB 8.0.4 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
+CCB 8.0.5 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
 and publishes an Android APK as a GitHub Release asset:
 
-- [Download CCB Mobile v8.0.4 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.4/ccb-mobile-v8.0.4.apk)
+- [Download CCB Mobile v8.0.5 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.5/ccb-mobile-v8.0.5.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server/gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -770,6 +770,20 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v8.0.5</b> - CCB Mobile Real Project Chat Stabilization</summary>
+
+- Improves Android CCB Mobile real-project pane-native chat, status recovery,
+  terminal stream handling, QR/manual pairing, input ergonomics, localization,
+  and noisy timeline filtering.
+- Includes the latest server-wide project listing, native provider transcript,
+  provider runtime status, and mobile terminal pane input fixes from the CCB
+  source line.
+- Synchronizes VERSION, package metadata, mobile app version metadata, README
+  links, workflow defaults, and APK download URLs for 8.0.5.
+
+</details>
+
+<details>
 <summary><b>v8.0.4</b> - CCB Mobile Project List Stability</summary>
 
 - Accelerates `/v1/projects` for server-wide mobile gateways by checking
