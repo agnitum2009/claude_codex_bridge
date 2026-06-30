@@ -2,26 +2,12 @@
 
 Native Android/iOS/iPadOS remote controller for server-side CCB tmux projects.
 
-This is the mobile app source inside the CCB monorepo. CCB and provider CLIs
-run on the server; the mobile app is a controller for project discovery, agent
-switching, terminal access, Markdown reading, notifications, local/Tailnet
-gateway access, and file transfer.
+This project is intentionally separate from `ccb_source`. CCB and provider
+CLIs run on the server; the mobile app is a controller for project discovery,
+agent switching, terminal access, Markdown reading, notifications, and
+Cloudflare Tunnel based remote access.
 
-## Android Alpha Release
-
-CCB Mobile v8.0.6 is published as an Android APK:
-
-- [Download ccb-mobile-v8.0.6.apk](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.6/ccb-mobile-v8.0.6.apk)
-- Server setup entrypoint: `ccb update mobile`
-- App source: [`app/`](app/)
-
-The app is designed for real server-side CCB projects, not a demo-only flow.
-It connects to the server-wide mobile gateway, lists mounted CCB projects,
-renders agent transcripts, sends pane-native text input, opens terminal views,
-and supports image/document upload and download through the authenticated
-gateway.
-
-## Plan Tree
+## Current Plan
 
 - [Mobile tmux control plan](docs/plantree/plans/mobile-tmux-control/README.md)
 - [Remote access roadmap](docs/plantree/plans/mobile-tmux-control/topics/remote-access-roadmap.md)
@@ -29,11 +15,13 @@ gateway.
 
 ## Project Layout
 
+Planned shape:
+
 ```text
-app/                 Flutter mobile app
+app/                 Flutter mobile app, once created or forked
 docs/plantree/       Planning tree and design decisions
-tools/               Emulator, gateway, and acceptance helpers
+.ccb/                CCB project config/runtime anchor
 ```
 
-iOS/iPadOS remain source-supported targets, but v8.0.6 release validation is
-Android-focused.
+The first development target is an Android emulator vertical slice. iOS/iPadOS
+will require macOS/Xcode or real-device validation later.

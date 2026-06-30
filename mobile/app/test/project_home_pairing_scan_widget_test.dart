@@ -44,7 +44,8 @@ void main() {
       _routeKindField(tester).onChanged?.call(RouteProviderKind.relay);
       await tester.pump();
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-scan-button'));
+      _scanButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(scanCalls, 1);
       expect(claimCalls, 0);
@@ -98,7 +99,8 @@ void main() {
       _routeKindField(tester).onChanged?.call(RouteProviderKind.relay);
       await tester.pump();
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-scan-button'));
+      _scanButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(scanCalls, 1);
       expect(claimCalls, 0);
@@ -219,11 +221,11 @@ void main() {
         'manual-code',
       );
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-claim-button'));
+      _claimButton(tester).onPressed!();
       await tester.pump();
 
       expect(claimCalls, 1);
-      await tapVisible(tester, const ValueKey('gateway-pairing-scan-button'));
+      expect(_scanButton(tester).onPressed, isNull);
 
       expect(scanCalls, 0);
       expect(find.text('Gateway paired'), findsNothing);
@@ -264,6 +266,7 @@ Future<void> _pumpProjectHome(
         pairingClaimAndStore: pairingClaimAndStore,
         gatewayRepositoryFactory: (_) => RecordingGatewayRepository(),
         gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
+        showOnboardingWhenUnpaired: true,
       ),
     ),
   );
@@ -271,13 +274,18 @@ Future<void> _pumpProjectHome(
 }
 
 Future<void> _openPairingPanel(WidgetTester tester) async {
-  await openConnectionDetails(tester);
   await expandTile(tester, const ValueKey('gateway-pairing-panel'));
 }
 
 OutlinedButton _scanButton(WidgetTester tester) {
   return tester.widget<OutlinedButton>(
     find.byKey(const ValueKey('gateway-pairing-scan-button')),
+  );
+}
+
+FilledButton _claimButton(WidgetTester tester) {
+  return tester.widget<FilledButton>(
+    find.byKey(const ValueKey('gateway-pairing-claim-button')),
   );
 }
 
@@ -308,7 +316,7 @@ GatewayPairingPayload _qrPairing() {
     routeProvider: RouteProviderKind.cloudflareTunnel,
     gatewayUrl: Uri.parse('https://mobile.example.com'),
     projectId: 'proj-demo',
-    scopes: const {'view', 'focus', 'terminal_input', 'lifecycle'},
+    scopes: const {'view', 'focus', 'terminal_input', 'lifecycle', 'notify'},
   );
 }
 

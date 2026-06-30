@@ -6,8 +6,8 @@ import '../../models/ccb_project_lifecycle.dart';
 import '../../models/ccb_project_view.dart';
 import '../../pairing/gateway_pairing.dart';
 import '../../transport/gateway_route_diagnostics.dart';
-import '../../transport/route_provider.dart';
 import 'connection_details.dart';
+import 'project_home_update_panel.dart';
 
 class ProjectHomeConnectionDetailsPanelHost extends StatelessWidget {
   const ProjectHomeConnectionDetailsPanelHost({
@@ -20,18 +20,10 @@ class ProjectHomeConnectionDetailsPanelHost extends StatelessWidget {
     required this.loadingProfiles,
     required this.checkingRoute,
     required this.runningLifecycleActionListenable,
-    required this.gatewayUrlController,
-    required this.pairingCodeController,
-    required this.deviceNameController,
-    required this.routeKindListenable,
-    required this.claiming,
     required this.onModeChanged,
     required this.onProfileSelected,
     required this.onCheckRoute,
     required this.onLifecycleAction,
-    required this.onRouteKindChanged,
-    required this.onScan,
-    required this.onClaim,
     super.key,
   });
 
@@ -44,48 +36,35 @@ class ProjectHomeConnectionDetailsPanelHost extends StatelessWidget {
   final bool loadingProfiles;
   final bool checkingRoute;
   final ValueListenable<CcbLifecycleAction?> runningLifecycleActionListenable;
-  final TextEditingController gatewayUrlController;
-  final TextEditingController pairingCodeController;
-  final TextEditingController deviceNameController;
-  final ValueListenable<RouteProviderKind> routeKindListenable;
-  final bool claiming;
   final ValueChanged<AppRuntimeMode> onModeChanged;
   final ValueChanged<GatewayPairedHost> onProfileSelected;
   final VoidCallback onCheckRoute;
   final ValueChanged<CcbLifecycleAction> onLifecycleAction;
-  final ValueChanged<RouteProviderKind> onRouteKindChanged;
-  final VoidCallback onScan;
-  final VoidCallback onClaim;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<RouteProviderKind>(
-      valueListenable: routeKindListenable,
-      builder:
-          (context, routeKind, _) => ConnectionDetailsPanel(
-            view: view,
-            mode: mode,
-            profiles: profiles,
-            selectedProfile: selectedProfile,
-            routeDiagnostics: routeDiagnostics,
-            lifecycleResultListenable: lifecycleResultListenable,
-            loadingProfiles: loadingProfiles,
-            checkingRoute: checkingRoute,
-            runningLifecycleActionListenable: runningLifecycleActionListenable,
-            gatewayUrlController: gatewayUrlController,
-            pairingCodeController: pairingCodeController,
-            deviceNameController: deviceNameController,
-            routeKind: routeKind,
-            claiming: claiming,
-            initiallyExpanded: true,
-            onModeChanged: onModeChanged,
-            onProfileSelected: onProfileSelected,
-            onCheckRoute: onCheckRoute,
-            onLifecycleAction: onLifecycleAction,
-            onRouteKindChanged: onRouteKindChanged,
-            onScan: onScan,
-            onClaim: onClaim,
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConnectionDetailsPanel(
+          view: view,
+          mode: mode,
+          profiles: profiles,
+          selectedProfile: selectedProfile,
+          routeDiagnostics: routeDiagnostics,
+          lifecycleResultListenable: lifecycleResultListenable,
+          loadingProfiles: loadingProfiles,
+          checkingRoute: checkingRoute,
+          runningLifecycleActionListenable: runningLifecycleActionListenable,
+          initiallyExpanded: true,
+          onModeChanged: onModeChanged,
+          onProfileSelected: onProfileSelected,
+          onCheckRoute: onCheckRoute,
+          onLifecycleAction: onLifecycleAction,
+        ),
+        const SizedBox(height: 12),
+        const ProjectHomeUpdatePanel(),
+      ],
     );
   }
 }

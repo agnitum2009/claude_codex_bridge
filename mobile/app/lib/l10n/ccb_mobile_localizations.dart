@@ -94,6 +94,43 @@ class CcbMobileLocalizations {
 
   String get diagnostics => isChinese ? '诊断' : 'Diagnostics';
 
+  String get settings => isChinese ? '设置' : 'Settings';
+
+  String get theme => isChinese ? '主题' : 'Theme';
+
+  String get themeDescription =>
+      isChinese
+          ? '选择适合长时间查看对话、日志和项目状态的显示风格。'
+          : 'Choose a display style for long chat, log, and project sessions.';
+
+  String get themeSystem => isChinese ? '跟随系统' : 'System';
+
+  String get themeLight => isChinese ? '浅色' : 'Light';
+
+  String get themeDark => isChinese ? '深色' : 'Dark';
+
+  String get mobileUpdates =>
+      isChinese ? 'CCB Mobile 更新' : 'CCB Mobile updates';
+
+  String currentVersion(String version) {
+    return isChinese ? '当前版本：$version' : 'Current version: $version';
+  }
+
+  String get mobileUpdatesDescription =>
+      isChinese
+          ? '打开官方发布页下载新的 APK，并通过相同签名渠道覆盖安装。'
+          : 'Open the official release page to download a newer APK and install it over the same signed channel.';
+
+  String get mobileUpdateInstallNote =>
+      isChinese
+          ? '覆盖安装会保留已配对资料。若 Android 提示签名冲突，说明曾安装不同签名的测试包，需要一次性卸载后再安装正式包。'
+          : 'Cover-installing preserves paired data. If Android reports a signature conflict, an older test APK used a different signature and must be uninstalled once before installing the official build.';
+
+  String get openApkDownload => isChinese ? '打开 APK 下载' : 'Open APK download';
+
+  String get couldNotOpenUpdateUrl =>
+      isChinese ? '无法打开更新下载链接' : 'Could not open update download';
+
   String get projects => isChinese ? '项目' : 'Projects';
 
   String get openTerminal => isChinese ? '打开终端' : 'Open Terminal';
@@ -123,17 +160,39 @@ class CcbMobileLocalizations {
 
   String get cancel => isChinese ? '取消' : 'Cancel';
 
+  String get open => isChinese ? '打开' : 'Open';
+
   String get removeAttachment => isChinese ? '移除附件' : 'Remove attachment';
 
   String get openAttachment => isChinese ? '打开附件' : 'Open attachment';
 
   String get downloadAttachment => isChinese ? '下载附件' : 'Download attachment';
 
+  String openAttachmentQuestion(String fileName) {
+    return isChinese
+        ? '使用系统应用打开 $fileName？'
+        : 'Open $fileName with another app?';
+  }
+
+  String openUrlQuestion(String url) {
+    return isChinese
+        ? '使用浏览器或其他应用打开这个链接？\n$url'
+        : 'Open this link with a browser or another app?\n$url';
+  }
+
+  String get openUrl => isChinese ? '打开链接' : 'Open link';
+
+  String get couldNotOpenUrl => isChinese ? '无法打开链接' : 'Could not open link';
+
   String get refreshConversation => isChinese ? '刷新对话' : 'Refresh conversation';
 
   String get newMessages => isChinese ? '新消息' : 'New messages';
 
   String get communicating => isChinese ? '通讯中' : 'Communicating';
+
+  String agentCompleted(String agentName) {
+    return isChinese ? '$agentName 已完成' : '$agentName completed';
+  }
 
   String executionStatus(String label) {
     if (!isChinese) {

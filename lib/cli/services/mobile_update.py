@@ -22,7 +22,7 @@ DEFAULT_MOBILE_GATEWAY_LISTEN = "127.0.0.1:8787"
 CCB_MOBILE_APP_DOWNLOAD_URL_ENV = "CCB_MOBILE_APP_DOWNLOAD_URL"
 DEFAULT_CCB_MOBILE_APP_DOWNLOAD_URL = (
     "https://github.com/bfly123/claude_code_bridge/releases/download/"
-    "v8.0.6/ccb-mobile-v8.0.6.apk"
+    "v8.0.7/ccb-mobile-v8.0.7.apk"
 )
 TAILSCALE_LINUX_INSTALL_COMMAND = (
     "sh",

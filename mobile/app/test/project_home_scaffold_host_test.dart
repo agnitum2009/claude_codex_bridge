@@ -67,6 +67,34 @@ void main() {
         find.byKey(const ValueKey('mobile-agent-switcher-expanded')),
         findsOneWidget,
       );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('window-tab-main')),
+          matching: find.byIcon(Icons.space_dashboard_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('window-tab-review')),
+          matching: find.byIcon(Icons.space_dashboard_outlined),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('agent-mobile')),
+          matching: find.byIcon(Icons.auto_awesome_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('agent-lead')),
+          matching: find.byIcon(Icons.auto_awesome_outlined),
+        ),
+        findsOneWidget,
+      );
 
       tester
           .widget<IconButton>(find.byKey(const ValueKey('project-back-button')))
@@ -81,9 +109,8 @@ void main() {
             find.byKey(const ValueKey('open-agent-terminal-button')),
           )
           .onPressed!();
-      await tester.drag(
-        find.byKey(const ValueKey('mobile-agent-switcher-expanded')),
-        const Offset(0, -48),
+      await tester.tap(
+        find.byKey(const ValueKey('mobile-agent-switcher-collapse-action')),
       );
       await tester.tap(find.byKey(const ValueKey('window-tab-review')));
       await tester.tap(find.byKey(const ValueKey('agent-lead')));
@@ -128,6 +155,13 @@ void main() {
 
       expect(
         find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
+          matching: find.byIcon(Icons.auto_awesome_rounded),
+        ),
         findsOneWidget,
       );
       expect(
@@ -186,6 +220,13 @@ void main() {
       expect(
         find.byKey(const ValueKey('wide-collapsed-sidebar-rail')),
         findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('wide-collapsed-sidebar-rail')),
+          matching: find.byIcon(Icons.auto_awesome_rounded),
+        ),
+        findsNWidgets(2),
       );
       expect(
         find.byKey(const ValueKey('wide-project-chat-screen')),

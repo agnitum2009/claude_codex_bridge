@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.0.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -222,10 +222,10 @@ Run `ccb update rich` to install the optional rich workbench; it bundles Yazi wh
 
 ### Mobile App (Android Alpha)
 
-CCB 8.0.6 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
+CCB 8.0.7 includes the Flutter CCB Mobile source under [`mobile/`](mobile/)
 and publishes an Android APK as a GitHub Release asset:
 
-- [Download CCB Mobile v8.0.6 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.6/ccb-mobile-v8.0.6.apk)
+- [Download CCB Mobile v8.0.7 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.7/ccb-mobile-v8.0.7.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server/gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -770,6 +770,16 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v8.0.7</b> - CCB Mobile Notifications And Theme Stabilization</summary>
+
+- Adds server-wide task-completion notification SSE plus Android local notifications with low-sensitive payloads and verified tap routing back to the target project/agent.
+- Carries provider runtime status detection for mobile activity indicators and sidebar state.
+- Updates the mobile app with steel-blue/slate theming, improved readable content styles, height-limited expanded bubbles, and notification group tap handling.
+- Synchronizes VERSION, package metadata, mobile app version metadata, README links, workflow defaults, and APK download URLs for 8.0.7.
+
+</details>
+
+<details>
 <summary><b>v8.0.6</b> - CCB Mobile Real Project Chat Stabilization</summary>
 
 - Improves Android CCB Mobile real-project pane-native chat, status recovery,

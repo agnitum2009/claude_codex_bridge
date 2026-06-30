@@ -4,7 +4,7 @@ Date: 2026-06-27
 
 ## Current Phase
 
-Phase 4D: Real Android Emulator product validation.
+Phase 4F: Pane live-output smoothness implementation.
 
 Manual real-project AVD testing exposed the prior product-contract mismatch:
 the mobile composer and selected-agent timeline could behave like a CCB ask/job
@@ -13,13 +13,219 @@ now closed at smoke level by pane-backed native send/reply, multi-project
 native send, desktop-origin refresh, long-history backfill, file/artifact, and
 recovery smokes on disposable real projects.
 
-The current phase is no longer architecture extraction. It is product-grade
-validation: prove the phone can connect to the server-wide mobile gateway,
-list all mounted CCB projects, open real `/home/bfly/yunwei/test_ccb2`
-projects, mirror selected desktop/server agent panes, send ordinary input
-without ask metadata, transfer files, download agent-generated artifacts, and
-remain stable under recovery, long history, profile/release rendering, and
-idle power pressure.
+The current phase is no longer architecture extraction. Product-grade local
+AVD validation proved the major pane-backed contract, and manual review then
+exposed a finer conversation-smoothness gap: provider-native transcript is
+good final history, but command/status output and in-progress agent work need
+lower-latency selected-pane output streaming.
+
+The first app-side smoothness package is now implemented: phone sends use pane
+input in paired gateway mode, `Send Tab` is available, explicit/gesture refresh
+replaces blind polling, terminal output is now used as activity/status input
+rather than default chat-bubble content, and `Working` is visible during active
+pane-backed sends. Real AVD
+evidence now covers server-wide `test_ccb2` opening, native-pane send/reply,
+`Working` timing, `/status` marker visibility, and scroll-away explicit-refresh
+`New messages` behavior, and a strict `180 s` idle request audit with zero
+conversation/history requests, adb-reverse recovery timing, a 40-line
+long-output shape smoke, a 120-line long-output command smoke with scenario
+device metrics, a strict 80-line live-marker command smoke with sustained
+device metrics, and a 200-line high-volume native transcript reconciliation
+smoke. Release APK reverse-recovery now also has current local AVD
+device-health evidence; broader `1000`-line/repeated long-output and physical
+Tailnet/VPN recovery gates remain open.
+Evidence:
+[history/local-avd-pane-live-output-smoke-20260628.md](history/local-avd-pane-live-output-smoke-20260628.md),
+[history/local-avd-native-pane-repeat-timing-20260629.json](history/local-avd-native-pane-repeat-timing-20260629.json),
+[history/local-avd-native-status-command-20260629.json](history/local-avd-native-status-command-20260629.json),
+[history/local-avd-scroll-away-desktop-origin-20260629.json](history/local-avd-scroll-away-desktop-origin-20260629.json),
+[history/local-avd-idle-request-20260629.json](history/local-avd-idle-request-20260629.json),
+[history/local-avd-reverse-recovery-timing-20260629.json](history/local-avd-reverse-recovery-timing-20260629.json),
+and
+[history/local-avd-native-long-output-live-turn-20260629.json](history/local-avd-native-long-output-live-turn-20260629.json),
+plus
+[history/local-avd-native-long-output-120-device-metrics-20260629.json](history/local-avd-native-long-output-120-device-metrics-20260629.json).
+The stricter current live-marker evidence is
+[history/local-avd-native-long-output-strict-80-live-device-metrics-20260629.json](history/local-avd-native-long-output-strict-80-live-device-metrics-20260629.json).
+Current high-volume transcript reconciliation evidence is
+[history/local-avd-native-high-volume-200-device-metrics-20260629.json](history/local-avd-native-high-volume-200-device-metrics-20260629.json).
+Current status-only transcript evidence is
+[history/local-avd-status-only-transcript-200-20260629.json](history/local-avd-status-only-transcript-200-20260629.json).
+Current release recovery device-health evidence is
+[history/local-avd-release-reverse-recovery-current-20260629.json](history/local-avd-release-reverse-recovery-current-20260629.json).
+
+Manual review on 2026-06-29 then exposed a latency refinement: local/emulator
+gateway request latency is tens of milliseconds, while the app-side
+active-send conversation follow loop has a one-second first scheduled refresh.
+The next package should reduce only the active-send follow-up delay, add timing
+instrumentation, and preserve the accepted zero-idle-request behavior.
+
+Current worktree progress on 2026-06-29 starts that package: the app-side
+conversation refresh scheduler now begins its explicit active-send follow loop
+at `250 ms`, then backs off through `750 ms`, `1500 ms`, `3 s`, `5 s`,
+`10 s`, `20 s`, `40 s`, `80 s`, `160 s`, `320 s`, `640 s`, and `900 s`.
+Focused scheduler/chat tests prove the default first delay is within the
+`300 ms` budget and that no refresh timer is armed until an explicit schedule
+call. The worktree also marks pane-backed sends as
+`Working` immediately when the optimistic local turn is accepted, then clears
+that status if the pane path does not schedule a follow-up refresh. The real
+AVD harness now also supports `--native-pane-repeat N`: each sequential
+native-pane run keeps its timing payload, and the harness emits p50/p95
+summaries plus missing-Working counts so the strict gate can be evaluated from
+machine-readable evidence instead of screenshots.
+
+Earlier partial real-AVD evidence for Package A: current worktree debug APK
+`app/build/app/outputs/flutter-apk/app-debug.apk`
+(`sha256 4786d3e9717ba7200e17b681b0e7809e627d8af2a5752f8c746c2af9b86d09cc`)
+was installed on `emulator-5554` and exercised through a server-wide real
+gateway at `127.0.0.1:19255` against disposable
+`/home/bfly/yunwei/test_ccb2/.../test_ccb2_alpha`. Final passing timing JSON
+reported `send_to_local_bubble_ms=227`, `send_to_working_ms=null`,
+`send_to_first_feedback_ms=1044`, `first_feedback_kind=expected_reply`, and
+`send_to_expected_reply_ms=5247`; source-side evidence had
+`prompt_contains_ccb_req_id=false`, `prompt_contains_mobile_gateway=false`,
+`jobs_matches=[]`, `user_match_count=1`, and `reply_match_count=1`. This is
+not completion evidence, and it has been superseded by the repeat run below:
+it proved the native-pane send/reply path and timing instrumentation, but also
+showed the real path did not capture a visible `Working` frame before final
+feedback. The strict real-AVD packet from
+[goal-low-latency-conversation.md](goal-low-latency-conversation.md) still
+needs multi-action timing, idle request counts, long-output behavior, scroll
+stability, and device metrics.
+
+Current harness-only verification after that repeat support: Python smoke
+helper tests pass `41/41`, including multi-marker timing extraction,
+p50/p95 summary generation, and `--native-pane-repeat` argument parsing.
+
+Current repeat real-AVD evidence:
+[history/local-avd-native-pane-repeat-timing-20260629.json](history/local-avd-native-pane-repeat-timing-20260629.json)
+now reflects the follow-up run after making `Working` take priority over
+`Refreshing` while a pane-backed send is awaiting reply. It ran
+`--native-pane-repeat 2` on `emulator-5554` through server-wide gateway
+`127.0.0.1:19302` from clean source head `7e436f7e`. The repeated timing
+summary was: local bubble p50 `133 ms` / p95 `186 ms`, `Working` p50 `138 ms` /
+p95 `188 ms`, first visible feedback p50 `138 ms` / p95 `188 ms`, final
+expected reply p50 `3206 ms` / p95 `3224 ms`, and `Working` captured `2/2`.
+Both cases still proved no `CCB_REQ_ID`, no `mobile_gateway`, no jobs matches,
+one native user match, and one native reply match. This closes the Package A
+real-path Working visibility gate; broader streaming, long-output, idle,
+recovery, and device-metrics gates remained open at this checkpoint.
+
+Provider-command visibility now has its own real-AVD evidence:
+[history/local-avd-native-status-command-20260629.json](history/local-avd-native-status-command-20260629.json)
+sent `/status` from the phone into disposable `test_ccb2_alpha/mobile_probe`
+through server-wide gateway `127.0.0.1:19303`; the selected-agent timeline
+rendered non-local marker `Weekly limit:` in `562 ms`. This closes the
+local-AVD `/status` visibility gate while leaving long-output streaming,
+scroll-away behavior, idle request-count, recovery, and device-metrics gates
+open at this checkpoint.
+
+Scroll-away/new-output behavior now has targeted real-AVD evidence:
+[history/local-avd-scroll-away-desktop-origin-20260629.json](history/local-avd-scroll-away-desktop-origin-20260629.json)
+seeded `56` native-history turns, dragged the selected-agent timeline away from
+the end, injected a desktop-origin pane marker, verified the idle window did not
+blind-refresh it, then used explicit refresh to show `New messages`; tapping the
+affordance returned to latest and rendered the marker. This closes the explicit
+refresh scroll-away gate; long-running live output, idle request-count,
+recovery, and device metrics remained open at this checkpoint.
+
+Strict idle request-count evidence now exists:
+[history/local-avd-idle-request-20260629.json](history/local-avd-idle-request-20260629.json)
+opened disposable `test_ccb2_alpha/mobile_probe` on `emulator-5554` through
+server-wide gateway `127.0.0.1:19306` and held the selected-agent page idle for
+`180 s`. The reset idle audit window observed `0` total requests, `0`
+conversation requests, `0` terminal-history requests, and `0.0`
+conversation/history requests per minute. Device sampling collected `7`
+samples with PSS delta `-582 KB`, wake locks `size=0`,
+`mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, and no skipped-frame storm.
+This closes the strict idle no-blind-polling gate; long-running live output,
+high-volume long-output device metrics, and broader repeated-scenario device
+metrics remain open.
+
+Reverse-loss recovery timing now has current real-AVD evidence:
+[history/local-avd-reverse-recovery-timing-20260629.json](history/local-avd-reverse-recovery-timing-20260629.json)
+removed and restored `adb reverse` while exercising both the server-wide
+project list and an already-open selected-agent conversation through gateway
+`127.0.0.1:19309`. Project-list retry recovered in `1234 ms`; opened
+conversation retry recovered in `1099 ms`; the selected-agent composer remained
+present after recovery; and the route asserted no visible `CCB_REQ_ID`,
+`mobile_gateway`, or `completion_snapshot` labels. This closes the recovery
+timing gate. Current release recovery device-health evidence is tracked below.
+
+Release reverse-recovery device-health evidence now exists:
+[history/local-avd-release-reverse-recovery-current-20260629.json](history/local-avd-release-reverse-recovery-current-20260629.json)
+installed release APK `app/build/app/outputs/flutter-apk/app-release.apk`,
+opened disposable `test_ccb2_alpha/mobile_probe` through gateway
+`127.0.0.1:19316`, removed `adb reverse`, observed the selected-agent
+connection failure, restored `adb reverse`, and rendered marker
+`Native reverse recovery restored 1782719941` after explicit refresh. Recovery
+elapsed `14230.173 ms`; device metrics collected `7` samples, PSS delta
+`-3448 KB`, wake locks `size=0`, `mWakeLockSummary=0x0`, no FATAL/ANR/OOM
+marker, no skipped-frame storm, and no warnings. This closes the local AVD
+release recovery device-health gate; physical Tailnet/VPN recovery remains
+separate.
+
+Long-output shape now has current real-AVD evidence:
+[history/local-avd-native-long-output-live-turn-20260629.json](history/local-avd-native-long-output-live-turn-20260629.json)
+sent a 40-line native Codex pane prompt through gateway `127.0.0.1:19310`. The
+selected-agent surface rendered the final marker inside exactly one live
+terminal-output item (`live_terminal_output_expected_item_count=1`), captured
+`Working` in `155 ms`, and showed no internal labels. This closes only the
+small shape proof that long terminal output can update one live turn; the
+long-duration/high-volume provider execution and device-health gates remain
+open.
+
+120-line long-output command smoke now has current real-AVD evidence:
+[history/local-avd-native-long-output-120-device-metrics-20260629.json](history/local-avd-native-long-output-120-device-metrics-20260629.json)
+sent a longer native Codex pane prompt through gateway `127.0.0.1:19313`.
+Device metrics were collected from the integration test's ready-to-send marker
+instead of from app cold start. It reported local bubble `273 ms`, `Working`
+`281 ms`, first feedback `281 ms`, final marker `1056 ms`, one final
+expected-reply item, one live terminal-output item, screenshot/UI dump artifact
+paths, no FATAL/ANR/OOM, and no skipped-frame storm. This is still not final
+completion evidence: the marker was in the final native reply rather than in
+the live terminal-output item, the device window had only one valid memory
+sample, and global wake-lock warnings remain to be interpreted in a longer
+scenario.
+
+Strict 80-line live-marker long-output evidence now exists:
+[history/local-avd-native-long-output-strict-80-live-device-metrics-20260629.json](history/local-avd-native-long-output-strict-80-live-device-metrics-20260629.json)
+used a marker that was not present verbatim in the user prompt, required that
+marker inside the live `Terminal output` item before emitting timing evidence,
+and collected device metrics throughout the longer wait. It reported local
+bubble `259 ms`, `Working` `263 ms`, first feedback `263 ms`, final marker
+`205237 ms`, one final expected-reply item, one live terminal-output item
+containing the marker, `88` metric samples, PSS delta `-1481 KB`, wake locks
+`size=0`, `mWakeLockSummary=0x0`, no FATAL/ANR/OOM, no skipped-frame storm,
+and no warnings. This upgrades the long-output evidence lane, but the original
+`1000`-line/repeated-run gate remains open.
+
+200-line high-volume native transcript reconciliation now has current
+real-AVD evidence:
+[history/local-avd-native-high-volume-200-device-metrics-20260629.json](history/local-avd-native-high-volume-200-device-metrics-20260629.json)
+sent a prompt that required exactly `200` prefixed lines through gateway
+`127.0.0.1:19318` after the active-send refresh schedule was extended through
+`80 s`, `160 s`, and `320 s`. The selected-agent model contained all `200`
+prefixed lines, local bubble appeared in `162 ms`, `Working` in `167 ms`,
+first feedback in `167 ms`, and final transcript reconciliation in
+`80313 ms`. The UI model stayed compact with `3` non-local items against the
+`8` item cap. Device metrics collected `35` samples, PSS delta `11060 KB`,
+wake locks `size=0`, `mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, no
+skipped-frame storm, and no warnings. This closes the intermediate
+high-volume transcript reconciliation gate, but the original `1000`-line and
+repeated high-volume p50/p95 gates remain open.
+
+Status-only terminal-stream behavior now has current real-AVD evidence:
+[history/local-avd-status-only-transcript-200-20260629.json](history/local-avd-status-only-transcript-200-20260629.json)
+re-ran the 200-line native Codex pane prompt through gateway
+`127.0.0.1:19323` after changing terminal stream output to status-only. The
+selected-agent model contained all `200` prefixed lines from the
+provider/native transcript path, while `live_terminal_output_item_count=0`.
+Local bubble appeared in `238 ms`, `Working` in `244 ms`, first feedback in
+`244 ms`, final transcript reconciliation in `80336 ms`, and the UI stayed
+compact with `4` non-local items against the `8` item cap. This is now the
+authoritative local AVD evidence for the product rule that tmux/terminal stream
+is an activity/status source, not a normal conversation-bubble source.
 
 Older evidence from the former message-submit route remains useful for gateway
 routing, attachments, downloads, and server-wide registry plumbing, but only
@@ -33,6 +239,8 @@ Authority:
   primitive is paste plus Enter against the selected CCB-validated pane.
 - [topics/agent-native-conversation-and-input-correction.md](topics/agent-native-conversation-and-input-correction.md)
   is the active correction plan.
+- [topics/pane-live-output-and-smooth-conversation.md](topics/pane-live-output-and-smooth-conversation.md)
+  is the active conversation-smoothness plan.
 
 ## Active TODO
 
@@ -55,10 +263,28 @@ Authority:
    explicit-refresh/new-message smoke, and release-mode adb-reverse recovery
    now have clean AVD evidence. Keep only regression follow-up for this lane
    unless Tailnet/VPN or physical-device recovery expands the product gate.
-4. Rendering and performance: release long-history, file-download performance,
-   idle/power pressure, and local adb-reverse recovery now have
-   non-Flutter-Driver evidence. Consolidate thresholds for the final local AVD
-   acceptance matrix and human handoff.
+4. Rendering, performance, and conversation smoothness: release long-history,
+   file-download performance, idle/power pressure, and local adb-reverse
+   recovery now have non-Flutter-Driver evidence. Current app-side smoothness
+   work proves real project listing/opening, pane-backed send, terminal-output
+   rendering, and non-stuck `Working` on AVD. Next, land the low-latency
+   active-send follow-loop from
+   [goal-low-latency-conversation.md](goal-low-latency-conversation.md) and
+   [topics/pane-live-output-and-smooth-conversation.md](topics/pane-live-output-and-smooth-conversation.md):
+   first refresh attempt within `300 ms`, immediate `Working` on accepted pane
+   sends in widget coverage, and real native-pane repeat timing now have
+   current-worktree evidence. `/status` provider-command visibility also has
+   current real-AVD evidence, desktop-origin scroll-away/new-message behavior
+   has current real-AVD evidence, strict `180 s` idle request-count proof has
+   current real-AVD evidence, and adb-reverse recovery timing has current
+   real-AVD evidence. Release APK reverse-recovery also has current
+   device-health evidence. A 40-line long-output shape smoke, a 120-line
+   command smoke with screenshot/UI dump paths, a strict 80-line live-marker
+   smoke with sustained device metrics, and a 200-line high-volume native
+   transcript reconciliation smoke also have current real-AVD evidence. Next
+   extend the real AVD packet to the original `1000`-line or repeated
+   high-volume target; physical Tailnet/VPN recovery remains a separate
+   non-local-AVD gate.
 5. Human handoff: keep emulator validation on disposable real
    `/home/bfly/yunwei/test_ccb2` projects and leave the app on a known real
    server-wide gateway state before manual review. Use

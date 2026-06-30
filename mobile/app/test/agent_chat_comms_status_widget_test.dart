@@ -83,6 +83,7 @@ void main() {
               onPickFileAttachment: () {},
               onRemoveAttachment: (_) {},
               onDownloadAttachment: (_) {},
+              onOpenAttachment: (_) {},
               onSend: () {},
               onSendTab: () {},
               onSendEscape: () {},

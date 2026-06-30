@@ -42,12 +42,14 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
   const ProjectHomeServerProjectListHost({
     required this.projects,
     required this.onRefreshProjects,
+    required this.onOpenSettings,
     required this.onOpenProject,
     super.key,
   });
 
   final List<CcbProject> projects;
   final VoidCallback onRefreshProjects;
+  final VoidCallback onOpenSettings;
   final ValueChanged<CcbProject> onOpenProject;
 
   @override
@@ -62,11 +64,22 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.centerRight,
-                child: IconButton(
-                  key: const ValueKey('project-list-refresh-action'),
-                  tooltip: strings.refreshProjects,
-                  onPressed: onRefreshProjects,
-                  icon: const Icon(Icons.refresh),
+                child: Wrap(
+                  spacing: 2,
+                  children: [
+                    IconButton(
+                      key: const ValueKey('project-list-refresh-action'),
+                      tooltip: strings.refreshProjects,
+                      onPressed: onRefreshProjects,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                    IconButton(
+                      key: const ValueKey('project-list-settings-action'),
+                      tooltip: strings.settings,
+                      onPressed: onOpenSettings,
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
+                  ],
                 ),
               ),
               Expanded(

@@ -6,7 +6,7 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.0.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.0.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-15%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -210,10 +210,10 @@ ccb
 
 ### Mobile App（Android Alpha）
 
-CCB 8.0.6 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](mobile/)，
+CCB 8.0.7 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](mobile/)，
 并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.0.6 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.6/ccb-mobile-v8.0.6.apk)
+- [下载 CCB Mobile v8.0.7 APK](https://github.com/bfly123/claude_code_bridge/releases/download/v8.0.7/ccb-mobile-v8.0.7.apk)
 - App 源码：[`mobile/app`](mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -742,6 +742,16 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v8.0.7</b> - CCB Mobile 通知与主题稳定化</summary>
+
+- 新增 server-wide 任务完成通知 SSE 和 Android 本地通知，payload 保持低敏，并已真实验证点击回到目标 project/agent。
+- 合入 provider runtime 状态判断，供手机 activity indicator 和 sidebar 状态使用。
+- 更新手机 App 的 steel-blue/slate 主题、正文样式、展开气泡高度限制和通知分组点击处理。
+- 同步 VERSION、package metadata、mobile app 版本、README 链接、workflow 默认值和 APK 下载链接到 8.0.7。
+
+</details>
+
+<details>
 <summary><b>v8.0.6</b> - CCB Mobile 真实项目对话稳定性</summary>
 
 - 改进 Android CCB Mobile 真实项目 pane-native 对话、状态恢复、

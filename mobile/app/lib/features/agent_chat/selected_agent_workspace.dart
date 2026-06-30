@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
+import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/ccb_project_view.dart';
@@ -541,44 +542,73 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     }
   }
 
-  Future<void> _downloadAndOpenAttachment(
+  Future<String?> _downloadAttachment(
     CcbAgent agent,
-    CcbMessageAttachment attachment,
-  ) async {
+    CcbMessageAttachment attachment, {
+    required String projectId,
+    required bool openAfterDownload,
+  }) async {
+    if (!_isCurrentAgentSelection(projectId: projectId, agent: agent)) {
+      return null;
+    }
     try {
       final localPath = attachment.localPath;
       if (localPath != null && localPath.isNotEmpty) {
-        await _openAttachmentFile(localPath);
-        return;
+        if (openAfterDownload) {
+          await _openAttachmentFile(localPath, mimeType: attachment.mimeType);
+        }
+        return localPath;
       }
       final downloadedPath = _downloadedAttachmentPaths[attachment.fileId];
       if (downloadedPath != null) {
-        await _openAttachmentFile(downloadedPath);
-        return;
+        if (openAfterDownload) {
+          await _openAttachmentFile(
+            downloadedPath,
+            mimeType: attachment.mimeType,
+          );
+        }
+        return downloadedPath;
+      }
+      if (attachment.sizeBytes > agentMessageMaxAttachmentBytes) {
+        _showSnack('${attachment.fileName} is larger than 25 MB');
+        return null;
       }
       if (_downloadingAttachmentIds.contains(attachment.fileId)) {
-        return;
+        return null;
       }
       setState(() {
         _downloadingAttachmentIds.add(attachment.fileId);
       });
       final bytes = await widget.repository.downloadFile(
-        projectId: widget.view.project.id,
+        projectId: projectId,
         agentName: agent.name,
         fileId: attachment.fileId,
       );
+      if (bytes.length > agentMessageMaxAttachmentBytes) {
+        if (_isCurrentAgentSelection(projectId: projectId, agent: agent)) {
+          _showSnack('${attachment.fileName} is larger than 25 MB');
+        }
+        return null;
+      }
       final dir = await getApplicationDocumentsDirectory();
       final file = File(p.join(dir.path, _safeFileName(attachment.fileName)));
       await file.writeAsBytes(bytes);
-      if (!mounted) {
-        return;
+      if (!_isCurrentAgentSelection(projectId: projectId, agent: agent)) {
+        return null;
       }
       setState(() {
         _downloadedAttachmentPaths[attachment.fileId] = file.path;
       });
       _showSnack('Saved ${attachment.fileName}');
+      if (openAfterDownload) {
+        await _openAttachmentFile(file.path, mimeType: attachment.mimeType);
+      }
+      return file.path;
     } catch (error) {
-      _showSnack('Failed to open file: $error');
+      if (_isCurrentAgentSelection(projectId: projectId, agent: agent)) {
+        _showSnack('Failed to open file: $error');
+      }
+      return null;
     } finally {
       if (mounted) {
         setState(() {
@@ -588,8 +618,56 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     }
   }
 
-  Future<void> _openAttachmentFile(String path) async {
-    await OpenFilex.open(path);
+  Future<void> _confirmAndOpenAttachment(
+    CcbAgent agent,
+    CcbMessageAttachment attachment,
+    String projectId,
+  ) async {
+    final strings = CcbMobileLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(strings.openAttachment),
+          content: Text(strings.openAttachmentQuestion(attachment.fileName)),
+          actions: [
+            TextButton(
+              key: const ValueKey('open-attachment-cancel-action'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              key: const ValueKey('open-attachment-confirm-action'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(strings.open),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true ||
+        !_isCurrentAgentSelection(projectId: projectId, agent: agent)) {
+      return;
+    }
+    await _downloadAttachment(
+      agent,
+      attachment,
+      projectId: projectId,
+      openAfterDownload: true,
+    );
+  }
+
+  Future<void> _openAttachmentFile(String path, {String? mimeType}) async {
+    await OpenFilex.open(path, type: mimeType);
+  }
+
+  bool _isCurrentAgentSelection({
+    required String projectId,
+    required CcbAgent agent,
+  }) {
+    return mounted &&
+        widget.view.project.id == projectId &&
+        widget.agent?.name == agent.name;
   }
 
   void _showSnack(String message) {
@@ -745,9 +823,14 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
     if (status?.state == 'working') {
       return;
     }
-    _awaitingPaneResponseAgentNames.remove(agentName);
+    final wasAwaiting = _awaitingPaneResponseAgentNames.remove(agentName);
     if (status?.state == 'idle') {
       _localExceptionStatusAgentNames.remove(agentName);
+      if (wasAwaiting) {
+        _showSnack(
+          CcbMobileLocalizations.of(context).agentCompleted(agentName),
+        );
+      }
     }
   }
 
@@ -862,7 +945,17 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace> {
         _removeAttachment(selectedAgent.name, localId);
       },
       onDownloadAttachment: (attachment) {
-        _downloadAndOpenAttachment(selectedAgent, attachment);
+        final projectId = widget.view.project.id;
+        _downloadAttachment(
+          selectedAgent,
+          attachment,
+          projectId: projectId,
+          openAfterDownload: false,
+        );
+      },
+      onOpenAttachment: (attachment) {
+        final projectId = widget.view.project.id;
+        _confirmAndOpenAttachment(selectedAgent, attachment, projectId);
       },
       onRetry: _retryMessage,
       onToggleExpanded: (itemId) {

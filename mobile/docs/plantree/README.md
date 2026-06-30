@@ -23,7 +23,7 @@ This is the planning entrypoint for the standalone CCB mobile project.
 
 | Plan | Status | Current Phase | Last Landed | Next Target |
 | :--- | :--- | :--- | :--- | :--- |
-| [mobile-tmux-control](plans/mobile-tmux-control/README.md) | In Progress | Phase 4E Physical Tailnet Hardening | 2026-06-27 `17b5540` hardened physical Tailnet evidence recording/audit so accepted T0-T6 case evidence must be safe, present, and non-empty. | Run the physical Android phone + Tailnet runbook once hardware/network are available, then register passing `history/physical-tailnet-final-audit.json` for the acceptance audit. |
+| [mobile-tmux-control](plans/mobile-tmux-control/README.md) | In Progress | Phase 4F Pane Live-Output Smoothness | 2026-06-29 real server-wide `test_ccb2` AVD evidence proves active-send `Working` p50 `138 ms`, `/status` marker visibility in `562 ms`, scroll-away explicit-refresh `New messages`, 180-second idle request count `0`, adb-reverse recovery timing, and a 40-line long-output shape smoke. | Continue [low-latency conversation goal](plans/mobile-tmux-control/goal-low-latency-conversation.md): extend strict real Android Emulator evidence to long-duration/high-volume output, live-turn reconciliation, and broader device health metrics. |
 
 ## How To Read
 

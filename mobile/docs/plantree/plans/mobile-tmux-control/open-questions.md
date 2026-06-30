@@ -47,6 +47,9 @@ use a smaller permissive Flutter baseline until AGPL is explicitly accepted.
    the needed ServerBox/MuxPod ideas?
 2. How much generic SSH/server-management UI should be removed from the base
    app before the first public CCB-focused release?
+3. Where should the explicit agent-list pull-out button live on phone and iPad,
+   and should all swipe-to-open behavior be removed or only the upward swipe
+   that conflicts with timeline scrolling?
 
 ## Runtime Boundary
 
@@ -133,10 +136,13 @@ See
 5. After the gateway PTY stream proves stable, should terminal input/paste/
    resize stay in the mobile gateway with `ccbd` target validation, move into
    `ccbd` proper, or move to tmux control mode?
-6. Should notifications be emitted from project_view deltas, Comms, provider
-   activity, or a new event stream?
-7. Should the first content endpoint return raw Markdown only, or also include
+6. Should the first content endpoint return raw Markdown only, or also include
    render hints for math, attachments, and local file-link degradation?
+7. Which authoritative CCB/tmux completion signal should drive cross-project
+   pane completion phone reminders, and what stable completion event id or
+   state-transition marker should the gateway expose as `dedupe_key`? Decision
+   019 accepts the app-facing P0 contract but leaves this source marker spike
+   open.
 
 ## Relay Follow-Up
 
@@ -146,6 +152,16 @@ See
    third-party relay operators cannot inspect terminal frames?
 3. What minimum relay self-hosting and abuse-control story is acceptable for an
    open-source free release?
+
+## App Install And Upgrade
+
+Resolved 2026-06-30: the first user-facing fix is both a same-channel
+cover-install release path and an in-app browser handoff to the configured
+APK/release URL. Android release builds must use stable release signing
+material from local secrets or environment variables and must not fall back to
+debug signing. Debug/profile APKs remain local test artifacts, not the user
+upgrade channel. See
+[Decision 018](decisions/018-stable-android-release-channel.md).
 
 ## Markdown Display
 
@@ -161,3 +177,9 @@ See
 5. Which math renderer should the native mobile client use first, and how should
    formula rendering be disabled or degraded when sanitizer constraints require
    it?
+6. Should external URL/file opening use a per-action confirmation, a per-host
+   "remember" choice, or a global setting, and how should that behave for
+   untrusted Markdown rendered from provider output?
+7. For a remote file long-press, should Open always download first and invoke
+   the OS chooser from app storage, or should some MIME types get an in-app
+   preview before the external app handoff?

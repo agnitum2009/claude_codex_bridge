@@ -121,6 +121,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('agent-switcher')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-agent-switcher-expanded')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('mobile-agent-switcher-collapse-action')),
+    );
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const ValueKey('agent-switcher')), findsNothing);
     expect(
       find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
@@ -131,6 +142,29 @@ void main() {
     await tester.drag(
       find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
       const Offset(0, 80),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('agent-switcher')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('agent-chat-timeline')),
+      const Offset(0, 480),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('agent-switcher')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('mobile-agent-switcher-expand-action')),
     );
     await tester.pumpAndSettle();
 

@@ -87,6 +87,68 @@ Agent taps should switch the selected agent first. Focus requests and terminal
 entry should be visible explicit actions, followed by ProjectView refresh to
 confirm the active CCB state.
 
+Mobile interaction polish recorded 2026-06-30:
+
+- the full agent list should not be revealed by an upward swipe from the
+  conversation. Use an explicit pull-out/drawer button, and leave vertical
+  drags/overscroll to timeline scrolling and refresh behavior;
+- expanding a collapsed conversation bubble must not make "scroll to bottom"
+  unstable or snap the viewport back to the top. Treat this as a gesture,
+  scroll-controller, and refresh/rebuild stability regression, especially if
+  the current agent-list reveal gesture competes with the timeline;
+- pane-backed task completion should be eligible for a phone reminder no
+  matter which project is currently open. The app already has in-app
+  ProjectView-derived notification models; system-level or cross-project
+  delivery still needs a concrete event source and permission/background
+  strategy.
+
+User feedback backlog recorded 2026-06-30:
+
+1. Agent list reveal should be explicit: remove upward-swipe reveal from the
+   conversation area and open the list through a pull-out/drawer button.
+2. Expanded conversation bubbles must keep bottom scrolling stable and must not
+   snap back to the top after expansion.
+3. Pane-backed task completion should be able to notify the phone across all
+   paired projects, not only the currently open project.
+4. Remote files, artifacts, and attachments need a long-press action sheet with
+   Download and Open; Open should use a confirmed external-app handoff after
+   downloading or reusing a local cached copy.
+5. URLs in readable app content should be openable through the OS browser/app
+   chooser after confirmation; local host paths stay blocked unless resolved by
+   the gateway into validated CCB content.
+6. App install/upgrade continuity needs fixing: the app should support in-app
+   upgrade eventually, or at minimum a newly supplied APK should install over
+   the existing app without signature conflict or forced uninstall.
+
+Implementation evidence recorded 2026-06-30:
+
+- Real emulator validation used `emulator-5554`, server-wide gateway
+  `http://127.0.0.1:8791`, and the dedicated real project
+  `test_ccb2 / main3 / agy1`.
+- Evidence is under
+  `/tmp/ccb-mobile-real-project-emulator-download-review/`, including
+  `current-screen.png`, `test-ccb2-screen.png`,
+  `attachment-selected-current.png`, `upload-after-send-current.png`,
+  `attachment-longpress-current.png`,
+  `open-attachment-confirm-current.png`, and
+  `open-attachment-after-confirm.png`.
+- The app listed real server-wide projects, selected a file through Android
+  DocumentsUI, sent `ccb-mobile-upload-smoke.txt` through the live project
+  path, rendered the uploaded attachment in the conversation, showed the
+  long-press `Download attachment` / `Open attachment` action sheet, confirmed
+  before opening, and reached the Android `Open with` chooser.
+- URL opening has widget coverage and a confirmation UI, but the same real
+  emulator pass did not produce a reliable coordinate-based URL confirmation
+  screenshot. Treat URL external-open as needing one more targeted real-device
+  evidence pass or a more explicit URL action affordance.
+- OS-level task completion notification is not implemented yet. Current
+  completion feedback is in-app status/snackbar only. The next coherent package
+  is an app-lifetime local notification layer with Android 13+
+  `POST_NOTIFICATIONS` handling, deduplication by project/agent/completion
+  event, terse completion copy, default platform notification behavior, and
+  notification payloads that deep-link back to the project/agent.
+  Cross-project or killed-app background delivery remains a larger follow-up.
+
 ## Agent Detail
 
 Agent detail is the main conversation and control surface for one selected
@@ -135,6 +197,15 @@ agent-authored content:
 4. Tables can switch between fitted, horizontal scroll, and card/list mode.
 5. Long sections can collapse without losing the raw text.
 6. A raw source toggle remains available for debugging or copy fidelity.
+7. Long-pressing a remote file, artifact, or attachment opens an action sheet
+   with at least Download and Open. Download saves the file through the
+   authenticated gateway path; Open downloads to app storage if needed and then
+   hands the local file to the OS/app chooser. The app should confirm once
+   before opening remote content in another app.
+8. Web URLs in Markdown, terminal-derived readable content, Comms, and
+   artifacts should be openable through the system browser or app chooser after
+   a one-time confirmation. Local host paths remain blocked unless the gateway
+   resolves them into validated CCB content/artifact references.
 
 Pane snapshots stay terminal output, not Markdown. If a provider's latest reply
 is available through CCB message/session evidence, mobile should prefer that
@@ -211,6 +282,68 @@ Useful notification classes:
 
 Notifications should deep-link by project id plus agent/window/Comms id. They
 should not deep-link by pane id alone.
+
+Completion reminders should cover all paired projects, not only the current
+project page. If CCB/tmux already emits a reliable task-complete signal, the
+mobile layer should subscribe or poll through the gateway and translate it into
+deduplicated in-app and OS-level phone notifications.
+
+P0 system task-complete notification design recorded 2026-06-30:
+
+- scope is task completion only, not every activity/status update;
+- trigger on an authoritative project/agent transition from working/running to
+  completed/done for a pane-backed task;
+- notification copy is terse and low sensitivity:
+  `<project short name> / <agent> task completed`, with the same shape in
+  localized UI strings;
+- do not include prompts, replies, task details, file paths, terminal output,
+  provider text, or exception detail;
+- use the platform default notification channel behavior, including the
+  system/default sound and vibration; do not design or bundle custom sounds in
+  P0;
+- deduplicate by project id, agent name, and stable completion event id or
+  state-transition marker so refresh/resume does not repeat old notifications;
+- tapping the notification opens the target project and selected agent when
+  possible; if the app cannot resolve the target, open the project list;
+- require notification permission and keep a later settings toggle available
+  for users who want to disable completion reminders.
+
+App engineering review recorded 2026-06-30:
+
+- P0 is an app-lifetime local notification path. It can notify while the app
+  process and notification subscription are alive, including ordinary
+  background after the user presses Home, but it does not guarantee delivery
+  after force-stop, killed-app state, or deep Doze. Reliable killed-app
+  delivery would require a separate push or foreground-service design.
+- Android should request `POST_NOTIFICATIONS` only after a useful user moment,
+  such as first successful gateway pairing or first notification subscription,
+  not during cold start. If permission is denied, keep app-internal completion
+  state without posting an OS notification.
+- A fixed Android channel such as `ccb_task_completion` should use platform
+  default behavior. Start with default importance unless real validation shows
+  that the completion reminder must be more prominent; do not ship custom
+  audio assets.
+- Suggested rendering is title `CCB Mobile` and body
+  `<project_short_name> / <agent> task completed`, localized with the same
+  low-sensitive shape such as `<project_short_name> / <agent> 任务完成`.
+- Real validation must put the app in ordinary background, trigger a task
+  completion from a dedicated test project through the server-wide gateway,
+  confirm the notification, tap it back to the project/agent, and prove
+  duplicate refresh/resume events do not repost the same completion.
+
+Lead decision recorded in
+[Decision 019](../decisions/019-app-lifetime-task-completion-notifications.md):
+
+- P0 accepts app-lifetime local notifications and explicitly defers FCM/APNs,
+  foreground services, and WorkManager/background polling.
+- The app-facing source is a server-wide dedicated gateway notification stream;
+  ProjectView deltas are only a foreground/current-project fallback.
+- Every paired phone/client may notify for the same completion in P0. Do not add
+  active-device suppression or `device_active_hint` yet.
+- `notify` is part of the ordinary paired-device profile. Old profiles without
+  it should degrade cleanly or ask the user to re-pair for notifications.
+- The remaining source dependency is a stable CCB/tmux completion marker and
+  source-generated `dedupe_key`.
 
 ## Multi-Agent Views
 

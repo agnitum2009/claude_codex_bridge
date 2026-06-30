@@ -504,6 +504,15 @@ Draft response:
 This endpoint should resolve `body_artifact` references through CCB storage
 validation instead of returning arbitrary file paths to the phone.
 
+Content and artifact action metadata should let the app separate Download from
+Open. For validated remote files, the response or linked artifact record should
+include a stable content/file id, display filename, MIME type, size when known,
+and whether the item can be downloaded through the authenticated gateway. The
+phone should never open a server path directly; Open means "download or reuse
+the cached local copy, then invoke the OS app chooser." HTTP/HTTPS links can be
+opened externally after user confirmation; local file links require gateway
+resolution into validated CCB content first.
+
 ### `project_terminal_open`
 
 Purpose: issue a short-lived terminal token for a selected CCB target.
@@ -589,6 +598,50 @@ Event classes:
 - project started/stopped/offline;
 - terminal disconnected.
 
+P0 task-completed events should be enough for the app to render a local OS
+notification without exposing private task content:
+
+```json
+{
+  "id": "notif_...",
+  "kind": "task_completed",
+  "project_id": "proj_...",
+  "project_short_name": "test_ccb2",
+  "agent": "agy1",
+  "completed_at": "2026-06-30T08:00:00Z",
+  "dedupe_key": "proj_...:agy1:completion_..."
+}
+```
+
+The preferred app-facing transport is a dedicated server-wide gateway
+subscription, such as SSE behind `mobile_notifications_subscribe`, with
+`GET /v1/notifications` reserved for reconnect/catch-up if needed.
+ProjectView deltas can remain a foreground/current-project fallback, but they
+are not the P0 cross-project notification source. This is accepted by
+[Decision 019](../decisions/019-app-lifetime-task-completion-notifications.md).
+
+The mobile app should derive the notification text from only
+`project_short_name`, `agent`, and `kind`: `<project short name> / <agent>
+task completed`. Route payload may include `project_id`, `agent`,
+`dedupe_key`, and `completed_at` so taps can deep-link without exposing task
+content. The payload must not include terminal output, prompt text, reply text,
+file paths, error details, or provider transcript detail. P0 should not require
+a custom sound field; the app should use its default system notification
+channel.
+
+Dedupe guidance:
+
+- persist a bounded recent `seenDedupeKeys` set, such as an LRU of the last 100
+  keys, so reconnect/catch-up replay does not repost old notifications;
+- derive the Android integer notification id from an explicit stable 32-bit
+  hash of `dedupe_key`; do not depend on a runtime-random or process-local
+  string hash unless the implementation proves it is stable enough;
+- duplicate events with the same `dedupe_key` should replace the same system
+  notification or be dropped, never create a notification burst.
+- source should generate `dedupe_key`, preferably from
+  `project_id + namespace_epoch + agent + completion_sequence_or_activity_transition_id`;
+  the app must not guess dedupe from notification text or time windows.
+
 ## External Gateway Endpoints
 
 Suggested HTTP shape:
@@ -639,6 +692,12 @@ tmux-remote profile should include `view`, `content`, `focus`,
 `terminal-input`, and `notify`; `ask` and `lifecycle` can be enabled when the
 user wants full CCB control from the device. `admin` should remain separate and
 require explicit host-side approval.
+
+For the P0 task-completion notification package, `notify` is part of the
+ordinary paired-device profile by default. Existing profiles that do not carry
+`notify` should fail closed for OS notifications and guide the user to re-pair
+or otherwise degrade without treating `view`, `content`, or `terminal-input` as
+implicit notification scopes.
 
 ## Error Shape
 

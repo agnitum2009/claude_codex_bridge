@@ -93,14 +93,22 @@ class _WideAgentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final emphasized = selected || agent.active;
     return ListTile(
       key: ValueKey('agent-${agent.name}'),
       selected: selected,
       selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       leading: Icon(
-        agent.active ? Icons.radio_button_checked : Icons.smart_toy,
-        size: 18,
+        emphasized ? Icons.auto_awesome_rounded : Icons.auto_awesome_outlined,
+        size: emphasized ? 20 : 18,
+        color:
+            selected
+                ? colorScheme.primary
+                : agent.active
+                ? colorScheme.tertiary
+                : colorScheme.onSurfaceVariant,
       ),
       title: Text(agent.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing:

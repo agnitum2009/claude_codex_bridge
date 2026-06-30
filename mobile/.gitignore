@@ -11,6 +11,7 @@
 .packages
 build/
 coverage/
+dist/
 pubspec.lock
 !app/pubspec.lock
 

@@ -80,6 +80,7 @@ void main() {
         'file_download',
         'terminal_input',
         'lifecycle',
+        'notify',
       });
     });
 

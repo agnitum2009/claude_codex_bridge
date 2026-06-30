@@ -207,6 +207,176 @@ class MobileServerWideEmulatorSmokeTest(unittest.TestCase):
 
         self.assertTrue(args.release_reverse_recovery_smoke)
 
+    def test_extract_native_timing_reads_structured_stdout_payload(self) -> None:
+        timing = SMOKE.extract_native_timing(
+            '\n'.join(
+                [
+                    'flutter noise',
+                    (
+                        'CCB_MOBILE_NATIVE_TIMING_JSON '
+                        '{"send_to_local_bubble_ms":42,'
+                        '"send_to_working_ms":55,'
+                        '"send_to_expected_reply_ms":900}'
+                    ),
+                ]
+            )
+        )
+
+        self.assertEqual(timing['send_to_local_bubble_ms'], 42)
+        self.assertEqual(timing['send_to_working_ms'], 55)
+        self.assertEqual(timing['send_to_expected_reply_ms'], 900)
+
+    def test_extract_native_timings_reads_all_structured_stdout_payloads(self) -> None:
+        timings = SMOKE.extract_native_timings(
+            '\n'.join(
+                [
+                    'CCB_MOBILE_NATIVE_TIMING_JSON {"send_to_local_bubble_ms":10}',
+                    'flutter noise',
+                    'CCB_MOBILE_NATIVE_TIMING_JSON {"send_to_local_bubble_ms":20}',
+                ]
+            )
+        )
+
+        self.assertEqual(
+            [timing['send_to_local_bubble_ms'] for timing in timings],
+            [10, 20],
+        )
+
+    def test_extract_recovery_timing_reads_structured_stdout_payload(self) -> None:
+        timing = SMOKE.extract_recovery_timing(
+            '\n'.join(
+                [
+                    'flutter noise',
+                    (
+                        'CCB_RECOVERY_TIMING_JSON '
+                        '{"project_list_refresh_to_error_ms":120,'
+                        '"project_list_retry_to_recovered_ms":240,'
+                        '"conversation_refresh_to_error_ms":360,'
+                        '"conversation_retry_to_recovered_ms":480}'
+                    ),
+                ]
+            )
+        )
+
+        assert timing is not None
+        self.assertEqual(timing['project_list_refresh_to_error_ms'], 120)
+        self.assertEqual(timing['project_list_retry_to_recovered_ms'], 240)
+        self.assertEqual(timing['conversation_refresh_to_error_ms'], 360)
+        self.assertEqual(timing['conversation_retry_to_recovered_ms'], 480)
+
+    def test_summarize_native_timing_cases_reports_percentiles_and_missing(self) -> None:
+        summary = SMOKE.summarize_native_timing_cases(
+            [
+                {
+                    'send_to_local_bubble_ms': 80,
+                    'send_to_working_ms': 120,
+                    'send_to_first_feedback_ms': 120,
+                    'send_to_expected_reply_ms': 900,
+                    'first_feedback_kind': 'working',
+                },
+                {
+                    'send_to_local_bubble_ms': 40,
+                    'send_to_working_ms': None,
+                    'send_to_first_feedback_ms': 500,
+                    'send_to_expected_reply_ms': 1400,
+                    'first_feedback_kind': 'expected_reply',
+                },
+                None,
+            ]
+        )
+
+        self.assertEqual(summary['case_count'], 3)
+        self.assertEqual(summary['timing_payload_count'], 2)
+        self.assertEqual(summary['working_captured_count'], 1)
+        self.assertEqual(
+            summary['first_feedback_kinds'],
+            {'working': 1, 'expected_reply': 1},
+        )
+        self.assertEqual(
+            summary['fields']['send_to_local_bubble_ms'],
+            {
+                'count': 2,
+                'missing': 1,
+                'min_ms': 40.0,
+                'p50_ms': 40.0,
+                'p95_ms': 80.0,
+                'max_ms': 80.0,
+            },
+        )
+        self.assertEqual(
+            summary['fields']['send_to_working_ms'],
+            {
+                'count': 1,
+                'missing': 2,
+                'min_ms': 120.0,
+                'p50_ms': 120.0,
+                'p95_ms': 120.0,
+                'max_ms': 120.0,
+            },
+        )
+
+    def test_parse_args_accepts_native_pane_repeat(self) -> None:
+        args = SMOKE.parse_args(['--native-pane-smoke', '--native-pane-repeat', '3'])
+
+        self.assertTrue(args.native_pane_smoke)
+        self.assertEqual(args.native_pane_repeat, 3)
+
+    def test_parse_args_accepts_native_command_smoke(self) -> None:
+        args = SMOKE.parse_args(
+            [
+                '--native-command-smoke',
+                '--native-command',
+                '/status',
+                '--native-command-marker',
+                'Weekly limit:',
+            ]
+        )
+
+        self.assertTrue(args.native_command_smoke)
+        self.assertEqual(args.native_command, '/status')
+        self.assertEqual(args.native_command_marker, 'Weekly limit:')
+        self.assertFalse(args.native_command_device_metrics)
+
+    def test_parse_args_accepts_native_command_device_metrics(self) -> None:
+        args = SMOKE.parse_args(
+            [
+                '--native-command-smoke',
+                '--native-command-device-metrics',
+            ]
+        )
+
+        self.assertTrue(args.native_command_smoke)
+        self.assertTrue(args.native_command_device_metrics)
+
+    def test_parse_args_accepts_native_command_live_terminal_marker_gate(self) -> None:
+        args = SMOKE.parse_args(
+            [
+                '--native-command-smoke',
+                '--native-command-require-live-terminal-marker',
+            ]
+        )
+
+        self.assertTrue(args.native_command_smoke)
+        self.assertTrue(args.native_command_require_live_terminal_marker)
+
+    def test_parse_args_accepts_native_command_high_volume_gates(self) -> None:
+        args = SMOKE.parse_args(
+            [
+                '--native-command-smoke',
+                '--native-command-line-prefix',
+                'CCB_MOBILE_STREAM_LINE_',
+                '--native-command-min-line-prefix-count',
+                '1000',
+                '--native-command-max-non-local-items',
+                '3',
+            ]
+        )
+
+        self.assertTrue(args.native_command_smoke)
+        self.assertEqual(args.native_command_line_prefix, 'CCB_MOBILE_STREAM_LINE_')
+        self.assertEqual(args.native_command_min_line_prefix_count, 1000)
+        self.assertEqual(args.native_command_max_non_local_items, 3)
+
     def test_flutter_integration_args_debug_uses_flutter_test(self) -> None:
         args = SMOKE.flutter_integration_args(
             test_target='integration_test/example_test.dart',

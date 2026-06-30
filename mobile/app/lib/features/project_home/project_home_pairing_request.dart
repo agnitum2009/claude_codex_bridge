@@ -11,6 +11,7 @@ const projectHomeManualPairingScopes = {
   'file_download',
   'terminal_input',
   'lifecycle',
+  'notify',
 };
 
 class ProjectHomePairingRequest {

@@ -128,7 +128,7 @@ void main() {
     expect(find.text('Pair a gateway profile first'), findsNothing);
   });
 
-  testWidgets('activation updates route kind while details stays open', (
+  testWidgets('activation syncs gateway settings on project list', (
     tester,
   ) async {
     final profile = _pairedHost(
@@ -152,17 +152,23 @@ void main() {
     await tester.pumpAndSettle();
 
     await openConnectionDetails(tester);
-    await expandTile(tester, const ValueKey('gateway-pairing-panel'));
-    _routeKindField(tester).onChanged?.call(RouteProviderKind.relay);
-    await tester.pump();
-    expect(_routeKindValue(tester), RouteProviderKind.relay);
-
     await expandTile(tester, const ValueKey('runtime-mode-panel'));
     _runtimeSegments(
       tester,
     ).onSelectionChanged?.call({AppRuntimeMode.pairedGateway});
     await tester.pumpAndSettle();
+    await dismissConnectionDetails(tester);
 
+    expect(find.byKey(const ValueKey('project-list')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-list-settings-action')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('project-list-settings-action')),
+    );
+    await tester.pumpAndSettle();
+    await expandTile(tester, const ValueKey('gateway-pairing-panel'));
     expect(_routeKindValue(tester), RouteProviderKind.cloudflareTunnel);
     expect(
       _textField(tester, const ValueKey('gateway-url-field')).controller?.text,
@@ -277,14 +283,6 @@ GatewayPairedHost? _profileValue(WidgetTester tester) {
         find.byType(DropdownButtonFormField<GatewayPairedHost>),
       )
       .value;
-}
-
-DropdownButtonFormField<RouteProviderKind> _routeKindField(
-  WidgetTester tester,
-) {
-  return tester.widget<DropdownButtonFormField<RouteProviderKind>>(
-    find.byType(DropdownButtonFormField<RouteProviderKind>),
-  );
 }
 
 RouteProviderKind? _routeKindValue(WidgetTester tester) {

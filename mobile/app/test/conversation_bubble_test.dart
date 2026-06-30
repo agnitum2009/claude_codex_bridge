@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ccb_mobile/features/agent_chat/conversation_bubble.dart';
@@ -115,6 +116,69 @@ void main() {
     expect(find.text('hello'), findsOneWidget);
   });
 
+  testWidgets('sent user messages omit redundant state chip', (tester) async {
+    const item = CcbConversationItem(
+      id: 'user-1',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.userMessage,
+      title: 'You',
+      body: 'hello',
+      state: CcbConversationDeliveryState.sent,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('hello'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('conversation-state-user-1')),
+      findsNothing,
+    );
+    expect(find.text('Sent'), findsNothing);
+  });
+
+  testWidgets('failed user messages keep actionable state chip', (
+    tester,
+  ) async {
+    const item = CcbConversationItem(
+      id: 'user-1',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.userMessage,
+      title: 'You',
+      body: 'hello',
+      state: CcbConversationDeliveryState.failed,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('conversation-state-user-1')),
+        matching: find.text('Failed'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('expanded long bubbles are height limited and scrollable', (
     tester,
   ) async {
@@ -153,6 +217,51 @@ void main() {
       conversationBodyViewportMaxHeight(const Size(400, 800)),
     );
     expect(find.byType(Scrollbar), findsOneWidget);
+  });
+
+  testWidgets('expanded bubble scrolling does not notify parent timeline', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final item = CcbConversationItem(
+      id: 'long-reply',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: List.generate(80, (index) => 'line $index').join('\n'),
+      source: 'completion_snapshot',
+    );
+    var parentScrollNotifications = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NotificationListener<ScrollNotification>(
+            onNotification: (_) {
+              parentScrollNotifications += 1;
+              return false;
+            },
+            child: ConversationBubble(
+              item: item,
+              expanded: true,
+              onToggleExpanded: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('conversation-body-viewport-long-reply')),
+      const Offset(0, -500),
+    );
+    await tester.pumpAndSettle();
+
+    expect(parentScrollNotifications, 0);
   });
 
   test('unconfirmed pane sends use check pane label', () {
@@ -224,10 +333,152 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('conversation-attachment-chip-file-1')),
     );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(downloads, isEmpty);
+    expect(
+      find.byKey(const ValueKey('conversation-attachment-actions-file-1')),
+      findsOneWidget,
+    );
+    tester
+        .widget<ListTile>(
+          find.byKey(
+            const ValueKey('conversation-attachment-action-download-file-1'),
+          ),
+        )
+        .onTap!();
+    await tester.pump();
     expect(downloads, ['file-1']);
   });
 
-  testWidgets('artifact markdown links download matching attachments', (
+  testWidgets('conversation attachment tap can open through action sheet', (
+    tester,
+  ) async {
+    final item = CcbConversationItem(
+      id: 'msg-actions-tap',
+      agentName: 'mobile',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: 'See files',
+      attachments: const [
+        CcbMessageAttachment(
+          fileId: 'file-1',
+          fileName: 'notes.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 2048,
+        ),
+      ],
+    );
+    final downloads = <String>[];
+    final opens = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+            onDownloadAttachment: (attachment) {
+              downloads.add(attachment.fileId);
+            },
+            onOpenAttachment: (attachment) {
+              opens.add(attachment.fileId);
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-attachment-chip-file-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(downloads, isEmpty);
+    expect(opens, isEmpty);
+    expect(
+      find.byKey(const ValueKey('conversation-attachment-actions-file-1')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-attachment-action-open-file-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(downloads, isEmpty);
+    expect(opens, ['file-1']);
+  });
+
+  testWidgets('conversation attachments expose long-press download and open', (
+    tester,
+  ) async {
+    final item = CcbConversationItem(
+      id: 'msg-actions',
+      agentName: 'mobile',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: 'See files',
+      attachments: const [
+        CcbMessageAttachment(
+          fileId: 'file-1',
+          fileName: 'notes.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 2048,
+        ),
+      ],
+    );
+    final downloads = <String>[];
+    final opens = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+            onDownloadAttachment: (attachment) {
+              downloads.add(attachment.fileId);
+            },
+            onOpenAttachment: (attachment) {
+              opens.add(attachment.fileId);
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-attachment-chip-file-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('conversation-attachment-actions-file-1')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-file-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(downloads, ['file-1']);
+    expect(opens, isEmpty);
+
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-attachment-chip-file-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('conversation-attachment-action-open-file-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(opens, ['file-1']);
+  });
+
+  testWidgets('artifact markdown links show attachment actions', (
     tester,
   ) async {
     final item = CcbConversationItem(
@@ -248,6 +499,7 @@ void main() {
       ],
     );
     CcbMessageAttachment? downloaded;
+    CcbMessageAttachment? opened;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -259,6 +511,9 @@ void main() {
             onDownloadAttachment: (attachment) {
               downloaded = attachment;
             },
+            onOpenAttachment: (attachment) {
+              opened = attachment;
+            },
           ),
         ),
       ),
@@ -267,10 +522,95 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('markdown-body-conversation-artifact-reply')),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(downloaded, isNull);
+    expect(opened, isNull);
+    expect(
+      find.byKey(const ValueKey('conversation-attachment-actions-artifact-1')),
+      findsOneWidget,
+    );
+    expect(find.text('Blocked link'), findsNothing);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-artifact-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
 
     expect(downloaded?.fileId, 'artifact-1');
     expect(downloaded?.fileName, 'artifact.txt');
-    expect(find.text('Blocked link'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('markdown-body-conversation-artifact-reply')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-open-artifact-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(opened?.fileId, 'artifact-1');
+  });
+
+  testWidgets('http markdown links ask before opening externally', (
+    tester,
+  ) async {
+    const channel = MethodChannel('io.ccb.mobile/external_url');
+    final opened = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (call.method == 'openUrl') {
+        opened.add((call.arguments as Map)['url'] as String);
+        return true;
+      }
+      return false;
+    });
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      );
+    });
+
+    final item = CcbConversationItem(
+      id: 'link-reply',
+      agentName: 'mobile',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: '[Open site](https://example.com/report)',
+      format: 'markdown',
+      source: 'completion_snapshot',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            onToggleExpanded: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open site'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('open-url-confirm-action')),
+      findsOneWidget,
+    );
+    expect(opened, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('open-url-confirm-action')));
+    await tester.pumpAndSettle();
+
+    expect(opened, ['https://example.com/report']);
   });
 }

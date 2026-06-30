@@ -32,6 +32,7 @@ class ConversationTimeline extends StatelessWidget {
     required this.onUserScrollDirectionChanged,
     required this.hasOlderItems,
     required this.onDownloadAttachment,
+    required this.onOpenAttachment,
     super.key,
   });
 
@@ -54,6 +55,7 @@ class ConversationTimeline extends StatelessWidget {
   final ValueChanged<ScrollDirection> onUserScrollDirectionChanged;
   final bool hasOlderItems;
   final ValueChanged<CcbMessageAttachment> onDownloadAttachment;
+  final ValueChanged<CcbMessageAttachment> onOpenAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +112,7 @@ class ConversationTimeline extends StatelessWidget {
             onRetry: onRetry,
             onToggleExpanded: onToggleExpanded,
             onDownloadAttachment: onDownloadAttachment,
+            onOpenAttachment: onOpenAttachment,
           );
         },
       ),
@@ -131,6 +134,7 @@ class _ConversationTimelineItem extends StatelessWidget {
     required this.onRetry,
     required this.onToggleExpanded,
     required this.onDownloadAttachment,
+    required this.onOpenAttachment,
     super.key,
   });
 
@@ -146,6 +150,7 @@ class _ConversationTimelineItem extends StatelessWidget {
   final ValueChanged<CcbConversationItem> onRetry;
   final ValueChanged<String> onToggleExpanded;
   final ValueChanged<CcbMessageAttachment> onDownloadAttachment;
+  final ValueChanged<CcbMessageAttachment> onOpenAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +167,7 @@ class _ConversationTimelineItem extends StatelessWidget {
           initialHistory: initialHistory,
         ),
         onDownloadAttachment: onDownloadAttachment,
+        onOpenAttachment: onOpenAttachment,
         downloadingAttachmentIds: downloadingAttachmentIds,
         downloadedAttachmentIds: downloadedAttachmentIds,
       );
@@ -174,6 +180,7 @@ class _ConversationTimelineItem extends StatelessWidget {
         onToggleExpanded: onToggleExpanded,
         child: AgentContentReader(items: [contentItem]),
         onDownloadAttachment: onDownloadAttachment,
+        onOpenAttachment: onOpenAttachment,
         downloadingAttachmentIds: downloadingAttachmentIds,
         downloadedAttachmentIds: downloadedAttachmentIds,
       );
@@ -189,6 +196,7 @@ class _ConversationTimelineItem extends StatelessWidget {
               }
               : null,
       onDownloadAttachment: onDownloadAttachment,
+      onOpenAttachment: onOpenAttachment,
       downloadingAttachmentIds: downloadingAttachmentIds,
       downloadedAttachmentIds: downloadedAttachmentIds,
     );

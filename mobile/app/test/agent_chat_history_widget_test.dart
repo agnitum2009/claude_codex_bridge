@@ -106,7 +106,7 @@ void main() {
       findsNothing,
     );
 
-    await tapVisible(tester, const ValueKey('conversation-item-$outputId'));
+    await tapVisible(tester, const ValueKey('conversation-preview-$outputId'));
 
     expect(
       find.byKey(const ValueKey('conversation-body-$outputId')),

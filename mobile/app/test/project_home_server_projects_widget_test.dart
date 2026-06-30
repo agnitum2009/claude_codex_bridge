@@ -162,6 +162,10 @@ void main() {
       findsOneWidget,
     );
     expect(
+      find.byKey(const ValueKey('project-list-settings-action')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('project-open-test_ccb2')),
       findsOneWidget,
     );
@@ -193,6 +197,60 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('/home/bfly/yunwei/ccb_mobile'), findsOneWidget);
+  });
+
+  testWidgets('paired gateway project list opens setup settings and returns', (
+    tester,
+  ) async {
+    final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
+    final profileStore = await _profileStoreWith([profile]);
+    final gatewayRepository = _ServerProjectsRepository([
+      _projectFixture(
+        id: 'test_ccb2',
+        displayName: 'test_ccb2',
+        root: '/srv/ccb/test_ccb2',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectHomeScreen(
+          repository: FakeMobileCcbRepository.demo(),
+          profileStore: profileStore,
+          gatewayRepositoryFactory: (_) => gatewayRepository,
+          gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _activatePairedGatewayListOnly(tester);
+
+    expect(find.byKey(const ValueKey('project-list')), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('project-list-settings-action')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('project-home-onboarding')),
+      findsOneWidget,
+    );
+    await expandTile(tester, const ValueKey('gateway-pairing-panel'));
+    expect(find.byKey(const ValueKey('gateway-url-field')), findsOneWidget);
+
+    tester
+        .widget<IconButton>(
+          find.byKey(const ValueKey('project-home-settings-back-button')),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('project-list')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-open-test_ccb2')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('paired gateway project list refresh failure can retry', (
@@ -374,7 +432,7 @@ GatewayPairedHost _pairedHost({
         kind: RouteProviderKind.lan,
         gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
       ),
-      scopes: const {'view', 'focus', 'terminal_input', 'lifecycle'},
+      scopes: const {'view', 'focus', 'terminal_input', 'lifecycle', 'notify'},
     ),
     deviceToken: 'token-$hostId-$deviceId',
     projectId: hostId,

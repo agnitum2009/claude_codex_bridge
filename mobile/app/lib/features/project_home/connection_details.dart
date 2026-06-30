@@ -6,8 +6,6 @@ import '../../models/ccb_project_lifecycle.dart';
 import '../../models/ccb_project_view.dart';
 import '../../pairing/gateway_pairing.dart';
 import '../../transport/gateway_route_diagnostics.dart';
-import '../../transport/route_provider.dart';
-import 'gateway_pairing_panel.dart';
 import 'project_lifecycle_panel.dart';
 import 'runtime_mode_panel.dart';
 
@@ -40,18 +38,10 @@ class ConnectionDetailsPanel extends StatelessWidget {
     required this.loadingProfiles,
     required this.checkingRoute,
     required this.runningLifecycleActionListenable,
-    required this.gatewayUrlController,
-    required this.pairingCodeController,
-    required this.deviceNameController,
-    required this.routeKind,
-    required this.claiming,
     required this.onModeChanged,
     required this.onProfileSelected,
     required this.onCheckRoute,
     required this.onLifecycleAction,
-    required this.onRouteKindChanged,
-    required this.onScan,
-    required this.onClaim,
     this.initiallyExpanded = false,
     super.key,
   });
@@ -65,18 +55,10 @@ class ConnectionDetailsPanel extends StatelessWidget {
   final bool loadingProfiles;
   final bool checkingRoute;
   final ValueListenable<CcbLifecycleAction?> runningLifecycleActionListenable;
-  final TextEditingController gatewayUrlController;
-  final TextEditingController pairingCodeController;
-  final TextEditingController deviceNameController;
-  final RouteProviderKind routeKind;
-  final bool claiming;
   final ValueChanged<AppRuntimeMode> onModeChanged;
   final ValueChanged<GatewayPairedHost> onProfileSelected;
   final VoidCallback onCheckRoute;
   final ValueChanged<CcbLifecycleAction> onLifecycleAction;
-  final ValueChanged<RouteProviderKind> onRouteKindChanged;
-  final VoidCallback onScan;
-  final VoidCallback onClaim;
   final bool initiallyExpanded;
 
   @override
@@ -114,17 +96,6 @@ class ConnectionDetailsPanel extends StatelessWidget {
           resultListenable: lifecycleResultListenable,
           runningActionListenable: runningLifecycleActionListenable,
           onAction: onLifecycleAction,
-        ),
-        const SizedBox(height: 8),
-        GatewayPairingPanel(
-          gatewayUrlController: gatewayUrlController,
-          pairingCodeController: pairingCodeController,
-          deviceNameController: deviceNameController,
-          routeKind: routeKind,
-          claiming: claiming,
-          onRouteKindChanged: onRouteKindChanged,
-          onScan: onScan,
-          onClaim: onClaim,
         ),
       ],
     );

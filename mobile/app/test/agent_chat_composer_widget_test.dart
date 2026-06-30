@@ -158,6 +158,7 @@ void main() {
             onPickFileAttachment: () {},
             onRemoveAttachment: (_) {},
             onDownloadAttachment: (_) {},
+            onOpenAttachment: (_) {},
             onSend: () {},
             onSendTab: () {},
             onSendEscape: () {},
@@ -725,11 +726,8 @@ void main() {
       const Offset(0, 700),
     );
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('conversation-state-local-mobile-0')),
-        matching: find.text('Sent'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('conversation-state-local-mobile-0')),
+      findsNothing,
     );
 
     await tester.enterText(
@@ -784,11 +782,8 @@ void main() {
       const Offset(0, 700),
     );
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('conversation-state-local-mobile-1')),
-        matching: find.text('Sent'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('conversation-state-local-mobile-1')),
+      findsNothing,
     );
   });
 
@@ -817,11 +812,8 @@ void main() {
     );
     expect(find.text('visible after submit'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('conversation-state-local-mobile-0')),
-        matching: find.text('Sent'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('conversation-state-local-mobile-0')),
+      findsNothing,
     );
   });
 
@@ -856,11 +848,8 @@ void main() {
     );
     expect(find.text('button first visible'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('conversation-state-local-mobile-0')),
-        matching: find.text('Sent'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('conversation-state-local-mobile-0')),
+      findsNothing,
     );
     await dragUntilVisible(
       tester,
@@ -869,11 +858,8 @@ void main() {
     );
     expect(find.text('button second visible'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('conversation-state-local-mobile-1')),
-        matching: find.text('Sent'),
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey('conversation-state-local-mobile-1')),
+      findsNothing,
     );
   });
 
@@ -976,20 +962,134 @@ void main() {
       const ValueKey('conversation-attachment-chip-gateway-file'),
       const Offset(0, -700),
     );
-    final firstChip = tester.widget<ActionChip>(
-      find.byKey(const ValueKey('conversation-attachment-chip-gateway-file')),
+    tester
+        .widget<InkWell>(
+          find.byKey(
+            const ValueKey('conversation-attachment-chip-gateway-file'),
+          ),
+        )
+        .onTap!();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-gateway-file'),
+      ),
     );
-    firstChip.onPressed!();
     await tester.pump();
-    final busyChip = tester.widget<ActionChip>(
+    final busyChip = tester.widget<InkWell>(
       find.byKey(const ValueKey('conversation-attachment-chip-gateway-file')),
     );
-    expect(busyChip.onPressed, isNull);
+    expect(busyChip.onTap, isNull);
 
     expect(repository.downloadCalls, 1);
     expect(
       find.byKey(const ValueKey('agent-attachment-progress-gateway-file')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('stale attachment action does not download after agent switch', (
+    tester,
+  ) async {
+    final repository = DownloadGateRepository();
+    var selectedAgent = _agentNamed('mobile');
+    var view = _workspaceView(selectedAgent);
+    StateSetter? updateHarness;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              updateHarness = setState;
+              return SelectedAgentWorkspace(
+                repository: repository,
+                terminalTransport: null,
+                usePaneInputForMessages: false,
+                view: view,
+                agent: selectedAgent,
+                enableComposerCollapse: true,
+                onRefreshView: null,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await dragUntilVisible(
+      tester,
+      const ValueKey('conversation-attachment-chip-gateway-file'),
+      const Offset(0, -700),
+    );
+    await tester.longPress(
+      find.byKey(const ValueKey('conversation-attachment-chip-gateway-file')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-gateway-file'),
+      ),
+      findsOneWidget,
+    );
+
+    updateHarness!(() {
+      selectedAgent = _agentNamed('lead');
+      view = _workspaceView(selectedAgent);
+    });
+    await tester.pump();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-gateway-file'),
+      ),
+    );
+    await tester.pump();
+
+    expect(repository.downloadCalls, 0);
+    expect(
+      find.byKey(const ValueKey('agent-attachment-progress-gateway-file')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('oversized gateway attachment does not start download', (
+    tester,
+  ) async {
+    final repository = DownloadGateRepository(
+      attachmentSizeBytes: agentMessageMaxAttachmentBytes + 1,
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ProjectHomeScreen(repository: repository)),
+    );
+    await tester.pumpAndSettle();
+    await openCurrentProject(tester);
+
+    await dragUntilVisible(
+      tester,
+      const ValueKey('conversation-attachment-chip-gateway-file'),
+      const Offset(0, -700),
+    );
+    tester
+        .widget<InkWell>(
+          find.byKey(
+            const ValueKey('conversation-attachment-chip-gateway-file'),
+          ),
+        )
+        .onTap!();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('conversation-attachment-action-download-gateway-file'),
+      ),
+    );
+    await tester.pump();
+
+    expect(repository.downloadCalls, 0);
+    expect(find.text('gateway-notes.txt is larger than 25 MB'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('agent-attachment-progress-gateway-file')),
+      findsNothing,
     );
   });
 
@@ -1139,7 +1239,7 @@ void main() {
     await tester.tap(find.text('docs link'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Open links from raw source: https://example.com'),
+      find.byKey(const ValueKey('open-url-confirm-action')),
       findsOneWidget,
     );
   });
@@ -1157,7 +1257,7 @@ void main() {
           kind: RouteProviderKind.lan,
           gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
         ),
-        scopes: const {'view', 'content', 'focus', 'terminal_input'},
+        scopes: const {'view', 'content', 'focus', 'terminal_input', 'notify'},
       ),
       deviceToken: 'device-secret',
       projectId: 'proj-demo',
@@ -1209,7 +1309,7 @@ void main() {
           kind: RouteProviderKind.lan,
           gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
         ),
-        scopes: const {'view', 'content', 'focus', 'terminal_input'},
+        scopes: const {'view', 'content', 'focus', 'terminal_input', 'notify'},
       ),
       deviceToken: 'device-secret',
       projectId: 'proj-demo',
@@ -1273,7 +1373,7 @@ void main() {
           kind: RouteProviderKind.lan,
           gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
         ),
-        scopes: const {'view', 'content', 'focus', 'terminal_input'},
+        scopes: const {'view', 'content', 'focus', 'terminal_input', 'notify'},
       ),
       deviceToken: 'device-secret',
       projectId: 'proj-demo',
@@ -1325,7 +1425,13 @@ void main() {
             kind: RouteProviderKind.lan,
             gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
           ),
-          scopes: const {'view', 'content', 'focus', 'terminal_input'},
+          scopes: const {
+            'view',
+            'content',
+            'focus',
+            'terminal_input',
+            'notify',
+          },
         ),
         deviceToken: 'device-secret',
         projectId: 'proj-demo',
@@ -1438,6 +1544,7 @@ void main() {
       expect(refreshCalls, greaterThanOrEqualTo(1));
       expect(find.text('Idle'), findsOneWidget);
       expect(find.text('Working'), findsNothing);
+      expect(find.text('mobile completed'), findsOneWidget);
     },
   );
 
@@ -1454,7 +1561,7 @@ void main() {
           kind: RouteProviderKind.lan,
           gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
         ),
-        scopes: const {'view', 'content', 'focus', 'terminal_input'},
+        scopes: const {'view', 'content', 'focus', 'terminal_input', 'notify'},
       ),
       deviceToken: 'device-secret',
       projectId: 'proj-demo',
@@ -1523,7 +1630,7 @@ void main() {
           kind: RouteProviderKind.lan,
           gatewayUrl: Uri.parse('http://127.0.0.1:8787'),
         ),
-        scopes: const {'view', 'content', 'focus', 'terminal_input'},
+        scopes: const {'view', 'content', 'focus', 'terminal_input', 'notify'},
       ),
       deviceToken: 'device-secret',
       projectId: 'proj-demo',
@@ -1692,6 +1799,17 @@ CcbAgent _statusAgent({
   );
 }
 
+CcbAgent _agentNamed(String name) {
+  return CcbAgent(
+    name: name,
+    provider: 'codex',
+    window: 'main',
+    order: name == 'mobile' ? 0 : 1,
+    active: true,
+    queueDepth: 0,
+  );
+}
+
 class _FakeFilePicker extends FilePickerPlatform {
   _FakeFilePicker(this.results);
 
@@ -1741,6 +1859,9 @@ CcbProjectView _workspaceView(CcbAgent agent) {
 }
 
 class DownloadGateRepository extends RecordingGatewayRepository {
+  DownloadGateRepository({this.attachmentSizeBytes = 16});
+
+  final int attachmentSizeBytes;
   final _downloadGate = Completer<List<int>>();
   var downloadCalls = 0;
 
@@ -1757,7 +1878,7 @@ class DownloadGateRepository extends RecordingGatewayRepository {
       projectId: projectId,
       agentName: agent,
       namespaceEpoch: namespaceEpoch,
-      items: const [
+      items: [
         CcbConversationItem(
           id: 'gateway-reply-with-file',
           agentName: 'mobile',
@@ -1769,7 +1890,7 @@ class DownloadGateRepository extends RecordingGatewayRepository {
               fileId: 'gateway-file',
               fileName: 'gateway-notes.txt',
               mimeType: 'text/plain',
-              sizeBytes: 16,
+              sizeBytes: attachmentSizeBytes,
             ),
           ],
         ),

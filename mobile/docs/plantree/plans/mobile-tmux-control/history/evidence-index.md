@@ -1,8 +1,121 @@
 # Mobile Tmux Control Evidence Index
 
-Date: 2026-06-27
+Date: 2026-06-29
 
 ## Open External Gaps
+
+### 2026-06-29: Local AVD Native Pane Timing And `/status`
+
+Evidence:
+
+- [local-avd-native-pane-repeat-timing-20260629.json](local-avd-native-pane-repeat-timing-20260629.json)
+- [local-avd-native-status-command-20260629.json](local-avd-native-status-command-20260629.json)
+- [local-avd-scroll-away-desktop-origin-20260629.json](local-avd-scroll-away-desktop-origin-20260629.json)
+- [local-avd-idle-request-20260629.json](local-avd-idle-request-20260629.json)
+- [local-avd-reverse-recovery-timing-20260629.json](local-avd-reverse-recovery-timing-20260629.json)
+- [local-avd-native-long-output-live-turn-20260629.json](local-avd-native-long-output-live-turn-20260629.json)
+- [local-avd-native-long-output-120-device-metrics-20260629.json](local-avd-native-long-output-120-device-metrics-20260629.json)
+- [local-avd-native-long-output-strict-80-live-device-metrics-20260629.json](local-avd-native-long-output-strict-80-live-device-metrics-20260629.json)
+- [local-avd-native-high-volume-200-device-metrics-20260629.json](local-avd-native-high-volume-200-device-metrics-20260629.json)
+- [local-avd-status-only-transcript-200-20260629.json](local-avd-status-only-transcript-200-20260629.json)
+- [local-avd-release-reverse-recovery-current-20260629.json](local-avd-release-reverse-recovery-current-20260629.json)
+
+Result:
+
+- repeat native-pane sends ran through real server-wide gateway
+  `127.0.0.1:19302` on `emulator-5554` against disposable
+  `test_ccb2_alpha/mobile_probe`;
+- local bubble p50 `133 ms`, `Working` p50 `138 ms`, first visible feedback
+  p50 `138 ms`, expected reply p50 `3206 ms`, and `Working` captured `2/2`;
+- source-side evidence still showed no `CCB_REQ_ID`, no `mobile_gateway`, no
+  jobs matches, one native user match, and one native reply match per run;
+- separate `/status` command smoke through gateway `127.0.0.1:19303` rendered
+  non-local marker `Weekly limit:` in `562 ms`;
+- scroll-away desktop-origin smoke through gateway `127.0.0.1:19304` seeded
+  `56` native-history turns, dragged away from latest, verified no blind pickup
+  during the idle window, and used explicit refresh plus `New messages` to
+  render the injected pane marker;
+- strict idle request audit through gateway `127.0.0.1:19306` held
+  `test_ccb2_alpha/mobile_probe` open on `emulator-5554` for `180 s` and
+  observed `0` total requests, `0` conversation requests, `0` terminal-history
+  requests, and `0.0` conversation/history requests per minute in the reset
+  audit window; device sampling had `7` samples, PSS delta `-582 KB`, wake
+  locks `size=0`, `mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, and no
+  skipped-frame storm;
+- reverse-loss recovery timing through gateway `127.0.0.1:19309` removed and
+  restored `adb reverse` for both project-list and already-open selected-agent
+  refresh paths; project-list retry recovered in `1234 ms`, conversation retry
+  recovered in `1099 ms`, and internal labels remained absent;
+- 40-line long-output shape smoke through gateway `127.0.0.1:19310` rendered
+  its final marker in exactly one live terminal-output conversation item,
+  captured `Working` in `155 ms`, and kept internal labels absent;
+- 120-line long-output command smoke through gateway `127.0.0.1:19313` used
+  the same real server-wide path and collected device metrics from the
+  ready-to-send marker: local bubble `273 ms`, `Working` `281 ms`, first
+  feedback `281 ms`, final marker `1056 ms`, one final expected-reply item,
+  one live terminal-output item, no FATAL/ANR/OOM, no skipped-frame storm, and
+  screenshot/UI dump artifact paths. This is stronger than the 40-line shape
+  smoke but still does not close the 1000-line/long-duration gate because the
+  expected marker was not inside the live terminal-output item and the device
+  metric window produced only one valid memory sample plus global wake-lock
+  warnings;
+- strict 80-line live-marker smoke through gateway `127.0.0.1:19315` fixed
+  that false-positive risk by using a marker that was not present verbatim in
+  the user prompt and requiring the marker inside the live `Terminal output`
+  item before timing evidence was emitted. It reported local bubble `259 ms`,
+  `Working` `263 ms`, first feedback `263 ms`, final marker `205237 ms`, one
+  final expected-reply item, one live terminal-output item containing the
+  marker, `88` device-metric samples, PSS delta `-1481 KB`, wake locks
+  `size=0`, `mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, no skipped-frame
+  storm, and no warnings;
+- 200-line high-volume transcript reconciliation smoke through gateway
+  `127.0.0.1:19318` extended the active-send follow-up refresh tail through
+  `80 s`, `160 s`, and `320 s`, then verified all `200` prefixed lines were
+  present in the selected-agent model. It reported local bubble `162 ms`,
+  `Working` `167 ms`, first feedback `167 ms`, final transcript reconciliation
+  `80313 ms`, `3` non-local conversation items against the `8` item cap,
+  `35` device-metric samples, PSS delta `11060 KB`, wake locks `size=0`,
+  `mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, no skipped-frame storm, and
+  no warnings;
+- status-only transcript smoke through gateway `127.0.0.1:19323` verified the
+  updated product contract: terminal stream output drove the composer-adjacent
+  `Working` state but created `0` `Terminal output` conversation items. The
+  provider/native transcript model contained all `200` prefixed lines, local
+  bubble appeared in `238 ms`, `Working` in `244 ms`, first feedback in
+  `244 ms`, final transcript reconciliation in `80336 ms`, and the model
+  stayed compact with `4` non-local items against the `8` item cap;
+- release reverse-recovery smoke through gateway `127.0.0.1:19316` installed
+  release APK `app/build/app/outputs/flutter-apk/app-release.apk`, opened
+  disposable real project `test_ccb2_alpha/mobile_probe`, removed `adb reverse`,
+  observed `Connection refused`, restored `adb reverse`, and rendered marker
+  `Native reverse recovery restored 1782719941`. Recovery elapsed
+  `14230.173 ms`, screenshot path was
+  `/tmp/ccb-mobile-release-reverse-recovery-1782719951.png`, device metrics had
+  `7` memory samples, PSS delta `-3448 KB`, wake locks `size=0`,
+  `mWakeLockSummary=0x0`, no FATAL/ANR/OOM marker, no skipped-frame storm, and
+  no warnings;
+- remaining open gaps are true long-duration/high-volume output at the
+  original `1000`-line target, broader p50/p95 across repeated high-volume
+  long-output runs, and physical Tailnet/VPN recovery beyond local AVD.
+
+### 2026-06-28: Local AVD Pane Live-Output Smoke
+
+Evidence:
+
+- [local-avd-pane-live-output-smoke-20260628.md](local-avd-pane-live-output-smoke-20260628.md)
+
+Result:
+
+- current debug APK opened the real server-wide project list through gateway
+  `127.0.0.1:18999` and selected real `/home/bfly/yunwei/test_ccb2`;
+- phone send used the pane-backed path without adding a new `CCB_REQ_ID` or
+  `mobile_gateway` wrapper;
+- terminal output rendered in the selected-agent page;
+- app-side `Working` state now clears after first pane output or terminal
+  notice instead of staying stuck after stream close;
+- superseded by the 2026-06-29 native-pane repeat and `/status` command
+  evidence above; retain this entry as the original partial smoke result and
+  failure trail.
 
 ### 2026-06-27: Physical Tailnet Evidence Packet Auditor Added
 

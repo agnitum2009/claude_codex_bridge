@@ -56,6 +56,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
     required this.onPickFileAttachment,
     required this.onRemoveAttachment,
     required this.onDownloadAttachment,
+    required this.onOpenAttachment,
     required this.onSend,
     required this.onSendTab,
     required this.onSendEscape,
@@ -86,6 +87,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
   final VoidCallback onPickFileAttachment;
   final ValueChanged<String> onRemoveAttachment;
   final ValueChanged<CcbMessageAttachment> onDownloadAttachment;
+  final ValueChanged<CcbMessageAttachment> onOpenAttachment;
   final VoidCallback onSend;
   final VoidCallback onSendTab;
   final VoidCallback onSendEscape;
@@ -121,6 +123,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
               onUserScrollDirectionChanged: onUserScrollDirectionChanged,
               hasOlderItems: model.hasOlderConversation,
               onDownloadAttachment: onDownloadAttachment,
+              onOpenAttachment: onOpenAttachment,
             ),
           ),
         ),

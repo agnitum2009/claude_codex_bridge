@@ -32,6 +32,11 @@ void main() {
     expect(find.text(projectHomeTailscaleDownloadUrl), findsOneWidget);
     expect(find.text('ccb update mobile'), findsOneWidget);
     expect(
+      find.byKey(const ValueKey('project-home-update-panel')),
+      findsOneWidget,
+    );
+    expect(find.text('Current version: 8.0.7+8000007'), findsOneWidget);
+    expect(
       find.byKey(const ValueKey('project-home-onboarding-scan-button')),
       findsOneWidget,
     );
@@ -220,7 +225,7 @@ GatewayPairingPayload _pairingPayload() {
     claimEndpoint: Uri.parse('https://desktop.tailnet.ts.net/v1/pairing/claim'),
     routeProvider: RouteProviderKind.tailnet,
     gatewayUrl: Uri.parse('https://desktop.tailnet.ts.net'),
-    scopes: const {'view', 'focus', 'terminal_input', 'lifecycle'},
+    scopes: const {'view', 'focus', 'terminal_input', 'lifecycle', 'notify'},
   );
 }
 
@@ -246,7 +251,7 @@ GatewayPairedHost _pairedHost({
         kind: RouteProviderKind.tailnet,
         gatewayUrl: Uri.parse('https://desktop.tailnet.ts.net'),
       ),
-      scopes: const {'view', 'focus', 'terminal_input', 'lifecycle'},
+      scopes: const {'view', 'focus', 'terminal_input', 'lifecycle', 'notify'},
     ),
     deviceToken: 'token-$hostId-$deviceId',
     projectId: hostId,

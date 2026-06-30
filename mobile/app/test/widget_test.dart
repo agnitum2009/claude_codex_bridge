@@ -125,7 +125,13 @@ void main() {
                 'route_provider': 'cloudflare_tunnel',
                 'gateway_url': 'https://mobile.example.com',
                 'claim_endpoint': 'https://mobile.example.com/v1/pairing/claim',
-                'scopes': ['view', 'focus', 'terminal_input', 'lifecycle'],
+                'scopes': [
+                  'view',
+                  'focus',
+                  'terminal_input',
+                  'lifecycle',
+                  'notify',
+                ],
                 'expires_at': '2026-06-18T00:10:00Z',
               }),
             );
@@ -160,18 +166,23 @@ void main() {
           gatewayTerminalTransportFactory: (profile) {
             return RecordingTerminalTransport();
           },
+          showOnboardingWhenUnpaired: true,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await openConnectionDetails(tester);
     await expandTile(tester, const ValueKey('gateway-pairing-panel'));
     await tester.enterText(
       find.byKey(const ValueKey('pairing-device-name-field')),
       'Pixel Fold QR',
     );
-    await tapVisible(tester, const ValueKey('gateway-pairing-scan-button'));
+    tester
+        .widget<OutlinedButton>(
+          find.byKey(const ValueKey('gateway-pairing-scan-button')),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
 
     expect(scanCount, 1);
     expect(seenPairing.pairingCode, 'qr-code');
@@ -182,6 +193,7 @@ void main() {
       'focus',
       'terminal_input',
       'lifecycle',
+      'notify',
     });
     expect(seenDeviceName, 'Pixel Fold QR');
     final stored = await profileStore.read(
@@ -235,6 +247,7 @@ void main() {
                   'file_download',
                   'terminal_input',
                   'lifecycle',
+                  'notify',
                 },
               ),
               deviceToken: 'device-secret',
@@ -263,12 +276,12 @@ void main() {
             gatewayTerminalTransport = RecordingTerminalTransport();
             return gatewayTerminalTransport;
           },
+          showOnboardingWhenUnpaired: true,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await openConnectionDetails(tester);
     await expandTile(tester, const ValueKey('gateway-pairing-panel'));
     await tester.enterText(
       find.byKey(const ValueKey('gateway-url-field')),
@@ -282,7 +295,12 @@ void main() {
       find.byKey(const ValueKey('pairing-device-name-field')),
       'Pixel Fold',
     );
-    await tapVisible(tester, const ValueKey('gateway-pairing-claim-button'));
+    tester
+        .widget<FilledButton>(
+          find.byKey(const ValueKey('gateway-pairing-claim-button')),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
 
     expect(seenPairing.pairingCode, 'pair-code');
     expect(
@@ -298,9 +316,9 @@ void main() {
       'file_download',
       'terminal_input',
       'lifecycle',
+      'notify',
     });
     expect(seenDeviceName, 'Pixel Fold');
-    await dismissConnectionDetails(tester);
     await openCurrentProject(tester);
 
     await tester.tap(find.byKey(const ValueKey('agent-lead')));

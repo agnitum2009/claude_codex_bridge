@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to build and upload"
         required: true
-        default: "v8.0.6"
+        default: "v8.0.7"
   push:
     tags:
       - "v*"
@@ -133,10 +133,26 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
 
+      - name: Prepare Android release signing
+        shell: bash
+        env:
+          CCB_MOBILE_RELEASE_KEYSTORE_B64: ${{ secrets.CCB_MOBILE_RELEASE_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CCB_MOBILE_RELEASE_KEYSTORE_B64}" ]; then
+            echo "CCB_MOBILE_RELEASE_KEYSTORE_B64 secret is required for signed Android release builds." >&2
+            exit 1
+          fi
+          printf '%s' "${CCB_MOBILE_RELEASE_KEYSTORE_B64}" | base64 -d > "$RUNNER_TEMP/ccb-mobile-release.jks"
+
       - name: Build Android APK
         shell: bash
         env:
           TAG_NAME: ${{ github.event.inputs.tag || github.ref_name }}
+          CCB_MOBILE_RELEASE_STORE_FILE: ${{ runner.temp }}/ccb-mobile-release.jks
+          CCB_MOBILE_RELEASE_STORE_PASSWORD: ${{ secrets.CCB_MOBILE_RELEASE_STORE_PASSWORD }}
+          CCB_MOBILE_RELEASE_KEY_ALIAS: ${{ secrets.CCB_MOBILE_RELEASE_KEY_ALIAS }}
+          CCB_MOBILE_RELEASE_KEY_PASSWORD: ${{ secrets.CCB_MOBILE_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           version="${TAG_NAME#v}"

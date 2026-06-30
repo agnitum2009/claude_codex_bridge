@@ -35,7 +35,8 @@ void main() {
         'pair-code',
       );
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-claim-button'));
+      _claimButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(find.text('Gateway URL is required'), findsOneWidget);
       expect(claimCalls, 0);
@@ -64,7 +65,8 @@ void main() {
         'http://127.0.0.1:8787',
       );
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-claim-button'));
+      _claimButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(find.text('Pairing code is required'), findsOneWidget);
       expect(claimCalls, 0);
@@ -81,7 +83,13 @@ void main() {
         routeProvider: RouteProviderKind.cloudflareTunnel,
         gatewayUrl: Uri.parse('https://mobile.example.com'),
         projectId: 'proj-demo',
-        scopes: const {'view', 'focus', 'terminal_input', 'lifecycle'},
+        scopes: const {
+          'view',
+          'focus',
+          'terminal_input',
+          'lifecycle',
+          'notify',
+        },
       );
       var scanCalls = 0;
       var claimCalls = 0;
@@ -128,7 +136,8 @@ void main() {
         '',
       );
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-scan-button'));
+      _scanButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(scanCalls, 1);
       expect(claimCalls, 1);
@@ -145,6 +154,7 @@ void main() {
         'focus',
         'terminal_input',
         'lifecycle',
+        'notify',
       });
       expect(find.text('Gateway paired'), findsOneWidget);
     });
@@ -185,10 +195,8 @@ void main() {
           'Pixel Fold',
         );
 
-        await tapVisible(
-          tester,
-          const ValueKey('gateway-pairing-claim-button'),
-        );
+        _claimButton(tester).onPressed!();
+        await tester.pumpAndSettle();
 
         expect(claimCalls, 1);
         expect(gatewayRepositoryActivations, 0);
@@ -258,11 +266,20 @@ void main() {
         'Pixel Fold',
       );
 
-      await tapVisible(tester, const ValueKey('gateway-pairing-claim-button'));
+      _claimButton(tester).onPressed!();
+      await tester.pumpAndSettle();
 
       expect(claimCalls, 1);
       expect(gatewayRepositoryActivations, 1);
       expect(find.text('Gateway paired'), findsOneWidget);
+      expect(find.byKey(const ValueKey('project-list')), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('project-list-settings-action')),
+      );
+      await tester.pumpAndSettle();
+      await expandTile(tester, const ValueKey('gateway-pairing-panel'));
+
       expect(
         tester
             .widget<TextField>(find.byKey(const ValueKey('gateway-url-field')))
@@ -308,6 +325,7 @@ Future<void> _pumpProjectHome(
         gatewayRepositoryFactory:
             gatewayRepositoryFactory ?? (_) => RecordingGatewayRepository(),
         gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
+        showOnboardingWhenUnpaired: true,
       ),
     ),
   );
@@ -315,12 +333,17 @@ Future<void> _pumpProjectHome(
 }
 
 Future<void> _openPairingPanel(WidgetTester tester) async {
-  await openConnectionDetails(tester);
   await expandTile(tester, const ValueKey('gateway-pairing-panel'));
 }
 
 FilledButton _claimButton(WidgetTester tester) {
   return tester.widget<FilledButton>(
     find.byKey(const ValueKey('gateway-pairing-claim-button')),
+  );
+}
+
+OutlinedButton _scanButton(WidgetTester tester) {
+  return tester.widget<OutlinedButton>(
+    find.byKey(const ValueKey('gateway-pairing-scan-button')),
   );
 }

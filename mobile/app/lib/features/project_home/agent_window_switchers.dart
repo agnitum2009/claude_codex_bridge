@@ -20,6 +20,7 @@ class AgentSwitcher extends StatelessWidget {
     if (agents.isEmpty) {
       return const SizedBox.shrink();
     }
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       key: const ValueKey('agent-switcher'),
       height: 40,
@@ -30,6 +31,7 @@ class AgentSwitcher extends StatelessWidget {
         itemBuilder: (context, index) {
           final agent = agents[index];
           final selected = agent.name == selectedAgentName;
+          final emphasized = selected || agent.active;
           return ChoiceChip(
             key: ValueKey('agent-${agent.name}'),
             selected: selected,
@@ -37,8 +39,16 @@ class AgentSwitcher extends StatelessWidget {
             labelPadding: const EdgeInsets.symmetric(horizontal: 4),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             avatar: Icon(
-              agent.active ? Icons.radio_button_checked : Icons.smart_toy,
-              size: 16,
+              emphasized
+                  ? Icons.auto_awesome_rounded
+                  : Icons.auto_awesome_outlined,
+              size: emphasized ? 18 : 17,
+              color:
+                  selected
+                      ? colorScheme.primary
+                      : agent.active
+                      ? colorScheme.tertiary
+                      : colorScheme.onSurfaceVariant,
             ),
             label: Text(agent.name),
             onSelected: (_) {
@@ -68,6 +78,7 @@ class WindowSwitcher extends StatelessWidget {
     if (windows.isEmpty) {
       return const SizedBox.shrink();
     }
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       key: const ValueKey('window-switcher'),
       height: 36,
@@ -84,8 +95,12 @@ class WindowSwitcher extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             avatar: Icon(
-              selected ? Icons.radio_button_checked : Icons.view_column,
-              size: 15,
+              selected
+                  ? Icons.space_dashboard_rounded
+                  : Icons.space_dashboard_outlined,
+              size: selected ? 18 : 17,
+              color:
+                  selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
             ),
             label: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 140),

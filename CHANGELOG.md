@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v8.0.7 (2026-06-30)
+
+### CCB Mobile Notifications And Theme Stabilization
+
+- **Task Completion Notifications**: adds the server-wide mobile notification SSE stream and Android local notifications for pane-backed task completion, with low-sensitive payloads and real emulator tap-routing validation.
+- **Provider Status For Mobile**: carries the Codex/provider pane status detection used by mobile activity indicators and sidebar runtime state.
+- **Mobile App Polish**: updates the Android app to the steel-blue/slate theme, improved content text styles, long-bubble limits, notification tap routing, and release-channel update wiring.
+- **Release Surface Synchronized**: VERSION, package metadata, mobile app version metadata, README links, workflow defaults, and APK download URLs are aligned for 8.0.7.
+
 ## v8.0.6 (2026-06-30)
 
 ### CCB Mobile Real Project Chat Stabilization

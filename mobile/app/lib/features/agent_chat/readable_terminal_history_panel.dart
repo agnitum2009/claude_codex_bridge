@@ -175,7 +175,8 @@ class TerminalHistoryBlockView extends StatelessWidget {
       key: ValueKey('terminal-history-block-${block.id}'),
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: accent, width: 4)),
-        color: colorScheme.surface,
+        color: terminalBlockBackgroundColor(colorScheme, block.type),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
@@ -221,8 +222,10 @@ class TerminalHistoryBlockView extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: SelectableText(
                   terminalBlockText(block),
-                  style: textTheme.bodyMedium?.copyWith(
-                    fontFamily: block.type == 'log' ? null : 'monospace',
+                  style: terminalBlockTextStyle(
+                    textTheme: textTheme,
+                    colorScheme: colorScheme,
+                    type: block.type,
                   ),
                 ),
               ),

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -407,6 +408,47 @@ def main(argv: list[str] | None = None) -> int:
                         expected_reply=native_beta_expected,
                     ),
                 ],
+            }
+        elif args.native_command_smoke:
+            integration = run_flutter_native_pane_command_smoke(
+                mobile_root=mobile_root,
+                device_id=args.device_id,
+                android_package=args.android_package,
+                debug_profile=debug_profile,
+                project=alpha,
+                agent=args.agent,
+                command=args.native_command,
+                expected_marker=args.native_command_marker,
+                timeout_s=args.flutter_timeout,
+                collect_device_metrics=args.native_command_device_metrics,
+                metrics_sample_interval_s=args.idle_metrics_sample_interval,
+                adb_timeout_s=args.adb_timeout,
+                require_live_terminal_marker=(
+                    args.native_command_require_live_terminal_marker
+                ),
+                line_prefix=args.native_command_line_prefix,
+                min_line_prefix_count=args.native_command_min_line_prefix_count,
+                max_non_local_items=args.native_command_max_non_local_items,
+            )
+            if integration['returncode'] != 0:
+                raise RuntimeError('Flutter native pane command smoke returned non-zero')
+            native_pane_evidence = {
+                'mode': 'native_pane_command',
+                'project_id': alpha.get('id'),
+                'project_name': alpha.get('display_name'),
+                'agent': args.agent,
+                'command': args.native_command,
+                'expected_marker': args.native_command_marker,
+                'timing': integration.get('timing'),
+                'timings': integration.get('timings'),
+                'device_metrics': integration.get('device_metrics'),
+                'screenshot_path': integration.get('screenshot_path'),
+                'screenshot_bytes': integration.get('screenshot_bytes'),
+                'ui_dump_path': integration.get('ui_dump_path'),
+                'line_prefix': integration.get('line_prefix'),
+                'line_prefix_count': integration.get('line_prefix_count'),
+                'min_line_prefix_count': integration.get('min_line_prefix_count'),
+                'max_non_local_items': integration.get('max_non_local_items'),
             }
         elif args.desktop_origin_sync_smoke:
             desktop_marker = f'DESKTOP_ORIGIN_SYNC_MARKER_{stamp}'
@@ -875,29 +917,65 @@ def main(argv: list[str] | None = None) -> int:
                 'old_token_denied': integration.get('old_token_denied'),
             }
         elif args.native_pane_smoke:
-            native_expected = f'CCB_MOBILE_NATIVE_OK_{stamp}'
-            native_prompt = (
-                f'Please reply with exactly {native_expected} and no other text.'
-            )
-            integration = run_flutter_native_pane_smoke(
-                mobile_root=mobile_root,
-                device_id=args.device_id,
-                android_package=args.android_package,
-                debug_profile=debug_profile,
-                project=alpha,
-                agent=args.agent,
-                prompt=native_prompt,
-                expected_reply=native_expected,
-                timeout_s=args.flutter_timeout,
-            )
-            if integration['returncode'] != 0:
-                raise RuntimeError('Flutter native pane emulator smoke returned non-zero')
-            native_pane_evidence = verify_native_pane_evidence(
-                project_root=alpha_root,
-                agent=args.agent,
-                prompt=native_prompt,
-                expected_reply=native_expected,
-            )
+            native_repeat_cases: list[dict[str, Any]] = []
+            for index in range(args.native_pane_repeat):
+                suffix = f'{stamp}_{index + 1:02d}'
+                native_expected = f'CCB_MOBILE_NATIVE_OK_{suffix}'
+                native_prompt = (
+                    f'Please reply with exactly {native_expected} and no other text.'
+                )
+                case_integration = run_flutter_native_pane_smoke(
+                    mobile_root=mobile_root,
+                    device_id=args.device_id,
+                    android_package=args.android_package,
+                    debug_profile=debug_profile,
+                    project=alpha,
+                    agent=args.agent,
+                    prompt=native_prompt,
+                    expected_reply=native_expected,
+                    timeout_s=args.flutter_timeout,
+                )
+                if case_integration['returncode'] != 0:
+                    raise RuntimeError(
+                        'Flutter native pane emulator smoke returned non-zero'
+                    )
+                case_evidence = verify_native_pane_evidence(
+                    project_root=alpha_root,
+                    agent=args.agent,
+                    prompt=native_prompt,
+                    expected_reply=native_expected,
+                )
+                native_repeat_cases.append(
+                    {
+                        'index': index + 1,
+                        'integration': case_integration,
+                        'evidence': case_evidence,
+                    }
+                )
+            integration = {
+                'returncode': 0,
+                'mode': 'native_pane_repeat',
+                'repeat': args.native_pane_repeat,
+                'cases': [case['integration'] for case in native_repeat_cases],
+                'timing_summary': summarize_native_timing_cases(
+                    [case['integration'].get('timing') for case in native_repeat_cases]
+                ),
+            }
+            native_pane_evidence = {
+                'mode': 'native_pane_repeat',
+                'project_id': alpha.get('id'),
+                'project_name': alpha.get('display_name'),
+                'agent': args.agent,
+                'repeat': args.native_pane_repeat,
+                'cases': [
+                    {
+                        'index': case['index'],
+                        **case['evidence'],
+                    }
+                    for case in native_repeat_cases
+                ],
+                'timing_summary': integration['timing_summary'],
+            }
         else:
             integration = run_flutter_server_wide_smoke(
                 mobile_root=mobile_root,
@@ -1100,9 +1178,74 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help='run a real provider native-pane send/receive integration smoke instead of the fake fixture flow',
     )
     parser.add_argument(
+        '--native-pane-repeat',
+        type=int,
+        default=1,
+        help='number of sequential native pane send/reply timing cases to run with --native-pane-smoke',
+    )
+    parser.add_argument(
         '--native-pane-multi-smoke',
         action='store_true',
         help='run real provider native-pane send/receive across alpha/primary and beta/secondary agents',
+    )
+    parser.add_argument(
+        '--native-command-smoke',
+        action='store_true',
+        help='run a real provider command smoke and verify the command output is visible in the selected-agent timeline',
+    )
+    parser.add_argument(
+        '--native-command',
+        default='/status',
+        help='provider command text to send with --native-command-smoke',
+    )
+    parser.add_argument(
+        '--native-command-marker',
+        default='Weekly limit:',
+        help='visible non-local timeline text expected after --native-command is sent',
+    )
+    parser.add_argument(
+        '--native-command-device-metrics',
+        action='store_true',
+        help=(
+            'collect ADB meminfo/top, gfxinfo, power, logcat, screenshot, and '
+            'UI dump around --native-command-smoke for strict real-AVD evidence'
+        ),
+    )
+    parser.add_argument(
+        '--native-command-require-live-terminal-marker',
+        action='store_true',
+        help=(
+            'require the native-command expected marker to appear inside the '
+            'live Terminal output conversation item before timing evidence is emitted'
+        ),
+    )
+    parser.add_argument(
+        '--native-command-line-prefix',
+        default='',
+        help=(
+            'optional line prefix that must appear in non-local conversation '
+            'model text when --native-command-min-line-prefix-count is set'
+        ),
+    )
+    parser.add_argument(
+        '--native-command-min-line-prefix-count',
+        type=int,
+        default=0,
+        help=(
+            'minimum non-local conversation lines starting with '
+            '--native-command-line-prefix required before native command '
+            'timing evidence is emitted'
+        ),
+    )
+    parser.add_argument(
+        '--native-command-max-non-local-items',
+        type=int,
+        default=0,
+        help=(
+            'optional upper bound for non-local conversation item count in the '
+            'native command smoke; use this to prove high-volume output is not '
+            'split into one card per line'
+        ),
     )
     parser.add_argument(
         '--desktop-origin-sync-smoke',
@@ -1225,7 +1368,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help='with --keep-running, keep this process alive so gateway pipes stay open for manual testing',
     )
     parser.add_argument('--keep-running', action='store_true')
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.native_pane_repeat < 1:
+        parser.error('--native-pane-repeat must be >= 1')
+    return args
 
 
 def init_project(root: Path, *, provider: str, force: bool) -> None:
@@ -2202,6 +2348,104 @@ def conversation_contains(payload: dict[str, Any], text: str) -> bool:
             return True
     return False
 
+
+def extract_native_timing(stdout: str) -> dict[str, Any] | None:
+    timings = extract_native_timings(stdout)
+    return timings[0] if timings else None
+
+
+def extract_native_timings(stdout: str) -> list[dict[str, Any]]:
+    prefix = 'CCB_MOBILE_NATIVE_TIMING_JSON '
+    timings: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith(prefix):
+            continue
+        payload = json.loads(line[len(prefix):])
+        if not isinstance(payload, dict):
+            raise RuntimeError(f'native timing payload is not an object: {payload!r}')
+        timings.append(payload)
+    return timings
+
+
+def extract_recovery_timing(stdout: str) -> dict[str, Any] | None:
+    prefix = 'CCB_RECOVERY_TIMING_JSON '
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith(prefix):
+            continue
+        payload = json.loads(line[len(prefix):])
+        if not isinstance(payload, dict):
+            raise RuntimeError(f'recovery timing payload is not an object: {payload!r}')
+        return payload
+    return None
+
+
+def summarize_native_timing_cases(
+    timings: list[dict[str, Any] | None],
+) -> dict[str, Any]:
+    fields = [
+        'send_to_local_bubble_ms',
+        'send_to_working_ms',
+        'send_to_first_feedback_ms',
+        'send_to_expected_reply_ms',
+    ]
+    feedback_kinds: dict[str, int] = {}
+    for timing in timings:
+        if not isinstance(timing, dict):
+            continue
+        kind = timing.get('first_feedback_kind')
+        if isinstance(kind, str) and kind:
+            feedback_kinds[kind] = feedback_kinds.get(kind, 0) + 1
+    return {
+        'case_count': len(timings),
+        'timing_payload_count': sum(1 for timing in timings if isinstance(timing, dict)),
+        'working_captured_count': sum(
+            1
+            for timing in timings
+            if isinstance(timing, dict) and timing.get('send_to_working_ms') is not None
+        ),
+        'first_feedback_kinds': feedback_kinds,
+        'fields': {
+            field: summarize_numeric_timing_field(timings, field) for field in fields
+        },
+    }
+
+
+def summarize_numeric_timing_field(
+    timings: list[dict[str, Any] | None],
+    field: str,
+) -> dict[str, Any]:
+    values: list[float] = []
+    missing = 0
+    for timing in timings:
+        value = timing.get(field) if isinstance(timing, dict) else None
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+        else:
+            missing += 1
+    values.sort()
+    return {
+        'count': len(values),
+        'missing': missing,
+        'min_ms': round(values[0], 3) if values else None,
+        'p50_ms': percentile_nearest_rank(values, 50),
+        'p95_ms': percentile_nearest_rank(values, 95),
+        'max_ms': round(values[-1], 3) if values else None,
+    }
+
+
+def percentile_nearest_rank(values: list[float], percentile: int) -> float | None:
+    if not values:
+        return None
+    if percentile <= 0:
+        return round(values[0], 3)
+    if percentile >= 100:
+        return round(values[-1], 3)
+    index = max(0, min(len(values) - 1, math.ceil(len(values) * percentile / 100) - 1))
+    return round(values[index], 3)
+
+
 def require_project(projects: list[Any], root: Path) -> dict[str, Any]:
     expected = str(root)
     for project in projects:
@@ -2349,6 +2593,11 @@ def run_flutter_server_wide_smoke(
     build_mode: str,
     timeout_s: float,
 ) -> dict[str, Any]:
+    if min_line_prefix_count > 0 and not line_prefix:
+        raise ValueError(
+            '--native-command-line-prefix is required when '
+            '--native-command-min-line-prefix-count is positive'
+        )
     clear_result = emulator_smoke.run_toolchain(
         mobile_root=mobile_root,
         argv=['adb', '-s', device_id, 'shell', 'pm', 'clear', android_package],
@@ -2482,9 +2731,248 @@ def run_flutter_native_pane_smoke(
         'agent': agent,
         'prompt': prompt,
         'expected_reply': expected_reply,
+        'timing': extract_native_timing(completed.stdout),
+        'timings': extract_native_timings(completed.stdout),
         'stdout_tail': emulator_smoke.tail_lines(completed.stdout, 80),
         'stderr_tail': emulator_smoke.tail_lines(completed.stderr, 40),
     }
+
+
+def run_flutter_native_pane_command_smoke(
+    *,
+    mobile_root: Path,
+    device_id: str,
+    android_package: str,
+    debug_profile: str,
+    project: dict[str, Any],
+    agent: str,
+    command: str,
+    expected_marker: str,
+    timeout_s: float,
+    collect_device_metrics: bool = False,
+    metrics_sample_interval_s: int = 30,
+    adb_timeout_s: float = 30.0,
+    require_live_terminal_marker: bool = False,
+    line_prefix: str = '',
+    min_line_prefix_count: int = 0,
+    max_non_local_items: int = 0,
+) -> dict[str, Any]:
+    clear_result = emulator_smoke.run_toolchain(
+        mobile_root=mobile_root,
+        argv=['adb', '-s', device_id, 'shell', 'pm', 'clear', android_package],
+        cwd=mobile_root,
+        timeout_s=15.0,
+    )
+    flutter_args = [
+        'flutter',
+        'test',
+        'integration_test/native_pane_gateway_smoke_test.dart',
+        '-d',
+        device_id,
+        '-D',
+        f'CCB_MOBILE_DEBUG_PAIRED_HOST_BASE64={debug_profile}',
+        '-D',
+        'CCB_MOBILE_DEBUG_AUTO_ACTIVATE=true',
+        '-D',
+        f'CCB_MOBILE_NATIVE_PROJECT_ID={project["id"]}',
+        '-D',
+        f'CCB_MOBILE_NATIVE_PROJECT_NAME={project["display_name"]}',
+        '-D',
+        f'CCB_MOBILE_AGENT={agent}',
+        '-D',
+        f'CCB_MOBILE_NATIVE_PROMPT={command}',
+        '-D',
+        f'CCB_MOBILE_NATIVE_EXPECTED={expected_marker}',
+        '-D',
+        'CCB_MOBILE_NATIVE_EXPECTED_MODE=any_non_local',
+    ]
+    if require_live_terminal_marker:
+        flutter_args.extend(
+            [
+                '-D',
+                'CCB_MOBILE_NATIVE_REQUIRE_LIVE_TERMINAL_EXPECTED=true',
+            ]
+        )
+    if line_prefix:
+        flutter_args.extend(['-D', f'CCB_MOBILE_NATIVE_LINE_PREFIX={line_prefix}'])
+    if min_line_prefix_count > 0:
+        flutter_args.extend(
+            [
+                '-D',
+                (
+                    'CCB_MOBILE_NATIVE_MIN_LINE_PREFIX_COUNT='
+                    f'{min_line_prefix_count}'
+                ),
+            ]
+        )
+    if max_non_local_items > 0:
+        flutter_args.extend(
+            [
+                '-D',
+                f'CCB_MOBILE_NATIVE_MAX_NON_LOCAL_ITEMS={max_non_local_items}',
+            ]
+        )
+    device_metrics: dict[str, Any] | None = None
+    screenshot: dict[str, Any] | None = None
+    ui_dump_path: str | None = None
+    metrics_collector: IdleDeviceMetricsCollector | None = None
+    if collect_device_metrics:
+        metrics_collector = IdleDeviceMetricsCollector(
+            mobile_root=mobile_root,
+            device_id=device_id,
+            android_package=android_package,
+            sample_interval_s=max(1, metrics_sample_interval_s),
+        )
+    if collect_device_metrics:
+        toolchain = mobile_root / 'tools' / 'mobile_toolchain_env.sh'
+        command_line = (
+            f'. {quote_shell(str(toolchain))} && '
+            f'{gateway_smoke.shell_command(flutter_args)}'
+        )
+        process = subprocess.Popen(
+            ['sh', '-lc', command_line],
+            cwd=str(mobile_root / 'app'),
+            env=os.environ.copy(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        )
+        output_lines: list[str] = []
+        ready_seen = False
+        deadline = time.monotonic() + timeout_s
+        try:
+            while True:
+                if time.monotonic() > deadline:
+                    process.kill()
+                    process.wait(timeout=5)
+                    raise RuntimeError(
+                        'native pane command Flutter smoke timed out\n'
+                        + '\n'.join(output_lines[-160:])
+                    )
+                line = ''
+                if process.stdout is not None:
+                    ready, _, _ = select.select([process.stdout], [], [], 0.2)
+                    if ready:
+                        line = process.stdout.readline()
+                if line:
+                    output_lines.append(line.rstrip())
+                    if (
+                        not ready_seen
+                        and 'CCB_MOBILE_NATIVE_READY_TO_SEND' in line
+                    ):
+                        ready_seen = True
+                        if metrics_collector is not None:
+                            metrics_collector.start()
+                    if (
+                        'CCB_MOBILE_NATIVE_TIMING_JSON' in line
+                        and metrics_collector is not None
+                        and device_metrics is None
+                    ):
+                        device_metrics = metrics_collector.stop()
+                        screenshot_path = Path('/tmp') / (
+                            f'ccb-mobile-native-command-{int(time.time())}.png'
+                        )
+                        screenshot = capture_android_screenshot(
+                            mobile_root=mobile_root,
+                            device_id=device_id,
+                            path=screenshot_path,
+                            timeout_s=adb_timeout_s,
+                        )
+                        ui_dump = dump_android_ui(
+                            mobile_root=mobile_root,
+                            device_id=device_id,
+                            timeout_s=adb_timeout_s,
+                        )
+                        ui_path = Path('/tmp') / (
+                            f'ccb-mobile-native-command-{int(time.time())}.xml'
+                        )
+                        ui_path.write_text(ui_dump, encoding='utf-8')
+                        ui_dump_path = str(ui_path)
+                if process.poll() is not None:
+                    if process.stdout is not None:
+                        rest = process.stdout.read()
+                        if rest:
+                            output_lines.extend(rest.splitlines())
+                    break
+            completed = subprocess.CompletedProcess(
+                flutter_args,
+                process.returncode,
+                '\n'.join(output_lines),
+                '',
+            )
+        finally:
+            if metrics_collector is not None and device_metrics is None:
+                device_metrics = metrics_collector.stop()
+        if completed.returncode == 0 and not ready_seen:
+            raise RuntimeError(
+                'native pane command smoke did not emit '
+                'CCB_MOBILE_NATIVE_READY_TO_SEND before completion\n'
+                + '\n'.join(output_lines[-160:])
+            )
+    else:
+        completed = emulator_smoke.run_toolchain(
+            mobile_root=mobile_root,
+            argv=flutter_args,
+            cwd=mobile_root / 'app',
+            timeout_s=timeout_s,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            emulator_smoke.command_failure('native pane command Flutter smoke failed', completed)
+        )
+    if device_metrics is not None:
+        validate_idle_device_metrics(device_metrics)
+        if screenshot is None:
+            screenshot_path = Path('/tmp') / (
+                f'ccb-mobile-native-command-{int(time.time())}.png'
+            )
+            screenshot = capture_android_screenshot(
+                mobile_root=mobile_root,
+                device_id=device_id,
+                path=screenshot_path,
+                timeout_s=adb_timeout_s,
+            )
+        if ui_dump_path is None:
+            ui_dump = dump_android_ui(
+                mobile_root=mobile_root,
+                device_id=device_id,
+                timeout_s=adb_timeout_s,
+            )
+            ui_path = Path('/tmp') / (
+                f'ccb-mobile-native-command-{int(time.time())}.xml'
+            )
+            ui_path.write_text(ui_dump, encoding='utf-8')
+            ui_dump_path = str(ui_path)
+    result = {
+        'returncode': completed.returncode,
+        'app_data_clear_returncode': clear_result.returncode,
+        'project_id': project.get('id'),
+        'project_name': project.get('display_name'),
+        'agent': agent,
+        'command': command,
+        'expected_marker': expected_marker,
+        'timing': extract_native_timing(completed.stdout),
+        'timings': extract_native_timings(completed.stdout),
+        'line_prefix': line_prefix or None,
+        'min_line_prefix_count': (
+            min_line_prefix_count if min_line_prefix_count > 0 else None
+        ),
+        'max_non_local_items': (
+            max_non_local_items if max_non_local_items > 0 else None
+        ),
+        'stdout_tail': emulator_smoke.tail_lines(completed.stdout, 80),
+        'stderr_tail': emulator_smoke.tail_lines(completed.stderr, 40),
+    }
+    timing = result.get('timing')
+    if isinstance(timing, dict):
+        result['line_prefix_count'] = timing.get('line_prefix_count')
+    if device_metrics is not None:
+        result['device_metrics'] = device_metrics
+        result['screenshot_path'] = screenshot['path'] if screenshot is not None else None
+        result['screenshot_bytes'] = screenshot['bytes'] if screenshot is not None else None
+        result['ui_dump_path'] = ui_dump_path
+    return result
 
 
 def run_flutter_native_pane_multi_smoke(
@@ -4645,6 +5133,7 @@ def run_flutter_reverse_recovery_smoke(
             f'exit {process.returncode}\n'
             + '\n'.join(output_lines[-180:])
         )
+    stdout = '\n'.join(output_lines)
     return {
         'returncode': process.returncode,
         'app_data_clear_returncode': clear_result.returncode,
@@ -4656,6 +5145,7 @@ def run_flutter_reverse_recovery_smoke(
         'reverse_restored': reverse_restored_events[-1],
         'reverse_removed_events': reverse_removed_events,
         'reverse_restored_events': reverse_restored_events,
+        'timing': extract_recovery_timing(stdout),
         'stdout_tail': output_lines[-140:],
     }
 

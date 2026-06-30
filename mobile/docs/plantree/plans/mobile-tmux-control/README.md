@@ -66,6 +66,10 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
   reusable long-running goal prompt for correcting ordinary mobile chat so it
   writes to the selected agent pane/native input path and loads
   provider-native transcript history instead of only CCB ask/job records.
+- [goal-low-latency-conversation.md](goal-low-latency-conversation.md) is the
+  reusable long-running goal prompt for optimizing selected-agent conversation
+  latency, live output smoothness, transcript reconciliation, and strict local
+  Android Emulator evidence after pane-backed chat lands.
 - [roadmap.md](roadmap.md) tracks likely implementation phases.
 - [implementation-status.md](implementation-status.md) is the current
   execution handoff for the active landing phase.
@@ -109,6 +113,11 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
   defines the active correction package after manual AVD testing proved the
   default composer still uses the mobile ask/message route and conversation
   backfill still over-indexes on CCB job history.
+- [topics/pane-live-output-and-smooth-conversation.md](topics/pane-live-output-and-smooth-conversation.md)
+  defines the next conversation-smoothness package: use selected-pane terminal
+  output as the low-latency live source, keep provider-native transcript as
+  final readable history, avoid blind polling, and validate `/status`, long
+  executions, scroll stability, and idle power on real server-wide AVD runs.
 - [topics/relay-route-provider-spike.md](topics/relay-route-provider-spike.md)
   defines the first relay route-provider contract and emulator-only fake/local
   acceptance gates before a public relay exists.
@@ -243,6 +252,15 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
   records that host-side CCB Mobile tooling should live in CCB source as an
   explicit optional bundle installed with `ccb update mobile`, not as part of
   mandatory `ccb update`.
+- [decisions/018-stable-android-release-channel.md](decisions/018-stable-android-release-channel.md)
+  records that Android release APKs must use stable release signing material,
+  while the first in-app update entry opens the configured APK/release URL and
+  explains same-signature cover-install versus one-time different-signature
+  migration.
+- [decisions/019-app-lifetime-task-completion-notifications.md](decisions/019-app-lifetime-task-completion-notifications.md)
+  records that P0 task-completion phone notifications are app-lifetime local
+  notifications fed by a server-wide low-sensitive gateway event stream, with
+  push/foreground-service reliability deferred.
 
 ## Current Direction
 
@@ -282,6 +300,9 @@ chat-first agent workspace with explicit raw-terminal fallback:
    not-on-LAN route, Tailnet as a stable private route, and Cloudflare Tunnel
    as an advanced route while keeping the app and gateway protocol
    relay-compatible.
+14. Use a server-wide low-sensitive notification event stream for app-lifetime
+    task-completion system notifications, with every paired client eligible to
+    notify and push-level killed-app delivery deferred.
 
 ## Initial Recommendation
 

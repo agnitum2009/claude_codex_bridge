@@ -1,4 +1,6 @@
 export 'app/ccb_mobile_app.dart';
+export 'app/app_update.dart';
+export 'app/app_theme.dart';
 export 'app/app_factories.dart';
 export 'app/runtime_mode.dart';
 export 'features/agent_chat/pane_chat_controller.dart';
@@ -18,6 +20,7 @@ export 'models/ccb_scope.dart';
 export 'models/ccb_terminal_target.dart';
 export 'models/ccb_window.dart';
 export 'models/readable_terminal_history.dart';
+export 'notifications/task_completion_notifications.dart';
 export 'pairing/gateway_pairing.dart';
 export 'pairing/gateway_pairing_scanner_screen.dart';
 export 'repository/fake_mobile_ccb_repository.dart';

@@ -44,3 +44,31 @@ Color terminalBlockColor(ColorScheme colorScheme, String type) {
     _ => colorScheme.outline,
   };
 }
+
+Color terminalBlockBackgroundColor(ColorScheme colorScheme, String type) {
+  final accent = terminalBlockColor(colorScheme, type);
+  final alpha = colorScheme.brightness == Brightness.dark ? 0.16 : 0.10;
+  return accent.withValues(alpha: alpha);
+}
+
+TextStyle terminalBlockTextStyle({
+  required TextTheme textTheme,
+  required ColorScheme colorScheme,
+  required String type,
+}) {
+  final base = textTheme.bodyMedium ?? const TextStyle();
+  return base.copyWith(
+    color: terminalBlockTextColor(colorScheme, type),
+    fontFamily: type == 'log' ? null : 'monospace',
+  );
+}
+
+Color terminalBlockTextColor(ColorScheme colorScheme, String type) {
+  return switch (type) {
+    'command' => colorScheme.primary,
+    'code' => colorScheme.tertiary,
+    'diff' => colorScheme.secondary,
+    'error' => colorScheme.error,
+    _ => colorScheme.onSurfaceVariant,
+  };
+}

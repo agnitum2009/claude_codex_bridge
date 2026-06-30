@@ -88,6 +88,10 @@ Scroll policy:
   and show a compact "new messages" jump affordance near the composer;
 - keep retries, post-send refreshes, and scheduled refreshes from disrupting
   the viewport when the user is not near the bottom;
+- after expanding a collapsed or preview conversation bubble, bottom scrolling
+  must remain stable and must not snap back to the top; audit key stability,
+  scroll extent changes, refresh rebuilds, and any competing agent-list drawer
+  gesture;
 - preserve expanded state and scroll offset across rebuilds, refreshes, and
   route changes.
 
@@ -206,7 +210,8 @@ Required scopes:
 - Physical phone validation.
 - iOS release packaging.
 - Full project-lifetime terminal journal.
-- Rich attachments or file browsing.
+- Full arbitrary remote file browsing. Known CCB attachments/artifacts may
+  still expose focused Download/Open actions from the conversation.
 - Requiring Cloudflare, a public IP, or user-owned DNS.
 - Replacing CCB source authority with mobile-only state.
 

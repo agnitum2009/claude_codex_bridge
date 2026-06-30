@@ -584,6 +584,10 @@ P1:
 
 - Project health updates without forcing app restart.
 - Offline projects remain visible with degraded status and safe actions locked.
+- Android app install/upgrade continuity is defined: the same release channel
+  can install a new APK over the existing app without uninstalling, preserving
+  pairing/app data, and signature mismatches are prevented or surfaced before
+  users hit an install failure.
 - Favorites/pins can be local or gateway-side, but must not change project
   identity.
 - Tailnet route onboarding uses the same server gateway and does not change

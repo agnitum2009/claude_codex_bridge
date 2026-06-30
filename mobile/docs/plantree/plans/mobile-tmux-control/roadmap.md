@@ -316,12 +316,33 @@ Work:
 - add a pane-backed composer model for multiline user input, pending/sent/
   failed-or-echoed state, safe retry, and per-agent draft preservation;
 - add a CCB content endpoint or gateway route that resolves content ids safely;
+- add safe content actions for validated remote files and URLs: long-press
+  Download/Open actions for files/artifacts, external-app handoff through the
+  OS chooser, and one-time confirmation before opening remote content outside
+  the app;
 - add a readable terminal history surface for the selected agent that captures
   current tmux pane scrollback, cleans ANSI/control noise, groups useful
   command/log/code/diff/Markdown-like blocks, and allows vertical history
   scrolling on phone;
+- replace swipe-up agent-list reveal with an explicit pull-out control, then
+  verify expanded conversation bubbles can scroll to bottom without jumping
+  back to the top;
 - derive initial completion/attention notifications from ProjectView/Comms
   deltas;
+- extend completion notifications toward cross-project phone reminders for any
+  pane-backed task completion, once the authoritative CCB/tmux event source is
+  confirmed;
+- add the P0 app-lifetime OS task-complete notification path through a
+  server-wide gateway notification subscription: Android notification
+  permission/channel setup after pairing/subscription, terse
+  project-short-name plus agent completion text, platform default sound
+  behavior, deep link, and persistent dedupe across reconnect, refresh,
+  resume, and project switching;
+- split the P0 notification landing into a source package for the server-wide
+  low-sensitive completion event stream and an app package for subscription,
+  Android notification channel/permission handling, local dedupe, and tap
+  routing, per
+  [Decision 019](decisions/019-app-lifetime-task-completion-notifications.md);
 - add wake/open/close/stop through CCB lifecycle authority;
 - add device scopes for `view`, `content`, `focus`, `terminal_input`,
   `notify`, optional `ask`/`message_submit`, `lifecycle`, and `admin`;
@@ -335,22 +356,43 @@ Acceptance criteria:
   failed states;
 - Markdown content handles headings, lists, tables, code blocks, links, copy,
   and formulas on phone and iPad;
+- validated remote files separate Download from Open, and Open hands the local
+  downloaded copy to another app only after user confirmation;
+- web URLs can open through the system browser/app chooser after confirmation,
+  while local server paths remain blocked unless resolved by the gateway;
 - readable terminal history lets the user scroll through the current retained
   pane history, while clearly labeling it as best-effort tmux scrollback rather
   than authoritative CCB content;
 - notifications do not depend on terminal text scraping;
 - notification deep links open the target project and agent/window/content;
+- cross-project completion reminders do not require the user to already be on
+  the completed task's project page;
+- OS task-complete notifications contain only project short name, agent name,
+  and completion text, use the platform default notification sound/channel
+  behavior, and do not include prompt/reply/terminal details;
+- in real Android Emulator validation, a backgrounded-but-not-killed app can
+  receive a server-wide gateway completion event from a dedicated test project,
+  post one OS notification, and tap back to the target project/agent;
+- Android notification permission denial does not crash the app and degrades to
+  in-app completion state without an OS notification;
+- source-side tests prove completion event generation, `notify` scope denial,
+  multi-client fanout, `dedupe_key` stability, and absence of prompt/output/path
+  leakage before the app treats notifications as real cross-project signals;
 - close never stops server-side CCB;
 - stop never calls raw `tmux kill-server`;
 - lifecycle/admin actions require explicit scope and confirmation.
 
 ## Phase 4: Chat-First Agent Workspace Landing
 
-Status: Reopened as Phase 4C after manual AVD/code inspection proved the
-current default send/read path still uses CCB ask/job semantics. The old local
-C1-C5 acceptance gate remains historical evidence only; default chat
-acceptance now requires the agent-native correction in
-[topics/agent-native-conversation-and-input-correction.md](topics/agent-native-conversation-and-input-correction.md).
+Status: Phase 4F. Pane-backed send and provider-native readable history are
+implemented at smoke level; the active work is conversation smoothness:
+low-latency active-send follow-up, terminal-stream/live-turn reconciliation,
+and real AVD timing evidence. The old local C1-C5 acceptance gate remains
+historical evidence only; default chat acceptance now requires the
+agent-native correction in
+[topics/agent-native-conversation-and-input-correction.md](topics/agent-native-conversation-and-input-correction.md)
+plus the smoothness gates in
+[topics/pane-live-output-and-smooth-conversation.md](topics/pane-live-output-and-smooth-conversation.md).
 
 Goal: make the default paired-gateway mobile surface a ChatGPT/DeepSeek-style
 conversation workbench for one selected CCB agent.
@@ -370,6 +412,16 @@ Work:
   and use terminal output/history as the primary timeline source;
 - load provider-native transcript history as the primary readable conversation
   source, with CCB ask/job records only as supplemental compatibility data;
+- add the smooth live-output layer from
+  [topics/pane-live-output-and-smooth-conversation.md](topics/pane-live-output-and-smooth-conversation.md):
+  selected-pane terminal output streams into one stable live assistant turn,
+  provider-native transcript later reconciles final readable history, and
+  `/status` plus long-running executions remain visible without blind polling
+  or many small reply cards;
+- land the next low-latency follow-loop slice: first active-send refresh within
+  `300 ms`, timing evidence for send accepted / pane send complete / first
+  terminal byte / first conversation change / first rendered update, and zero
+  idle conversation/history requests;
 - verify ordinary mobile sends do not create ask jobs and never inject
   `CCB_REQ_ID`;
 - preserve readable terminal history as a labeled timeline evidence block, not
@@ -390,6 +442,12 @@ Acceptance criteria:
   phone is not validating against fake `demo` or the wrong current project;
 - user messages, agent replies/callbacks, Comms, and artifacts render as
   readable timeline entries;
+- one long provider execution updates one live/final reply turn instead of
+  producing many disconnected reply cards;
+- `/status` and other provider UI command output is visible from the selected
+  pane stream even when it is not present in provider-native transcript files;
+- idle selected-agent pages do not run a blind fixed-interval terminal-history
+  refresh loop;
 - agent switching preserves selected-agent scroll and draft state;
 - the soft keyboard does not hide the composer or corrupt timeline layout;
 - existing route diagnostics, lifecycle, readable history, and explicit raw
@@ -464,6 +522,9 @@ Work:
   `ccb update`; reviewed source worktree
   `/home/bfly/yunwei/ccb_source_mobile_update_tailnet` landed commits
   `b6e148f2` and `d73ae650` with 147 focused tests passing after follow-up;
+- define the Android app upgrade/install lane so a new APK from the same
+  channel can cover-install the existing app without signature conflict or
+  forced uninstall; in-app upgrade can build on that lane later;
 - document the stable Tailnet private route with Tailscale Serve, MagicDNS,
   tailnet HTTPS, grants, route diagnostics, WebSocket smoke, and revoke gates;
 - keep Cloudflare named tunnel as a route provider behind `GatewayTransport`;
@@ -478,6 +539,9 @@ Acceptance criteria:
 
 - `ccb update mobile` exists as the explicit host-side Mobile/Tailnet
   onboarding entry while normal `ccb update` leaves mobile dependencies alone;
+- a same-channel Android APK can be installed over the existing app and
+  preserves pairing/app data instead of requiring uninstall for signature
+  mismatch;
 - a relay spike can switch a host profile from Cloudflare URL to relay route
   without changing project ids or favorites;
 - Tailnet pairing and terminal smoke can run from a physical phone/iPad

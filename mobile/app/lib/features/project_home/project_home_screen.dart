@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../../app/app_factories.dart';
+import '../../app/app_theme.dart';
 import '../../app/runtime_mode.dart';
 import '../../debug/debug_profile_seed.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
@@ -12,6 +13,7 @@ import '../../models/ccb_notification.dart';
 import '../../models/ccb_project.dart';
 import '../../models/ccb_project_lifecycle.dart';
 import '../../models/ccb_project_view.dart';
+import '../../notifications/task_completion_notifications.dart';
 import '../../pairing/gateway_pairing.dart';
 import '../../repository/mobile_ccb_repository.dart';
 import '../../transport/gateway_route_diagnostics.dart';
@@ -31,6 +33,7 @@ import 'project_home_route_diagnostics.dart';
 import 'project_home_runtime_activation.dart';
 import 'project_home_scaffold_host.dart';
 import 'project_home_shell_state.dart';
+import 'project_home_task_completion_notifications.dart';
 import 'project_home_terminal_navigation.dart';
 import 'project_home_view_refresh.dart';
 import 'project_shell_widgets.dart';
@@ -47,6 +50,11 @@ class ProjectHomeScreen extends StatelessWidget {
     this.gatewayRouteDiagnostics = defaultGatewayRouteDiagnostics,
     this.showOnboardingWhenUnpaired = false,
     this.autoActivateStoredProfile = false,
+    this.themePreference = CcbThemePreference.system,
+    this.onThemePreferenceChanged,
+    this.taskNotificationStreamClient,
+    this.taskCompletionLocalNotifications,
+    this.taskCompletionSeenStore,
     super.key,
   });
 
@@ -59,6 +67,12 @@ class ProjectHomeScreen extends StatelessWidget {
   final GatewayRouteDiagnosticsFactory gatewayRouteDiagnostics;
   final bool showOnboardingWhenUnpaired;
   final bool autoActivateStoredProfile;
+  final CcbThemePreference themePreference;
+  final ValueChanged<CcbThemePreference>? onThemePreferenceChanged;
+  final GatewayTaskCompletionNotificationStreamClient?
+  taskNotificationStreamClient;
+  final TaskCompletionLocalNotifications? taskCompletionLocalNotifications;
+  final TaskCompletionSeenDedupeStore? taskCompletionSeenStore;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +86,11 @@ class ProjectHomeScreen extends StatelessWidget {
       gatewayRouteDiagnostics: gatewayRouteDiagnostics,
       showOnboardingWhenUnpaired: showOnboardingWhenUnpaired,
       autoActivateStoredProfile: autoActivateStoredProfile,
+      themePreference: themePreference,
+      onThemePreferenceChanged: onThemePreferenceChanged,
+      taskNotificationStreamClient: taskNotificationStreamClient,
+      taskCompletionLocalNotifications: taskCompletionLocalNotifications,
+      taskCompletionSeenStore: taskCompletionSeenStore,
     );
   }
 }
@@ -87,6 +106,11 @@ class _ProjectHomeView extends StatefulWidget {
     required this.gatewayRouteDiagnostics,
     required this.showOnboardingWhenUnpaired,
     required this.autoActivateStoredProfile,
+    required this.themePreference,
+    required this.onThemePreferenceChanged,
+    required this.taskNotificationStreamClient,
+    required this.taskCompletionLocalNotifications,
+    required this.taskCompletionSeenStore,
   });
 
   final MobileCcbRepository repository;
@@ -98,6 +122,12 @@ class _ProjectHomeView extends StatefulWidget {
   final GatewayRouteDiagnosticsFactory gatewayRouteDiagnostics;
   final bool showOnboardingWhenUnpaired;
   final bool autoActivateStoredProfile;
+  final CcbThemePreference themePreference;
+  final ValueChanged<CcbThemePreference>? onThemePreferenceChanged;
+  final GatewayTaskCompletionNotificationStreamClient?
+  taskNotificationStreamClient;
+  final TaskCompletionLocalNotifications? taskCompletionLocalNotifications;
+  final TaskCompletionSeenDedupeStore? taskCompletionSeenStore;
 
   @override
   State<_ProjectHomeView> createState() => _ProjectHomeViewState();
@@ -148,10 +178,22 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   final _runtimeSessionCoordinator =
       const ProjectHomeRuntimeSessionCoordinator();
   final _viewRefreshCoordinator = const ProjectHomeViewRefreshCoordinator();
+  late final TaskCompletionNotificationController _taskNotifications;
 
   @override
   void initState() {
     super.initState();
+    _taskNotifications = TaskCompletionNotificationController(
+      streamClient:
+          widget.taskNotificationStreamClient ??
+          HttpGatewayTaskCompletionNotificationStreamClient(),
+      localNotifications:
+          widget.taskCompletionLocalNotifications ??
+          MethodChannelTaskCompletionLocalNotifications(),
+      seenStore:
+          widget.taskCompletionSeenStore ?? TaskCompletionSeenDedupeStore(),
+      onTap: _handleTaskCompletionNotificationTap,
+    );
     _activeRepository = widget.repository;
     _viewFuture = _loadActiveProjectView();
     _bootstrapProfiles();
@@ -160,6 +202,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   @override
   void dispose() {
     _pairingForm.dispose();
+    unawaited(_taskNotifications.dispose());
     _lifecycleResultNotifier.dispose();
     _runningLifecycleActionNotifier.dispose();
     super.dispose();
@@ -278,6 +321,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       routeKindListenable: _pairingForm.routeKindListenable,
       claiming: _claimingPairing,
       loadingProfiles: _loadingProfiles,
+      themePreference: widget.themePreference,
+      onThemePreferenceChanged: widget.onThemePreferenceChanged,
       onRouteKindChanged: (value) {
         setState(() {
           _setPairingRouteKind(value);
@@ -285,7 +330,17 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       },
       onScan: _scanGatewayProfile,
       onClaim: _claimGatewayProfile,
+      onClose: _canClosePairingSetup ? _closePairingSetup : null,
     );
+  }
+
+  bool get _canClosePairingSetup =>
+      _mode == AppRuntimeMode.pairedGateway && _profiles.isNotEmpty;
+
+  void _closePairingSetup() {
+    setState(() {
+      _showPairingSetup = false;
+    });
   }
 
   Widget _buildProjectLoadError(Object error) {
@@ -387,6 +442,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         return ProjectHomeServerProjectListHost(
           projects: projects,
           onRefreshProjects: _retryServerProjects,
+          onOpenSettings: _openPairingSettings,
           onOpenProject: _openServerProject,
         );
       },
@@ -570,10 +626,6 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   void _handleMobileTimelineScrollDirection(ScrollDirection direction) {
     if (direction == ScrollDirection.reverse) {
       _collapseMobileAgents();
-      return;
-    }
-    if (direction == ScrollDirection.forward) {
-      _expandMobileAgents();
     }
   }
 
@@ -711,6 +763,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           _terminalTransport = session.terminalTransport;
           _viewFuture = session.viewFuture;
         });
+        unawaited(_taskNotifications.stop());
         _lifecycleResultNotifier.value = null;
       case AppRuntimeMode.pairedGateway:
         final selection = selectProjectHomePairedRuntimeProfile(
@@ -762,9 +815,11 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       _terminalTransport = session.terminalTransport;
     });
     _lifecycleResultNotifier.value = null;
+    _startTaskCompletionNotifications(profile);
   }
 
   void _returnToPairingSetup() {
+    unawaited(_taskNotifications.stop());
     setState(() {
       _mode = AppRuntimeMode.fake;
       _showPairingSetup = true;
@@ -778,6 +833,12 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       _viewFuture = _loadActiveProjectView();
     });
     _lifecycleResultNotifier.value = null;
+  }
+
+  void _openPairingSettings() {
+    setState(() {
+      _showPairingSetup = true;
+    });
   }
 
   Future<void> _scanGatewayProfile() async {
@@ -1095,24 +1156,12 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         loadingProfiles: _loadingProfiles,
         checkingRoute: _checkingRoute,
         runningLifecycleActionListenable: _runningLifecycleActionNotifier,
-        gatewayUrlController: _pairingForm.gatewayUrlController,
-        pairingCodeController: _pairingForm.pairingCodeController,
-        deviceNameController: _pairingForm.deviceNameController,
-        routeKindListenable: _pairingForm.routeKindListenable,
-        claiming: _claimingPairing,
         onModeChanged: _setRuntimeMode,
         onProfileSelected: _selectGatewayProfile,
         onCheckRoute: _checkGatewayRoute,
         onLifecycleAction: (action) {
           _requestLifecycle(view, action);
         },
-        onRouteKindChanged: (value) {
-          setState(() {
-            _setPairingRouteKind(value);
-          });
-        },
-        onScan: _scanGatewayProfile,
-        onClaim: _claimGatewayProfile,
       ),
     );
   }
@@ -1142,6 +1191,64 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       });
     }
     _showSnack(outcome.snackMessage);
+  }
+
+  void _startTaskCompletionNotifications(GatewayPairedHost profile) {
+    unawaited(
+      _taskNotifications.start(profile).then((status) {
+        if (!mounted) {
+          return;
+        }
+        if (status ==
+            TaskCompletionNotificationSubscriptionStatus.missingNotifyScope) {
+          _showSnack(taskCompletionMissingNotifyScopeMessage);
+        }
+      }),
+    );
+  }
+
+  void _handleTaskCompletionNotificationTap(TaskCompletionNotificationTap tap) {
+    unawaited(_openTaskCompletionNotificationTap(tap));
+  }
+
+  Future<void> _openTaskCompletionNotificationTap(
+    TaskCompletionNotificationTap tap,
+  ) async {
+    if (_mode != AppRuntimeMode.pairedGateway) {
+      return;
+    }
+    CcbProjectView? targetView;
+    try {
+      targetView = await _activeRepository
+          .getProjectView(tap.projectId)
+          .timeout(projectHomeRuntimeViewLoadTimeout);
+    } catch (_) {
+      targetView = null;
+    }
+    if (!mounted) {
+      return;
+    }
+    final route = resolveProjectHomeTaskCompletionNotificationTap(
+      tap: tap,
+      targetView: targetView,
+    );
+    switch (route.kind) {
+      case ProjectHomeTaskCompletionNotificationRouteKind.openProjectAgent:
+        setState(() {
+          _activeProjectId = route.projectId!;
+          _openedProjectId = route.projectId;
+          _selectedAgentName = route.agentName;
+          _serverProjectsFuture = null;
+          _viewFuture = Future<CcbProjectView>.value(route.view!);
+        });
+      case ProjectHomeTaskCompletionNotificationRouteKind.projectList:
+        setState(() {
+          _activeProjectId = '';
+          _openedProjectId = null;
+          _selectedAgentName = null;
+          _serverProjectsFuture = _loadServerProjects();
+        });
+    }
   }
 
   void _showSnack(String message) {

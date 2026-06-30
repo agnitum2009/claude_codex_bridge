@@ -22,6 +22,7 @@ class WideCollapsedSidebarRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final agent = selectedAgent;
+    final colorScheme = Theme.of(context).colorScheme;
     return ColoredBox(
       key: const ValueKey('wide-collapsed-sidebar-rail'),
       color: Theme.of(context).colorScheme.surface,
@@ -32,7 +33,7 @@ class WideCollapsedSidebarRail extends StatelessWidget {
             key: const ValueKey('wide-sidebar-expand-action'),
             tooltip: 'Show agents',
             onPressed: onExpand,
-            icon: const Icon(Icons.smart_toy),
+            icon: Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
           ),
           IconButton(
             key: const ValueKey('notification-center-action'),
@@ -60,8 +61,14 @@ class WideCollapsedSidebarRail extends StatelessWidget {
             Tooltip(
               message: agent.name,
               child: Icon(
-                agent.active ? Icons.radio_button_checked : Icons.smart_toy,
+                agent.active
+                    ? Icons.auto_awesome_rounded
+                    : Icons.auto_awesome_outlined,
                 size: 20,
+                color:
+                    agent.active
+                        ? colorScheme.tertiary
+                        : colorScheme.onSurfaceVariant,
               ),
             ),
           const Spacer(),

@@ -62,6 +62,7 @@ void main() {
         child: ProjectHomeServerProjectListHost(
           projects: const [],
           onRefreshProjects: () {},
+          onOpenSettings: () {},
           onOpenProject: (_) {},
         ),
       ),

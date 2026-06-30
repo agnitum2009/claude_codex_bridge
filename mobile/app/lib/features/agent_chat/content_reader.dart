@@ -3,6 +3,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../models/ccb_content_item.dart';
 import 'clipboard_feedback.dart';
+import 'content_text_styles.dart';
 import 'conversation_item_presentation.dart';
 
 class AgentContentReader extends StatelessWidget {
@@ -82,8 +83,13 @@ class ContentItemView extends StatelessWidget {
               key: ValueKey('markdown-body-${item.id}'),
               data: item.text,
               selectable: true,
+              styleSheet: ccbMarkdownStyleSheet(context),
               onTapLink: (text, href, title) {
-                showBlockedConversationLink(context, href ?? text);
+                if (isOpenableExternalUrl(href)) {
+                  confirmAndOpenExternalUrl(context, href!);
+                } else {
+                  showBlockedConversationLink(context, href ?? text);
+                }
               },
             ),
           ),
