@@ -98,6 +98,8 @@ pub fn queue_summary(state: &ControlState, target: &str, detail: Option<bool>) -
         normalized
     };
     if normalized != "all" {
+        require_mailbox_target(state, &normalized)
+            .unwrap_or_else(|e| panic!("{e}"));
         let agent_summary = if detail == Some(true) {
             agent_queue_detail(state, &normalized)
         } else {

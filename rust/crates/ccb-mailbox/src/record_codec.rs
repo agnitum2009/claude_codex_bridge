@@ -175,3 +175,7 @@ pub fn find_last<T: DeserializeOwned>(
 pub const MAILBOX_RECORD: &str = "mailbox_record";
 pub const INBOUND_EVENT_RECORD: &str = "inbound_event_record";
 pub const DELIVERY_LEASE: &str = "delivery_lease";
+pub const MESSAGE_RECORD: &str = "message_record";
+pub const ATTEMPT_RECORD: &str = "attempt_record";
+pub const REPLY_RECORD: &str = "reply_record";
+pub const CALLBACK_EDGE_RECORD: &str = "callback_edge";

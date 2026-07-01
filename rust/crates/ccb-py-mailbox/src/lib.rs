@@ -1,8 +1,14 @@
 #![allow(clippy::useless_conversion)]
 
 use camino::Utf8Path;
-use ccb_jobs::models::{JobRecord, MessageEnvelope};
+use ccb_jobs::models::{JobRecord, JobStatus, MessageEnvelope};
+use ccb_mailbox::facade_recording::CompletionDecision;
 use ccb_mailbox::kernel::Clock;
+use ccb_mailbox::models::{
+    CallbackEdgeState as MsgCallbackEdgeState, MessageState as MsgMessageState,
+    ReplyTerminalStatus as MsgReplyTerminalStatus,
+};
+use ccb_mailbox::stores::CallbackEdgeChanges;
 use ccb_mailbox::{InboundEventStatus, InboundEventType, MailboxKernelService, MailboxRecord};
 use ccb_message_bureau::{MessageBureauControlService, MessageBureauFacade};
 use ccb_storage::paths::PathLayout;
@@ -65,6 +71,25 @@ fn mailbox_error_to_pyerr(e: ccb_mailbox::MailboxError) -> PyErr {
             PyErr::new::<PyValueError, _>(e.to_string())
         }
         ccb_mailbox::MailboxError::NotFound(_) => PyErr::new::<PyRuntimeError, _>(e.to_string()),
+    }
+}
+
+/// Run a closure that may panic (the underlying Rust control queue uses panics
+/// for validation errors) and convert the panic message into a Python
+/// ``ValueError`` so callers see the same exception type as the Python impl.
+fn catch_panic_as_value_error<T>(f: impl FnOnce() -> T) -> PyResult<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(value) => Ok(value),
+        Err(payload) => {
+            let msg = if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else {
+                "panic in Rust message bureau".to_string()
+            };
+            Err(PyErr::new::<PyValueError, _>(msg))
+        }
     }
 }
 
@@ -539,6 +564,122 @@ fn optional_config_value(config: Option<&Bound<'_, PyAny>>) -> PyResult<Option<V
     }
 }
 
+// ---------------------------------------------------------------------------
+// Message bureau argument parsing helpers
+// ---------------------------------------------------------------------------
+
+/// Extract a string value from a Python enum (`str, Enum`) or plain string.
+fn enum_value_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    if let Ok(s) = value.extract::<String>() {
+        return Ok(s);
+    }
+    let v = value.getattr("value")?;
+    v.extract::<String>()
+}
+
+/// Parse a Python enum/string into a Rust enum that deserializes from snake_case.
+fn parse_enum<T: for<'de> serde::Deserialize<'de>>(value: &Bound<'_, PyAny>) -> PyResult<T> {
+    let s = enum_value_string(value)?;
+    serde_json::from_value(Value::String(s))
+        .map_err(|e| PyErr::new::<PyValueError, _>(format!("invalid enum value: {e}")))
+}
+
+fn parse_job_record(job: &Bound<'_, PyAny>) -> PyResult<JobRecord> {
+    let value = pyobject_to_serde_value(job)?;
+    serde_json::from_value(value)
+        .map_err(|e| PyErr::new::<PyValueError, _>(format!("invalid job record: {e}")))
+}
+
+fn parse_completion_decision(decision: &Bound<'_, PyAny>) -> PyResult<CompletionDecision> {
+    let value = pyobject_to_serde_value(decision)?;
+
+    let terminal = value
+        .get("terminal")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| PyErr::new::<PyValueError, _>("decision.terminal is required"))?;
+
+    let status_str = value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| PyErr::new::<PyValueError, _>("decision.status is required"))?;
+    let status: JobStatus = serde_json::from_value(Value::String(status_str.to_string()))
+        .map_err(|e| PyErr::new::<PyValueError, _>(format!("invalid decision.status: {e}")))?;
+
+    let reason = value
+        .get("reason")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+
+    let reply = value
+        .get("reply")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| PyErr::new::<PyValueError, _>("decision.reply is required"))?;
+
+    let provider_turn_ref = value
+        .get("provider_turn_ref")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+
+    let diagnostics = value
+        .get("diagnostics")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Default::default()));
+
+    Ok(CompletionDecision {
+        terminal,
+        status,
+        reason,
+        reply,
+        provider_turn_ref,
+        diagnostics,
+    })
+}
+
+fn parse_callback_edge_record(edge: &Bound<'_, PyAny>) -> PyResult<ccb_mailbox::models::CallbackEdgeRecord> {
+    let value = pyobject_to_serde_value(edge)?;
+    serde_json::from_value(value)
+        .map_err(|e| PyErr::new::<PyValueError, _>(format!("invalid callback edge: {e}")))
+}
+
+fn parse_callback_edge_changes(
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<CallbackEdgeChanges> {
+    let mut changes = CallbackEdgeChanges::new();
+    let Some(kwargs) = kwargs else {
+        return Ok(changes);
+    };
+
+    if let Some(value) = kwargs.get_item("state")? {
+        changes.state = Some(parse_enum::<MsgCallbackEdgeState>(&value)?);
+    }
+    if let Some(value) = kwargs.get_item("child_reply_id")? {
+        changes.child_reply_id = Some(value.extract::<String>()?);
+    }
+    if let Some(value) = kwargs.get_item("child_status")? {
+        changes.child_status = Some(value.extract::<String>()?);
+    }
+    if let Some(value) = kwargs.get_item("continuation_job_id")? {
+        changes.continuation_job_id = Some(value.extract::<String>()?);
+    }
+    if let Some(value) = kwargs.get_item("continuation_message_id")? {
+        changes.continuation_message_id = Some(value.extract::<String>()?);
+    }
+    if let Some(value) = kwargs.get_item("timeout_at")? {
+        changes.timeout_at = if value.is_none() {
+            Some(None)
+        } else {
+            Some(Some(value.extract::<String>()?))
+        };
+    }
+    if let Some(value) = kwargs.get_item("diagnostics")? {
+        changes.diagnostics = Some(pyobject_to_serde_value(&value)?);
+    }
+    if let Some(value) = kwargs.get_item("updated_at")? {
+        changes.updated_at = Some(value.extract::<String>()?);
+    }
+
+    Ok(changes)
+}
+
 #[pyclass(name = "MessageBureauFacade")]
 pub struct PyMessageBureauFacade {
     inner: MessageBureauFacade,
@@ -605,6 +746,165 @@ impl PyMessageBureauFacade {
         let records = self.inner.all_messages();
         to_py_object(py, records)
     }
+
+    #[pyo3(signature = (job, started_at))]
+    fn mark_attempt_started(
+        &self,
+        job: &Bound<'_, PyAny>,
+        started_at: &str,
+    ) -> PyResult<()> {
+        let job = parse_job_record(job)?;
+        self.inner.mark_attempt_started(&job, started_at);
+        Ok(())
+    }
+
+    #[pyo3(signature = (job, decision, finished_at))]
+    fn record_attempt_terminal(
+        &self,
+        job: &Bound<'_, PyAny>,
+        decision: &Bound<'_, PyAny>,
+        finished_at: &str,
+    ) -> PyResult<()> {
+        let job = parse_job_record(job)?;
+        let decision = parse_completion_decision(decision)?;
+        self.inner.record_attempt_terminal(&job, &decision, finished_at);
+        Ok(())
+    }
+
+    #[pyo3(signature = (job, decision, finished_at, deliver_to_caller=true))]
+    fn record_reply(
+        &self,
+        job: &Bound<'_, PyAny>,
+        decision: &Bound<'_, PyAny>,
+        finished_at: &str,
+        deliver_to_caller: bool,
+    ) -> PyResult<Option<String>> {
+        let job = parse_job_record(job)?;
+        let decision = parse_completion_decision(decision)?;
+        Ok(self.inner.record_reply(&job, &decision, finished_at, deliver_to_caller))
+    }
+
+    #[pyo3(signature = (job, reply, finished_at, diagnostics=None, terminal_status=None, deliver_to_actor=None))]
+    fn record_notice(
+        &self,
+        job: &Bound<'_, PyAny>,
+        reply: &str,
+        finished_at: &str,
+        diagnostics: Option<&Bound<'_, PyAny>>,
+        terminal_status: Option<&Bound<'_, PyAny>>,
+        deliver_to_actor: Option<&str>,
+    ) -> PyResult<Option<String>> {
+        let job = parse_job_record(job)?;
+        let diagnostics = diagnostics.map(pyobject_to_serde_value).transpose()?;
+        let terminal_status = match terminal_status {
+            None => MsgReplyTerminalStatus::Incomplete,
+            Some(value) => parse_enum::<MsgReplyTerminalStatus>(value)?,
+        };
+        Ok(self.inner.record_notice(
+            &job,
+            reply,
+            diagnostics,
+            finished_at,
+            terminal_status,
+            deliver_to_actor,
+        ))
+    }
+
+    #[pyo3(signature = (job, decision, finished_at, deliver_to_caller=true, record_reply=true))]
+    fn record_terminal(
+        &self,
+        job: &Bound<'_, PyAny>,
+        decision: &Bound<'_, PyAny>,
+        finished_at: &str,
+        deliver_to_caller: bool,
+        record_reply: bool,
+    ) -> PyResult<Option<String>> {
+        let job = parse_job_record(job)?;
+        let decision = parse_completion_decision(decision)?;
+        Ok(self.inner.record_terminal(
+            &job,
+            &decision,
+            finished_at,
+            deliver_to_caller,
+            record_reply,
+        ))
+    }
+
+    #[pyo3(signature = (message_id, job, accepted_at))]
+    fn record_retry_attempt(
+        &self,
+        message_id: &str,
+        job: &Bound<'_, PyAny>,
+        accepted_at: &str,
+    ) -> PyResult<String> {
+        let job = parse_job_record(job)?;
+        self.inner
+            .record_retry_attempt(message_id, &job, accepted_at)
+            .map_err(mailbox_error_to_pyerr)
+    }
+
+    #[pyo3(signature = (message_id, next_state, updated_at))]
+    fn set_message_state(
+        &self,
+        message_id: &str,
+        next_state: &Bound<'_, PyAny>,
+        updated_at: &str,
+    ) -> PyResult<()> {
+        let next_state = parse_enum::<MsgMessageState>(next_state)?;
+        self.inner.set_message_state(message_id, next_state, updated_at);
+        Ok(())
+    }
+
+    #[pyo3(signature = (edge))]
+    fn record_callback_edge(&self, edge: &Bound<'_, PyAny>) -> PyResult<()> {
+        let edge = parse_callback_edge_record(edge)?;
+        self.inner.record_callback_edge(&edge).map_err(mailbox_error_to_pyerr)
+    }
+
+    fn callback_edge_for_child_job(
+        &self,
+        py: Python<'_>,
+        child_job_id: &str,
+    ) -> PyResult<Py<PyAny>> {
+        option_to_py_object(py, self.inner.callback_edge_for_child_job(child_job_id))
+    }
+
+    fn callback_edge_for_child_message(
+        &self,
+        py: Python<'_>,
+        child_message_id: &str,
+    ) -> PyResult<Py<PyAny>> {
+        option_to_py_object(py, self.inner.callback_edge_for_child_message(child_message_id))
+    }
+
+    fn callback_edge_for_parent_job(
+        &self,
+        py: Python<'_>,
+        parent_job_id: &str,
+    ) -> PyResult<Py<PyAny>> {
+        option_to_py_object(py, self.inner.callback_edge_for_parent_job(parent_job_id))
+    }
+
+    #[pyo3(signature = (edge, kwargs=None))]
+    fn update_callback_edge(
+        &self,
+        py: Python<'_>,
+        edge: &Bound<'_, PyAny>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<PyAny>> {
+        let edge = parse_callback_edge_record(edge)?;
+        let changes = parse_callback_edge_changes(kwargs)?;
+        let updated = self.inner.update_callback_edge(&edge, changes);
+        to_py_object(py, updated)
+    }
+
+    fn callback_edge(&self, py: Python<'_>, edge_id: &str) -> PyResult<Py<PyAny>> {
+        option_to_py_object(py, self.inner.callback_edge(edge_id))
+    }
+
+    fn pending_callback_edges(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        to_py_object(py, self.inner.pending_callback_edges())
+    }
 }
 
 #[pyclass(name = "MessageBureauControlService")]
@@ -632,7 +932,7 @@ impl PyMessageBureauControlService {
         target: &str,
         detail: Option<bool>,
     ) -> PyResult<Py<PyAny>> {
-        let value = self.inner.queue_summary(target, detail);
+        let value = catch_panic_as_value_error(|| self.inner.queue_summary(target, detail))?;
         serde_value_to_pyobject(py, &value)
     }
 
@@ -659,6 +959,17 @@ impl PyMessageBureauControlService {
 
     fn mailbox_head(&self, py: Python<'_>, agent_name: &str) -> PyResult<Py<PyAny>> {
         let value = self.inner.mailbox_head(agent_name);
+        serde_value_to_pyobject(py, &value)
+    }
+
+    #[pyo3(signature = (agent_name, inbound_event_id=None))]
+    fn ack_reply(
+        &self,
+        py: Python<'_>,
+        agent_name: &str,
+        inbound_event_id: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let value = catch_panic_as_value_error(|| self.inner.ack_reply(agent_name, inbound_event_id))?;
         serde_value_to_pyobject(py, &value)
     }
 }

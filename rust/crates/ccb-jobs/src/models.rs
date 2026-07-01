@@ -7,8 +7,11 @@ use serde_json::Value;
 #[derive(Default)]
 pub enum DeliveryScope {
     #[default]
+    #[serde(alias = "single")]
     Agent,
+    #[serde(alias = "group")]
     Group,
+    #[serde(alias = "broadcast")]
     Broadcast,
 }
 

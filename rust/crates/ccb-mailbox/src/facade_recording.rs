@@ -6,9 +6,9 @@ use crate::facade_state::{
     set_message_state, FacadeState,
 };
 use crate::models::{
-    AttemptRecord, AttemptState, InboundEventRecord, InboundEventStatus, InboundEventType,
-    JobRecord, JobStatus, MessageEnvelope, MessageRecord, MessageState, ReplyRecord,
-    ReplyTerminalStatus,
+    AttemptRecord, AttemptState, DeliveryScope, InboundEventRecord, InboundEventStatus,
+    InboundEventType, JobRecord, JobStatus, MessageEnvelope, MessageRecord, MessageState,
+    ReplyRecord, ReplyTerminalStatus,
 };
 use crate::reply_payloads::compose_reply_payload;
 use crate::targets::normalize_mailbox_target;
@@ -116,7 +116,11 @@ pub fn record_submission(
             .map(|s| s.to_string())
             .or_else(|| resolve_origin_message_id(state, request.reply_to.as_deref())),
         from_actor: request.from_actor.clone(),
-        target_scope: format!("{:?}", request.delivery_scope).to_lowercase(),
+        target_scope: match request.delivery_scope {
+            DeliveryScope::Agent => "single".to_string(),
+            DeliveryScope::Group => "group".to_string(),
+            DeliveryScope::Broadcast => "broadcast".to_string(),
+        },
         target_agents: jobs.iter().map(|j| j.agent_name.clone()).collect(),
         message_class: request.message_type.clone(),
         reply_policy: serde_json::json!({
