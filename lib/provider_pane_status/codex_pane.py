@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from .models import PaneCompletionEvidence
 
@@ -90,6 +91,15 @@ CONFIG_ERROR_MARKERS = (
     "model provider",
     "config.toml",
 )
+USAGE_LIMIT_MARKERS = (
+    "hit your usage limit",
+    "usage limit",
+    "purchase more credits",
+    "out of credits",
+    "try again at",
+    "quota",
+    "plan limit",
+)
 WAITING_MARKERS = (
     "do you trust the contents of this directory?",
     "press enter to continue",
@@ -106,6 +116,7 @@ STATUS_CATALOG: dict[str, str] = {
     "auth_failed": "Codex reports authentication or API-key rejection.",
     "api_error": "Codex reports provider/API/model/rate-limit/server failure text.",
     "config_error": "Codex reports invalid provider/configuration text.",
+    "usage_limit": "Account/quota exhaustion banner (usage limit / out of credits); terminal until reset or top-up.",
     "reconnecting": "Codex reports stream recovery or retrying connection; recoverable active state.",
     "failed": "Generic visible provider/runtime failure not classified above.",
     "pane_dead": "The tmux pane or server is gone.",
@@ -121,6 +132,7 @@ class PaneStatus:
     notes: tuple[str, ...] = ()
     terminal_outcome: str | None = None
     completion_evidence: PaneCompletionEvidence | None = None
+    retry_after: str | None = None
 
     def to_record(self) -> dict[str, object]:
         record: dict[str, object] = {
@@ -133,6 +145,8 @@ class PaneStatus:
             record["terminal_outcome"] = self.terminal_outcome
         if self.completion_evidence is not None:
             record["completion_evidence"] = self.completion_evidence.to_record()
+        if self.retry_after is not None:
+            record["retry_after"] = self.retry_after
         return record
 
 
@@ -193,6 +207,21 @@ def parse_codex_pane_status(
                 "completed",
                 "codex_pane",
                 "codex_worked_for_terminal_summary",
+            ),
+        )
+
+    matches = _matched(USAGE_LIMIT_MARKERS, recent)
+    if matches:
+        return PaneStatus(
+            "usage_limit",
+            "provider_usage_limit",
+            matches,
+            terminal_outcome="failed",
+            retry_after=parse_retry_after(recent),
+            completion_evidence=PaneCompletionEvidence(
+                "failed",
+                "codex_pane",
+                "provider_usage_limit",
             ),
         )
 
@@ -293,6 +322,38 @@ def _matched(markers: tuple[str, ...], text: str) -> tuple[str, ...]:
     return tuple(marker for marker in markers if marker in text)
 
 
+# "try again at Jul 2nd, 2026 10:21 AM" -> capture the date/time tail.
+RETRY_AFTER_RE = re.compile(
+    r"try\s+again\s+at\s+([a-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:am|pm))",
+    re.IGNORECASE,
+)
+
+
+def parse_retry_after(text: str) -> str | None:
+    """Parse a "try again at <Mon Nth, YYYY H:MM AM/PM>" banner into an ISO timestamp.
+
+    Returns the ISO-8601 string (e.g. "2026-07-02T10:21:00") or None if no
+    recognizable reset timestamp is present or parsing fails. Ordinal suffixes
+    (2nd, 3rd, etc.) are stripped before strptime.
+    """
+    if not text:
+        return None
+    match = RETRY_AFTER_RE.search(text)
+    if match is None:
+        return None
+    raw = match.group(1).strip()
+    # Strip ordinal suffixes (1st, 2nd, 3rd, 4th) -> 1, 2, 3, 4 for strptime "%d".
+    cleaned = re.sub(r"(\d{1,2})(st|nd|rd|th)", r"\1", raw, flags=re.IGNORECASE)
+    # Normalize stray commas/spaces; strptime is strict about a single space.
+    cleaned = re.sub(r"\s+", " ", cleaned).replace(",", ", ").replace(",  ", ", ")
+    for fmt in ("%b %d, %Y %I:%M %p", "%B %d, %Y %I:%M %p"):
+        try:
+            return datetime.strptime(cleaned, fmt).isoformat()
+        except ValueError:
+            continue
+    return None
+
+
 def _last_worked_for_index(lines: list[str]) -> int:
     for index in range(len(lines) - 1, max(-1, len(lines) - 13), -1):
         line = lines[index]
@@ -324,8 +385,11 @@ __all__ = [
     "ACTIVE_STATES",
     "PaneCompletionEvidence",
     "PaneStatus",
+    "RETRY_AFTER_RE",
     "STATUS_CATALOG",
+    "USAGE_LIMIT_MARKERS",
     "normalize_screen",
     "parse_codex_pane_status",
+    "parse_retry_after",
     "strip_ansi",
 ]

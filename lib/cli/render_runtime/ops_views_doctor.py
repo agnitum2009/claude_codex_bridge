@@ -188,6 +188,15 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
         lines.append(
             f'agent: name={agent["agent_name"]} health={agent["health"]} provider={agent["provider"]} completion={agent["completion_family"]}'
         )
+        provider_health = (agent.get('diagnostics') or {}).get('provider_health')
+        if provider_health:
+            lines.append(
+                'provider_health: '
+                f'state={provider_health.get("state")} '
+                f'signal_state={provider_health.get("signal_state")} '
+                f'signal_reason={provider_health.get("signal_reason")} '
+                f'retry_after={provider_health.get("retry_after")}'
+            )
         lines.append(binding_line(agent))
         lines.append(
             f'restore: supported={agent["execution_resume_supported"]} mode={agent["execution_restore_mode"]} reason={agent["execution_restore_reason"]}'

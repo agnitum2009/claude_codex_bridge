@@ -285,6 +285,58 @@ def _delivery_pane_looks_unusable(state: dict[str, object]) -> bool:
         return False
 
 
+# Maps a parsed codex pane signal state to an attributable error_kind for
+# delivery/attempt diagnostics. None means "no content error worth tagging".
+_PANE_SIGNAL_ERROR_KIND = {
+    'usage_limit': 'provider_usage_limit',
+    'api_error': 'provider_api_error',
+    'auth_failed': 'provider_auth_failed',
+    'config_error': 'provider_config_error',
+    'failed': 'provider_error',
+    'auth_required': 'provider_auth_required',
+}
+
+
+def _delivery_pane_signal(state: dict[str, object]) -> dict[str, object] | None:
+    """Capture and parse pane content during a delivery failure.
+
+    Returns a diagnostics fragment ({error_kind, pane_tail, retry_after?}) when
+    the pane shows a classified provider error, or None otherwise. Keeps the
+    delivery path's existing failure classification untouched.
+    """
+    backend = state.get('backend')
+    pane_id = str(state.get('pane_id') or state.get('delivery_target_pane_id') or '').strip()
+    get_pane_content = getattr(backend, 'get_pane_content', None)
+    if not pane_id or not callable(get_pane_content):
+        return None
+    try:
+        content = str(get_pane_content(pane_id, lines=120) or '')
+    except Exception:
+        return None
+    if not content.strip():
+        return None
+    try:
+        from provider_pane_status.codex_pane import parse_codex_pane_status
+    except Exception:
+        return None
+    parsed = parse_codex_pane_status(content)
+    error_kind = _PANE_SIGNAL_ERROR_KIND.get(parsed.state)
+    if error_kind is None:
+        return None
+    tail_lines = [line.rstrip() for line in content.splitlines() if line.strip()]
+    pane_tail = '\n'.join(tail_lines[-20:]) if tail_lines else None
+    fragment: dict[str, object] = {
+        'error_kind': error_kind,
+        'pane_signal_state': parsed.state,
+        'pane_signal_reason': parsed.reason,
+    }
+    if pane_tail:
+        fragment['pane_tail'] = pane_tail
+    if parsed.retry_after:
+        fragment['retry_after'] = parsed.retry_after
+    return fragment
+
+
 def _delivery_timeout_elapsed(state: dict[str, object], *, submission: ProviderSubmission, now: str) -> bool:
     timeout_s = _delivery_timeout_s(state)
     if timeout_s <= 0:
@@ -335,6 +387,12 @@ def _delivery_failure_result(
         'delivery_workspace_path': str(work_dir),
         'delivery_anchor_seen': False,
     }
+    # When the pane content shows a provider error banner (usage-limit / auth /
+    # api), surface it on the delivery diagnostics so the failure is
+    # attributable instead of looking like a generic delivery timeout.
+    pane_signal = _delivery_pane_signal(state)
+    if pane_signal is not None:
+        diagnostics.update(pane_signal)
     item = build_item(
         submission,
         kind=CompletionItemKind.ERROR,
