@@ -13,6 +13,7 @@ from .handlers_mailbox import (
     handle_trace,
     handle_wait,
     handle_watch,
+    handle_why,
 )
 from .handlers_ops import (
     handle_agent,
@@ -78,6 +79,7 @@ _HANDLERS = {
     'trace': handle_trace,
     'wait': handle_wait,
     'watch': handle_watch,
+    'why': handle_why,
 }
 
 

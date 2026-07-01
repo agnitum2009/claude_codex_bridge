@@ -34,6 +34,7 @@ from cli.models import (
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 )
 
 from .common import parse_args, require_no_extra
@@ -771,6 +772,12 @@ def parse_trace(tokens: list[str], *, project: str | None, error_type) -> Parsed
     if len(tokens) != 1:
         raise error_type('trace requires <submission_id|message_id|attempt_id|reply_id|job_id>')
     return ParsedTraceCommand(project=project, target=tokens[0])
+
+
+def parse_why(tokens: list[str], *, project: str | None, error_type) -> ParsedWhyCommand:
+    if len(tokens) != 1:
+        raise error_type('why requires <job_id>')
+    return ParsedWhyCommand(project=project, job_id=tokens[0])
 
 
 def parse_resubmit(tokens: list[str], *, project: str | None, error_type) -> ParsedResubmitCommand:

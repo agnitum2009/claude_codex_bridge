@@ -12,6 +12,7 @@ SUBCOMMANDS = {
     'pend',
     'queue',
     'trace',
+    'why',
     'resubmit',
     'retry',
     'wait-any',

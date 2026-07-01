@@ -41,6 +41,7 @@ from cli.render import (
     render_trace,
     render_wait,
     render_watch_batch,
+    render_why,
     write_lines,
 )
 from cli.services.ack import ack_reply
@@ -79,6 +80,7 @@ from cli.services.start import start_agents
 from cli.services.trace import trace_target
 from cli.services.wait import wait_for_replies
 from cli.services.watch import watch_target
+from cli.services.why import why_target
 
 
 def build_phase2_dispatch_services(**overrides):
@@ -154,6 +156,7 @@ def build_phase2_dispatch_services(**overrides):
         render_trace=render_trace,
         render_wait=render_wait,
         render_watch_batch=render_watch_batch,
+        render_why=render_why,
         resubmit_message=resubmit_message,
         retry_attempt=retry_attempt,
         start_agents=start_agents,
@@ -163,6 +166,7 @@ def build_phase2_dispatch_services(**overrides):
         wait_for_replies=wait_for_replies,
         watch_ask_job=watch_ask_job,
         watch_target=watch_target,
+        why_target=why_target,
         write_ask_output=write_ask_output,
         write_lines=write_lines,
     )

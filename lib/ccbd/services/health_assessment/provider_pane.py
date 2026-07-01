@@ -175,6 +175,13 @@ def _parse_provider_pane_content(provider: str, content: str):
     Only codex has a content parser today. Unknown/non-codex providers return
     None so content fields stay None without crashing (claude/kimi parsers are
     a later wave).
+
+    Uses ``strict=True`` (the HIGH-CONFIDENCE marker tier) so that health does
+    NOT flip to usage-limited / auth-failed / api-error / config-error on a
+    broad keyword match. A healthy agent whose pane output merely *discusses*
+    usage limits / quotas / api errors (e.g. one researching the classification
+    topic) must not be terminalized by the B.2 health bridge. Broad markers
+    remain available to the diagnostics-only delivery path.
     """
     if provider != 'codex':
         return None
@@ -182,7 +189,7 @@ def _parse_provider_pane_content(provider: str, content: str):
     # when provider_pane_status is not on sys.path in some unit contexts.
     from provider_pane_status.codex_pane import parse_codex_pane_status
 
-    return parse_codex_pane_status(content)
+    return parse_codex_pane_status(content, strict=True)
 
 
 def _build_assessment(

@@ -43,6 +43,7 @@ from .parser_runtime import (
     parse_trace,
     parse_wait,
     parse_watch,
+    parse_why,
 )
 
 
@@ -63,6 +64,7 @@ _COMMAND_PARSERS = {
     'queue': parse_queue,
     'repair': parse_repair,
     'trace': parse_trace,
+    'why': parse_why,
     'resubmit': parse_resubmit,
     'retry': parse_retry,
     'inbox': parse_inbox,

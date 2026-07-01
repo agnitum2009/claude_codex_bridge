@@ -15,6 +15,7 @@ from .models_mailbox import (
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 )
 from .models_start import (
     ParsedAgentCommand,
@@ -79,4 +80,5 @@ ParsedCommand = Union[
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 ]

@@ -10,7 +10,7 @@ from .job_views import (
     render_wait,
     render_watch_batch,
 )
-from .mailbox_views import render_ack, render_inbox, render_pend, render_queue, render_trace
+from .mailbox_views import render_ack, render_inbox, render_pend, render_queue, render_trace, render_why
 from .ops_views import (
     render_agent_lifecycle,
     render_clear,
@@ -75,5 +75,6 @@ __all__ = [
     'render_trace',
     'render_wait',
     'render_watch_batch',
+    'render_why',
     'write_lines',
 ]

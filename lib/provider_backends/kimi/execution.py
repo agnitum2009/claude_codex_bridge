@@ -30,7 +30,133 @@ MAX_WAIT_SECS = 300.0
 KIMI_NATIVE_TURN_TIMEOUT_ENV = "CCB_KIMI_NATIVE_TURN_TIMEOUT_S"
 ANCHOR_WAIT_SECS = 120.0
 READY_WAIT_SECS = 60.0
-PANE_FALLBACK_STABLE_SECS = 10.0
+# How long the pane must show an UNCHANGED reply signature AND an unchanged
+# pane line count before the pane-idle fallback treats kimi as complete.
+#
+# Kimi Code CLI is an autonomous loop: a native TurnEnd only marks one
+# assistant message finished, not the whole task, so the pane is the ground
+# truth for "really done".  Between agentic steps (Read/Grep/Todo/Edit) the
+# pane shows the idle input prompt AND a stable (unchanging) last reply for
+# many seconds while the agent is actually still working.  A short window
+# (the original 10s, and even 30s) routinely fires `kimi_pane_idle_complete`
+# mid-task and closes the worker prematurely.
+#
+# 45s rides out observed inter-step pauses (commonly 10-30s, occasionally
+# longer for large Reads) while staying well under MAX_WAIT_SECS so a genuine
+# completion is not delayed excessively.  The line-count stability guard in
+# _stabilize_pane_observation already filters most noise; this pure time
+# threshold is a HEURISTIC safety margin only.
+#
+# TODO(completion-detection): a stronger finish signal (kimi emitting an
+# explicit task-complete / summary marker) should replace this time-based
+# fallback; until then this value is the lever that trades latency vs
+# premature-close risk.
+PANE_FALLBACK_STABLE_SECS = 45.0
+
+# Pane content banners that indicate a terminal provider-side failure for kimi.
+# Kimi has no dedicated pane parser in lib/provider_pane_status today, so these
+# are tail-content keyword patterns mirroring codex_pane's markers.
+#
+# Two tiers (mirrors codex_pane's strict/broad split):
+#
+# *_MARKERS            : broad markers, DIAGNOSTICS-only (never drive
+#                        terminalization). Kept for future diagnostics paths.
+# HIGH_CONFIDENCE_*    : specific multi-word banners. The ONLY tier that may
+#                        drive AUTO-TERMINALIZATION via
+#                        _kimi_provider_signal_terminal_result. Generic words
+#                        ("usage limit", "quota", "rate limit", "api error",
+#                        "overloaded", "unauthorized", ...) are dropped here
+#                        because a healthy agent researching those topics
+#                        legitimately prints them in its output.
+#
+# When a kimi pane parser lands, replace this with a call to
+# parse_kimi_pane_status (mirroring codex's _read_codex_pane_signal).
+_KIMI_USAGE_LIMIT_MARKERS = (
+    "usage limit",
+    "hit your usage limit",
+    "out of credits",
+    "purchase more credits",
+    "quota exceeded",
+    "plan limit",
+)
+_KIMI_AUTH_FAILED_MARKERS = (
+    "invalid api key",
+    "incorrect api key",
+    "authentication failed",
+    "401 unauthorized",
+    "unauthorized",
+    "no api key provided",
+    "api key is invalid",
+)
+_KIMI_API_ERROR_MARKERS = (
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "overloaded",
+    "api error",
+    "internal server error",
+    "model unavailable",
+    "model_not_found",
+    "service unavailable",
+    "bad gateway",
+    "connection reset",
+    "connection timed out",
+    "request timed out",
+)
+_KIMI_CONFIG_ERROR_MARKERS = (
+    "invalid config",
+    "invalid configuration",
+    "failed to parse config",
+    "unknown model provider",
+    "configuration error",
+)
+
+# High-confidence banners: only these may terminalize a kimi job.
+_KIMI_HIGH_CONFIDENCE_USAGE_LIMIT_MARKERS = (
+    "hit your usage limit",
+    "out of credits",
+    "purchase more credits",
+    "quota exceeded",
+)
+_KIMI_HIGH_CONFIDENCE_AUTH_FAILED_MARKERS = (
+    "invalid api key",
+    "incorrect api key",
+    "authentication failed",
+    "401 unauthorized",
+    "no api key provided",
+    "api key is invalid",
+)
+_KIMI_HIGH_CONFIDENCE_API_ERROR_MARKERS = (
+    "internal server error",
+    "bad gateway",
+    "service unavailable",
+    "connection reset",
+    "connection timed out",
+    "request timed out",
+)
+_KIMI_HIGH_CONFIDENCE_CONFIG_ERROR_MARKERS = (
+    "failed to parse config",
+    "invalid configuration",
+    "unknown model provider",
+)
+
+# broad -> high-confidence mapping.
+_KIMI_HIGH_CONFIDENCE_MARKERS = {
+    _KIMI_USAGE_LIMIT_MARKERS: _KIMI_HIGH_CONFIDENCE_USAGE_LIMIT_MARKERS,
+    _KIMI_AUTH_FAILED_MARKERS: _KIMI_HIGH_CONFIDENCE_AUTH_FAILED_MARKERS,
+    _KIMI_API_ERROR_MARKERS: _KIMI_HIGH_CONFIDENCE_API_ERROR_MARKERS,
+    _KIMI_CONFIG_ERROR_MARKERS: _KIMI_HIGH_CONFIDENCE_CONFIG_ERROR_MARKERS,
+}
+
+# Parsed pane signal state -> no_reply_reason.  Mirrors codex's
+# _NORMAL_POLL_PANE_STATE_TO_REASON so kimi terminalization is attributable the
+# same way codex is.
+_KIMI_PANE_SIGNAL_TO_REASON = {
+    "usage_limit": "provider_usage_limit",
+    "auth_failed": "provider_auth_failed",
+    "api_error": "provider_api_error",
+    "config_error": "provider_config_error",
+}
 
 
 class KimiProviderAdapter:
@@ -247,6 +373,16 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
             reply="",
             confidence=CompletionConfidence.DEGRADED,
         )
+
+    # Terminalize early when the kimi pane shows a classified provider-side
+    # error banner (usage-limit / auth / api / config).  Mirrors codex's
+    # _codex_provider_signal_terminal_result; the pane is the ground truth for
+    # kimi and these banners are terminal until reset/reauth.
+    provider_signal = _kimi_provider_signal_terminal_result(
+        submission, state, backend=backend, pane_id=pane_id, now=now
+    )
+    if provider_signal is not None:
+        return provider_signal
 
     if not bool(state.get("prompt_sent")):
         return _poll_deferred_prompt(submission, state, now=now, backend=backend, pane_id=pane_id)
@@ -512,6 +648,95 @@ def _poll_deferred_prompt(
     return ProviderPollResult(submission=replace(submission, runtime_state=state), items=())
 
 
+def _kimi_provider_signal_terminal_result(
+    submission: ProviderSubmission,
+    state: dict[str, object],
+    *,
+    backend: object,
+    pane_id: str,
+    now: str,
+) -> ProviderPollResult | None:
+    """Terminalize early when the kimi pane shows a HIGH-CONFIDENCE provider error.
+
+    Mirrors codex's _codex_provider_signal_terminal_result and uses the strict
+    / high-confidence marker tier only: a healthy agent whose output merely
+    *discusses* usage limits / quotas / api errors must NEVER be terminalized.
+    Broad markers stay available for diagnostics.
+    """
+    signal = _read_kimi_pane_signal(backend, pane_id, strict=True)
+    if signal is None:
+        return None
+    no_reply_reason = _KIMI_PANE_SIGNAL_TO_REASON.get(str(signal.get("pane_signal_state") or ""))
+    if no_reply_reason is None:
+        return None
+    return _terminal(
+        submission,
+        state,
+        now,
+        status=CompletionStatus.FAILED,
+        reason=no_reply_reason,
+        reply="",
+        confidence=CompletionConfidence.DEGRADED,
+        diagnostics_extra={
+            "pane_signal_state": signal.get("pane_signal_state"),
+            "pane_signal_reason": signal.get("pane_signal_reason"),
+            "pane_tail": signal.get("pane_tail"),
+            "matched_markers": signal.get("matched_markers"),
+        },
+        no_reply_reason=no_reply_reason,
+        no_reply_detail={
+            "pane_signal_state": signal.get("pane_signal_state"),
+            "matched_markers": signal.get("matched_markers"),
+        },
+    )
+
+
+def _read_kimi_pane_signal(
+    backend: object,
+    pane_id: str,
+    *,
+    strict: bool = False,
+) -> dict[str, object] | None:
+    """Scan pane tail content for kimi provider-error banners.
+
+    Returns a fragment ({pane_signal_state, pane_signal_reason, pane_tail,
+    matched_markers}) when a classified banner is present, else None.  Order
+    matches codex_pane: usage_limit > auth_failed > config_error > api_error so
+    the most specific terminal signal wins on overlapping text.
+
+    ``strict`` selects the marker tier (mirrors codex_pane strict mode):
+    ``strict=False`` uses broad markers (diagnostics), ``strict=True`` uses
+    high-confidence markers only (auto-terminalization).
+    """
+    content = _pane_snapshot(backend, pane_id, lines=120)
+    if not content or not content.strip():
+        return None
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    recent_lines = [line.rstrip() for line in normalized.splitlines() if line.strip()]
+    if not recent_lines:
+        return None
+    recent = " ".join(line.strip() for line in recent_lines[-20:]).lower()
+    tail = "\n".join(recent_lines[-20:])
+
+    for state_key, markers in (
+        ("usage_limit", _KIMI_USAGE_LIMIT_MARKERS),
+        ("auth_failed", _KIMI_AUTH_FAILED_MARKERS),
+        ("config_error", _KIMI_CONFIG_ERROR_MARKERS),
+        ("api_error", _KIMI_API_ERROR_MARKERS),
+    ):
+        if strict:
+            markers = _KIMI_HIGH_CONFIDENCE_MARKERS.get(markers, markers)
+        matched = tuple(marker for marker in markers if marker in recent)
+        if matched:
+            return {
+                "pane_signal_state": state_key,
+                "pane_signal_reason": _KIMI_PANE_SIGNAL_TO_REASON.get(state_key, state_key),
+                "pane_tail": tail,
+                "matched_markers": matched,
+            }
+    return None
+
+
 def _terminal(
     submission: ProviderSubmission,
     state: dict[str, object],
@@ -522,6 +747,8 @@ def _terminal(
     reply: str,
     confidence: CompletionConfidence,
     diagnostics_extra: dict[str, object] | None = None,
+    no_reply_reason: str | None = None,
+    no_reply_detail: dict[str, object] | None = None,
 ) -> ProviderPollResult:
     cleaned_reply = reply or ""
     progress = replace(
@@ -558,6 +785,8 @@ def _terminal(
                 ),
             }
         )
+    diagnostics["no_reply_reason"] = no_reply_reason or _reason_to_no_reply_reason(reason, cleaned_reply)
+    diagnostics["no_reply_detail"] = dict(no_reply_detail or {})
     decision = CompletionDecision(
         terminal=True,
         status=status,
@@ -577,6 +806,25 @@ def _terminal(
 
 def _is_no_captured_reply_timeout(*, reason: str, reply: str) -> bool:
     return reason == "kimi_native_turn_timeout" and not (reply or "")
+
+
+def _reason_to_no_reply_reason(reason: str, reply: str) -> str:
+    lowered = str(reason or "").lower()
+    if "send_failed" in lowered or "send" in lowered:
+        return "provider_config_error"
+    if "runtime_state_invalid" in lowered or "runtime_unavailable" in lowered or "backend_unavailable" in lowered:
+        return "agent_unreachable_dead"
+    if "handle_lost" in lowered or "pane_unavailable" in lowered:
+        return "agent_unreachable_dead"
+    if "anchor_missing" in lowered:
+        return "completion_detection_gap"
+    if "empty_reply" in lowered:
+        return "provider_empty_output"
+    if "timeout" in lowered:
+        return "completion_detection_gap" if reply else "provider_waiting_for_user"
+    if "not_ready" in lowered:
+        return "provider_config_error"
+    return "provider_api_error"
 
 
 def _pane_snapshot(backend: object, pane_id: str, *, lines: int) -> str:
@@ -626,15 +874,23 @@ def _stabilize_pane_observation(
     if not reply:
         state.pop("pane_fallback_candidate_signature", None)
         state.pop("pane_fallback_candidate_since", None)
+        state.pop("pane_fallback_pane_lines", None)
+        state.pop("pane_fallback_pane_stable_since", None)
         return observation
 
     signature = _hash_text(reply)
-    if signature != _state_str(state, "pane_fallback_candidate_signature"):
+    pane_lines = observation.line_count
+    reply_stable = signature == _state_str(state, "pane_fallback_candidate_signature")
+    pane_stable = pane_lines == _state_int(state, "pane_fallback_pane_lines", -1)
+
+    if not reply_stable or not pane_stable:
         state["pane_fallback_candidate_signature"] = signature
         state["pane_fallback_candidate_since"] = now
+        state["pane_fallback_pane_lines"] = pane_lines
+        state["pane_fallback_pane_stable_since"] = now
         return replace(observation, completed=False)
 
-    stable_since = _state_str(state, "pane_fallback_candidate_since") or now
+    stable_since = _state_str(state, "pane_fallback_pane_stable_since") or now
     stable_secs = _seconds_between(stable_since, now)
     state["pane_fallback_stable_secs"] = stable_secs
     if stable_secs < PANE_FALLBACK_STABLE_SECS:

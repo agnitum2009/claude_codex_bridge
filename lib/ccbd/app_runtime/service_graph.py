@@ -166,6 +166,7 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         clock=deps.clock,
         session_bindings=session_bindings,
         namespace_state_store=deps.namespace_state_store,
+        dispatcher=dispatcher,
     )
     return CcbdServiceGraph(
         version=int(deps.version),

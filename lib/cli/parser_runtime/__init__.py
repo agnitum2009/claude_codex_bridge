@@ -32,6 +32,7 @@ from .commands import (
     parse_trace,
     parse_wait,
     parse_watch,
+    parse_why,
 )
 from .constants import ASK_JOB_ACTIONS, SUBCOMMANDS, WAIT_COMMAND_TO_MODE
 from .fault import parse_fault
@@ -75,4 +76,5 @@ __all__ = [
     'parse_trace',
     'parse_wait',
     'parse_watch',
+    'parse_why',
 ]

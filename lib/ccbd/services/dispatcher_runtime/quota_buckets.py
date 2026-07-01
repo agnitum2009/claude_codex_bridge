@@ -29,6 +29,7 @@ def bucket_key(provider: str, model: str | None, account: str | None) -> str:
 @dataclass
 class QuotaBucketState:
     degraded_until: str | None = None
+    degraded_reason: str | None = None
 
 
 class QuotaBuckets:
@@ -43,9 +44,17 @@ class QuotaBuckets:
         self._clock = clock
         self._buckets: dict[str, QuotaBucketState] = {}
 
-    def mark_degraded(self, key: str, retry_after_iso: str) -> None:
+    def mark_degraded(
+        self,
+        key: str,
+        retry_after_iso: str,
+        *,
+        reason: str | None = None,
+    ) -> None:
         """Mark ``key`` degraded until ``retry_after_iso`` (ISO-8601)."""
-        self._buckets.setdefault(key, QuotaBucketState()).degraded_until = retry_after_iso
+        state = self._buckets.setdefault(key, QuotaBucketState())
+        state.degraded_until = retry_after_iso
+        state.degraded_reason = reason
 
     def is_degraded(self, key: str, now_iso: str | None = None) -> bool:
         """Return True if ``key`` is currently degraded."""
@@ -62,6 +71,11 @@ class QuotaBuckets:
         """Return the ISO-8601 time a bucket is degraded until, if any."""
         state = self._buckets.get(key)
         return state.degraded_until if state is not None else None
+
+    def degraded_reason(self, key: str) -> str | None:
+        """Return the reason the bucket was marked degraded, if any."""
+        state = self._buckets.get(key)
+        return state.degraded_reason if state is not None else None
 
     def clear(self, key: str) -> None:
         """Remove degradation for ``key`` (primarily for tests)."""

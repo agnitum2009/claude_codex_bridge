@@ -182,8 +182,15 @@ def test_kimi_completes_only_when_pane_idle_and_stable(monkeypatch, tmp_path: Pa
     assert first is not None
     assert _boundary_item(first) is None
 
-    second = KimiProviderAdapter().poll(first.submission, now="2026-06-13T00:00:25Z")
-    boundary = _boundary_item(second)
+    # 20s of stability is BELOW the PANE_FALLBACK_STABLE_SECS window (45s), so
+    # the pane fallback must still withhold completion.
+    second = KimiProviderAdapter().poll(first.submission, now="2026-06-13T00:00:30Z")
+    assert _boundary_item(second) is None
+
+    # At 46s of stable pane observation the threshold (45s) is exceeded and the
+    # pane-idle TURN_BOUNDARY is emitted.
+    third = KimiProviderAdapter().poll(second.submission, now="2026-06-13T00:00:56Z")
+    boundary = _boundary_item(third)
     assert boundary is not None
     assert boundary.payload.get("reason") == "kimi_pane_idle_complete"
 

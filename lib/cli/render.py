@@ -39,6 +39,7 @@ from .render_runtime import (
     render_trace,
     render_wait,
     render_watch_batch,
+    render_why,
     write_lines,
 )
 
@@ -81,5 +82,6 @@ __all__ = [
     'render_trace',
     'render_wait',
     'render_watch_batch',
+    'render_why',
     'write_lines',
 ]
