@@ -694,10 +694,13 @@ def test_agent_conversation_includes_completed_comms_reply_preview(tmp_path: Pat
     assert items[3]['body'] == 'older answer from mobile_probe'
     assert items[4]['kind'] == 'user_message'
     assert items[4]['body'] == 'question from phone'
+    assert items[4]['sent_at'] == '2026-06-18T00:00:02Z'
     assert items[4]['attachments'][0]['file_id'] == 'mobile-file-1'
     assert items[4]['attachments'][0]['file_name'] == 'probe.txt'
     assert items[5]['kind'] == 'agent_reply'
     assert items[5]['body'] == 'answer from mobile_probe'
+    assert items[5]['sent_at'] == '2026-06-18T00:00:02Z'
+    assert items[5]['completed_at'] == '2026-06-18T00:00:02Z'
     assert 'wrong target' not in json.dumps(payload)
 
 
@@ -818,6 +821,7 @@ def test_agent_conversation_prefers_codex_native_transcript(tmp_path: Path) -> N
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:00.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'user_message',
@@ -825,6 +829,7 @@ def test_agent_conversation_prefers_codex_native_transcript(tmp_path: Path) -> N
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:01.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'agent_message',
@@ -832,6 +837,7 @@ def test_agent_conversation_prefers_codex_native_transcript(tmp_path: Path) -> N
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:02.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'user_message',
@@ -922,6 +928,7 @@ def test_agent_conversation_groups_consecutive_codex_native_agent_messages(
         thread_id='thread-native',
         records=[
             {
+                'timestamp': '2026-06-25T12:00:00.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'user_message',
@@ -929,6 +936,7 @@ def test_agent_conversation_groups_consecutive_codex_native_agent_messages(
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:01.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'agent_message',
@@ -936,6 +944,7 @@ def test_agent_conversation_groups_consecutive_codex_native_agent_messages(
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:02.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'agent_message',
@@ -943,6 +952,7 @@ def test_agent_conversation_groups_consecutive_codex_native_agent_messages(
                 },
             },
             {
+                'timestamp': '2026-06-25T12:00:03.000Z',
                 'type': 'event_msg',
                 'payload': {
                     'type': 'agent_message',
@@ -978,6 +988,11 @@ def test_agent_conversation_groups_consecutive_codex_native_agent_messages(
         ('user_message', 'start long task'),
         ('agent_reply', 'step one complete\n\nstep two complete\n\nfinal result'),
     ]
+    assert native_items[0]['sent_at'] == '2026-06-25T12:00:00.000Z'
+    assert native_items[1]['started_at'] == '2026-06-25T12:00:01.000Z'
+    assert native_items[1]['completed_at'] == '2026-06-25T12:00:03.000Z'
+    assert native_items[1]['sent_at'] == '2026-06-25T12:00:03.000Z'
+    assert native_items[1]['duration_ms'] == 2000
 
 
 def test_agent_conversation_starts_new_codex_agent_group_after_user_message(
@@ -1200,6 +1215,10 @@ def test_agent_conversation_pages_codex_native_by_record_timestamp_across_thread
         'fresh pane question',
         'fresh pane answer',
     ]
+    assert [item['sent_at'] for item in latest_items] == [
+        '2026-06-25T12:02:00.000Z',
+        '2026-06-25T12:02:01.000Z',
+    ]
     assert latest['conversation']['next_cursor'] == '2'
 
     _, older = service.dispatch_get(
@@ -1270,6 +1289,11 @@ def test_agent_conversation_pages_completed_job_history_beyond_project_view_limi
     latest_conversation = latest['conversation']
 
     assert latest_conversation['next_cursor']
+    latest_items = latest_conversation['items']
+    assert latest_items[-2]['sent_at'] == '2026-06-18T00:55:00Z'
+    assert latest_items[-1]['started_at'] == '2026-06-18T00:55:00Z'
+    assert latest_items[-1]['completed_at'] == '2026-06-18T00:55:01Z'
+    assert latest_items[-1]['duration_ms'] == 1000
     assert any(
         item['id'] == 'reply-job_history_55'
         and item['body'] == 'history answer 55'
