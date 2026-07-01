@@ -28,6 +28,8 @@ SUBCOMMANDS = {
     'maintenance',
     'mobile',
     'doctor',
+    'identity',
+    'probe',
     'repair',
     'config',
     'fault',

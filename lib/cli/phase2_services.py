@@ -16,6 +16,7 @@ from cli.render import (
     render_fault_arm,
     render_fault_clear,
     render_fault_list,
+    render_identity,
     render_inbox,
     render_kill,
     render_layout,
@@ -25,10 +26,11 @@ from cli.render import (
     render_loop_runner,
     render_maintenance,
     render_mobile_serve,
-    render_plan_task,
     render_mapping,
     render_observer_notice,
     render_pend,
+    render_plan_task,
+    render_probe,
     render_ps,
     render_reload,
     render_restart,
@@ -51,6 +53,8 @@ from cli.services.config_validate import validate_config_context
 from cli.services.doctor import doctor_summary
 from cli.services.doctor_storage import doctor_storage_summary
 from cli.services.diagnostics import export_diagnostic_bundle
+from cli.services.identity import identity_summary
+from cli.services.probe import probe_summary
 from cli.services.fault import arm_fault_rule, clear_fault_rule, list_fault_rules
 from cli.services.inbox import inbox_target
 from cli.services.kill import kill_project
@@ -90,6 +94,8 @@ def build_phase2_dispatch_services(**overrides):
         doctor_summary=doctor_summary,
         doctor_storage_summary=doctor_storage_summary,
         exit_code_for_ask_status=exit_code_for_ask_status,
+        identity_summary=identity_summary,
+        probe_summary=probe_summary,
         export_diagnostic_bundle=export_diagnostic_bundle,
         inbox_target=inbox_target,
         kill_project=kill_project,
@@ -121,6 +127,7 @@ def build_phase2_dispatch_services(**overrides):
         render_doctor_bundle=render_doctor_bundle,
         render_doctor_storage=render_doctor_storage,
         render_fault_arm=render_fault_arm,
+        render_identity=render_identity,
         render_fault_clear=render_fault_clear,
         render_fault_list=render_fault_list,
         render_inbox=render_inbox,
@@ -133,6 +140,7 @@ def build_phase2_dispatch_services(**overrides):
         render_maintenance=render_maintenance,
         render_mobile_serve=render_mobile_serve,
         render_plan_task=render_plan_task,
+        render_probe=render_probe,
         render_mapping=render_mapping,
         render_observer_notice=render_observer_notice,
         render_pend=render_pend,

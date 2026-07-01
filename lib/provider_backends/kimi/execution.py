@@ -259,10 +259,22 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
     state["total_secs"] = total_secs
     state["max_wait_secs"] = max_wait_secs
 
-    observation = observe_kimi_turn(Path(work_dir), req_id)
+    native_observation = observe_kimi_turn(Path(work_dir), req_id)
     pane_observation = _observe_kimi_pane_turn(backend, pane_id, req_id)
     if pane_observation is not None:
         pane_observation = _stabilize_pane_observation(state, pane_observation, now)
+
+    # Use the pane as the ground truth for "is the agent really done?".  Kimi
+    # Code CLI is an autonomous loop: a native TurnEnd only means one assistant
+    # message finished, not that the task is complete.  We only emit a
+    # TURN_BOUNDARY (which detectors treat as terminal COMPLETED) when the pane
+    # shows the idle input prompt with a stable reply.  If the pane cannot be
+    # observed at all we fall back to the native log so the job does not hang.
+    native_completed = bool(native_observation is not None and native_observation.completed)
+    pane_completed = bool(pane_observation is not None and pane_observation.completed)
+    effective_completed = pane_completed or (native_completed and pane_observation is None)
+
+    observation = native_observation
     if pane_observation is not None and (
         observation is None or (pane_observation.completed and not observation.completed)
     ):
@@ -327,7 +339,7 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
         state["anchor_emitted"] = True
 
     reply = observation.reply or ""
-    if observation.completed and not reply:
+    if effective_completed and not reply:
         return _terminal(
             submission,
             state,
@@ -345,6 +357,7 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
             },
         )
 
+    interim_reply = bool(observation.completed and not effective_completed)
     reply_signature = _hash_text(reply)
     if reply and reply_signature != _state_str(state, "last_reply_signature"):
         state["reply_buffer"] = reply
@@ -364,13 +377,15 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
                     "provider_session_id": observation.session_id,
                     "provider_turn_ref": observation.provider_turn_ref,
                     "native_completed": observation.completed,
+                    "interim": interim_reply,
+                    "pane_completed": effective_completed,
                 },
                 cursor_kwargs={"session_path": session_path or None},
             )
         )
 
     boundary_ref = str(observation.provider_turn_ref or observation.session_id or session_path or req_id)
-    if observation.completed and boundary_ref != _state_str(state, "turn_boundary_ref"):
+    if effective_completed and boundary_ref != _state_str(state, "turn_boundary_ref"):
         hindsight_prompt = _state_str(state, "hindsight_user_prompt")
         if reply and hindsight_prompt and not bool(state.get("hindsight_retained")):
             retain_result = retain_hindsight_turn(
@@ -391,20 +406,24 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
                 timestamp=now,
                 seq=_next_seq(state),
                 payload={
-                    "reason": "kimi_turn_end",
+                    "reason": "kimi_pane_idle_complete",
                     "last_agent_message": reply,
                     "turn_id": req_id,
                     "session_path": session_path or None,
                     "provider_session_id": observation.session_id,
                     "provider_turn_ref": observation.provider_turn_ref,
                     "native_completed_at": observation.native_completed_at,
+                    "native_completed": observation.completed,
                 },
                 cursor_kwargs={"session_path": session_path or None},
             )
         )
         state["turn_boundary_ref"] = boundary_ref
 
-    if total_secs >= max_wait_secs and not observation.completed:
+    if total_secs >= max_wait_secs and not effective_completed:
+        pane_still_working = bool(
+            pane_observation is not None and not pane_observation.completed
+        )
         return _terminal(
             submission,
             state,
@@ -413,7 +432,13 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
             reason="kimi_native_turn_timeout",
             reply=str(state.get("reply_buffer") or ""),
             confidence=CompletionConfidence.DEGRADED,
-            diagnostics_extra={"max_wait_secs": max_wait_secs},
+            diagnostics_extra={
+                "max_wait_secs": max_wait_secs,
+                "pane_still_working": pane_still_working,
+                "reply_confidence": "low",
+                "native_completed": bool(observation.completed),
+                "diagnosis": "Kimi native turn ended but the pane never reached a stable idle input prompt; treating as incomplete rather than falsely completed.",
+            },
         )
 
     updated = replace(submission, reply=str(state.get("reply_buffer") or ""), runtime_state=state)

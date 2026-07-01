@@ -194,7 +194,23 @@ class ParsedDoctorCommand:
     output_path: str | None = None
     storage: bool = False
     json_output: bool = False
+    identity: bool = False
+    deep: bool = False
     kind: str = 'doctor'
+
+
+@dataclass(frozen=True)
+class ParsedIdentityCommand:
+    project: str | None
+    json_output: bool = False
+    kind: str = 'identity'
+
+
+@dataclass(frozen=True)
+class ParsedProbeCommand:
+    project: str | None
+    json_output: bool = False
+    kind: str = 'probe'
 
 
 @dataclass(frozen=True)
@@ -217,6 +233,7 @@ __all__ = [
     'ParsedCleanupCommand',
     'ParsedConfigValidateCommand',
     'ParsedDoctorCommand',
+    'ParsedIdentityCommand',
     'ParsedKillCommand',
     'ParsedLayoutCommand',
     'ParsedLogsCommand',
@@ -227,6 +244,7 @@ __all__ = [
     'ParsedMobileCommand',
     'ParsedPlanTaskCommand',
     'ParsedPingCommand',
+    'ParsedProbeCommand',
     'ParsedPsCommand',
     'ParsedQuestionCommand',
     'ParsedReloadCommand',
