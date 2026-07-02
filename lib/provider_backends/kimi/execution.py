@@ -19,7 +19,13 @@ from provider_backends.native_cli_support import wrap_native_prompt
 from provider_execution.base import ProviderPollResult, ProviderRuntimeContext, ProviderSubmission
 from provider_execution.common import build_item, error_submission, send_prompt_to_runtime_target
 
-from provider_core.protocol import request_anchor_for_job
+from provider_core.protocol import (
+    DONE_PREFIX,
+    extract_reply_for_req,
+    is_done_text,
+    request_anchor_for_job,
+    strip_done_text,
+)
 from .hindsight import recall_hindsight_memories, retain_hindsight_turn
 from .session import load_project_session
 from .native_log import KimiTurnObservation, observe_kimi_turn
@@ -274,7 +280,7 @@ def _start_submission(
     )
     if hindsight_recall.context:
         prompt_body = f"{hindsight_recall.context}\n\n{prompt_body}"
-    prompt = wrap_native_prompt(prompt_body, req_id)
+    prompt = wrap_kimi_prompt(prompt_body, req_id)
     initial_content = _pane_snapshot(backend, pane_id, lines=PANE_LINES_DEFAULT)
     prompt_deferred_until_ready = not _pane_ready_for_input(initial_content)
     send_error: str | None = None
@@ -400,15 +406,32 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
     if pane_observation is not None:
         pane_observation = _stabilize_pane_observation(state, pane_observation, now)
 
-    # Use the pane as the ground truth for "is the agent really done?".  Kimi
-    # Code CLI is an autonomous loop: a native TurnEnd only means one assistant
-    # message finished, not that the task is complete.  We only emit a
-    # TURN_BOUNDARY (which detectors treat as terminal COMPLETED) when the pane
-    # shows the idle input prompt with a stable reply.  If the pane cannot be
-    # observed at all we fall back to the native log so the job does not hang.
+    # AUTHORITATIVE completion: kimi emits no native task-complete signal, so we
+    # instruct it (see wrap_kimi_prompt) to close its final reply with a single
+    # `CCB_DONE:<anchor>` line.  A CCB_DONE line matching THIS job's anchor is
+    # the authoritative terminal signal — it is fast (no PANE_FALLBACK_STABLE_SECS
+    # wait) and unambiguous (cannot fire during inter-step pauses the way the
+    # pane-idle heuristic does).  Scan the latest native TurnEnd content and the
+    # live pane text; either source is sufficient.
+    sentinel_buffer = _kimi_sentinel_buffer(native_observation, pane_observation, backend, pane_id, req_id)
+    done_seen = bool(req_id and sentinel_buffer and is_done_text(sentinel_buffer, req_id))
+    state["done_seen"] = done_seen
+
+    # FALLBACK: pane-idle-stable.  Kimi Code CLI is an autonomous loop; a native
+    # TurnEnd only marks one assistant message finished, not the whole task, so
+    # the pane is the fallback ground truth for "really done".  Between agentic
+    # steps the pane shows the idle input prompt AND a stable reply for many
+    # seconds while still working, so this path is gated by
+    # PANE_FALLBACK_STABLE_SECS and is distinguishable from the sentinel path in
+    # telemetry (reason=kimi_pane_idle_complete vs kimi_sentinel_complete).
     native_completed = bool(native_observation is not None and native_observation.completed)
     pane_completed = bool(pane_observation is not None and pane_observation.completed)
-    effective_completed = pane_completed or (native_completed and pane_observation is None)
+    fallback_completed = pane_completed or (native_completed and pane_observation is None)
+
+    # Sentinel wins and bypasses the fallback-stability wait.  When only the
+    # fallback fires the existing PANE_FALLBACK_STABLE_SECS heuristic applies
+    # (already enforced by _stabilize_pane_observation above).
+    effective_completed = done_seen or fallback_completed
 
     observation = native_observation
     if pane_observation is not None and (
@@ -475,6 +498,35 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
         state["anchor_emitted"] = True
 
     reply = observation.reply or ""
+    # When the sentinel fired, the authoritative reply is the content BEFORE the
+    # marker in the sentinel buffer (the full assistant region). ``observation.reply``
+    # can be a STALE PARTIAL: it may have been populated at an earlier poll from
+    # only the first assistant bullet before kimi finished — kimi emits multiple
+    # ``●`` bullets (restatement, tool-use, reasoning, final answer), and the
+    # pane observation only carries one chunk at a time.  So when the sentinel
+    # fires, always re-extract from the sentinel buffer instead of trusting a
+    # possibly-partial ``observation.reply``; keep the prior reply only as a
+    # fallback when extraction yields nothing.
+    if done_seen and req_id and sentinel_buffer:
+        extracted = extract_reply_for_req(sentinel_buffer, req_id) or strip_done_text(sentinel_buffer, req_id)
+        if extracted:
+            reply = extracted
+    # When the sentinel fired, strip the CCB_DONE marker line and anything
+    # after it from the persisted reply so we keep the real answer only.  This
+    # also guards against a marker that lands mid-text followed by trailing
+    # noise.  Mirrors droid's clean_reply (extract_reply_for_req /
+    # strip_done_text).  Kimi pane-rendered replies may carry a leading ``●``/
+    # ``•`` bullet that is terminal decoration, not part of the answer; strip it
+    # so the persisted reply matches the native-reply format.
+    if done_seen and req_id and reply:
+        cleaned_reply = extract_reply_for_req(reply, req_id)
+        if cleaned_reply:
+            reply = cleaned_reply
+        else:
+            reply = strip_done_text(reply, req_id)
+        reply = _strip_kimi_reply_bullet(reply)
+        observation = replace(observation, reply=reply)
+
     if effective_completed and not reply:
         return _terminal(
             submission,
@@ -515,6 +567,8 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
                     "native_completed": observation.completed,
                     "interim": interim_reply,
                     "pane_completed": effective_completed,
+                    "done_marker": done_seen,
+                    "ccb_done": done_seen,
                 },
                 cursor_kwargs={"session_path": session_path or None},
             )
@@ -542,7 +596,7 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
                 timestamp=now,
                 seq=_next_seq(state),
                 payload={
-                    "reason": "kimi_pane_idle_complete",
+                    "reason": "kimi_sentinel_complete" if done_seen else "kimi_pane_idle_complete",
                     "last_agent_message": reply,
                     "turn_id": req_id,
                     "session_path": session_path or None,
@@ -550,6 +604,9 @@ def _poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPol
                     "provider_turn_ref": observation.provider_turn_ref,
                     "native_completed_at": observation.native_completed_at,
                     "native_completed": observation.completed,
+                    "done_marker": done_seen,
+                    "ccb_done": done_seen,
+                    "completion_source": "sentinel" if done_seen else "pane_idle_fallback",
                 },
                 cursor_kwargs={"session_path": session_path or None},
             )
@@ -846,6 +903,117 @@ def _pane_ready_for_input(content: str) -> bool:
     return legacy_ready or k27_ready
 
 
+def _kimi_sentinel_buffer(
+    native_observation: KimiTurnObservation | None,
+    pane_observation: KimiTurnObservation | None,
+    backend: object,
+    pane_id: str,
+    req_id: str,
+) -> str:
+    """Return the text to scan for the CCB_DONE sentinel.
+
+    A sentinel line is authoritative from EITHER source: the latest native
+    TurnEnd reply OR the live pane content.  We deliberately re-snapshot the
+    pane here (rather than reuse pane_observation.reply) because the pane reply
+    is only populated when the pane is idle-stable, while the marker can appear
+    in the raw pane content as soon as kimi prints it.
+
+    The raw pane snapshot is reduced to the ASSISTANT REPLY REGION before
+    scanning (see ``_extract_kimi_reply_region``).  This is the kimi analogue
+    of droid scanning only ``assistant`` events: the pane always contains the
+    PROMPT, and ``wrap_kimi_prompt`` shows kimi the marker format inline as an
+    instruction example (``CCB_DONE: <anchor>``).  Scanning the raw pane would
+    therefore (a) false-fire on the prompt's example marker, and (b) miss the
+    real emitted marker because the idle input box (``╭``/``│ >``/``╰``) always
+    sits BELOW it, so ``is_done_text`` (which scans from the last non-noise
+    line) matches the box line instead of the marker.  Both are avoided by
+    extracting only the reply region: everything after the LAST prompt/anchor
+    echo, up to the input box.
+    """
+    chunks: list[str] = []
+    if native_observation is not None and native_observation.reply:
+        chunks.append(native_observation.reply)
+    if pane_observation is not None and pane_observation.reply:
+        chunks.append(pane_observation.reply)
+    pane_text = _pane_snapshot(backend, pane_id, lines=PANE_LINES_DEFAULT)
+    if pane_text:
+        reply_region = _extract_kimi_reply_region(pane_text, req_id)
+        if reply_region:
+            chunks.append(reply_region)
+    return "\n".join(chunk for chunk in chunks if chunk)
+
+
+def _extract_kimi_reply_region(content: str, req_id: str) -> str:
+    """Carve the assistant reply region out of the raw pane snapshot.
+
+    The pane contains, in order: the echoed PROMPT (which includes the
+    ``CCB_DONE: <anchor>`` instruction example, since ``wrap_kimi_prompt``
+    shows kimi the marker format), then kimi's EMITTED assistant reply
+    (answer + the real ``CCB_DONE: <anchor>`` line), then the idle input box.
+    The sentinel must match only the emitted marker in the assistant region.
+
+    This returns ONLY the assistant reply region, so:
+
+    * the prompt's example marker is excluded (it lives in the prompt region,
+      before the first assistant bullet line),
+    * the trailing input-box lines are excluded (they would otherwise be the
+      last non-noise line and defeat ``is_done_text``'s tail scan), and
+    * the emitted marker is visible as soon as kimi prints it, WITHOUT waiting
+      for pane idle-stable (the 45s fallback).
+
+    Mirrors droid's prompt/reply separation (droid scans only ``assistant``
+    events; kimi has no structured event stream for the pane, so we carve the
+    region textually).  The assistant region is bounded by:
+      start = first ``●``/``•`` bullet line AFTER the last ``CCB_REQ_ID`` prompt
+              anchor (the bullet is kimi's assistant-message decoration, never
+              part of the prompt echo),
+      end   = the idle input box (``╭``/``│ >``/``╰``) or end of pane.
+    """
+    text = (content or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text or not req_id:
+        return ""
+
+    # Bound the search window: everything after the last prompt anchor line.
+    # ``CCB_REQ_ID: <anchor>`` is the canonical prompt anchor emitted by
+    # ``wrap_kimi_prompt``; the example marker also carries the anchor but is
+    # part of the prompt instruction block, so we anchor on CCB_REQ_ID.
+    prompt_anchor = f"CCB_REQ_ID: {req_id}"
+    cut_index = text.rfind(prompt_anchor)
+    if cut_index != -1:
+        search_from = cut_index + len(prompt_anchor)
+    else:
+        # Fallback when no CCB_REQ_ID line is present: search the whole pane.
+        search_from = 0
+
+    lines = text[search_from:].split("\n")
+
+    # Locate the FIRST assistant bullet line.  The prompt instruction block
+    # (including the example ``CCB_DONE: <anchor>``) never starts with a
+    # ``●``/``•`` bullet, so the first bullet reliably marks the start of
+    # kimi's emitted reply.
+    start_index: int | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(("●", "•")):
+            start_index = index
+            break
+    if start_index is None:
+        # No assistant bullet yet: kimi hasn't started (or hasn't finished
+        # streaming the first line).  Nothing to scan.
+        return ""
+
+    region: list[str] = []
+    for line in lines[start_index:]:
+        if _looks_like_kimi_input_box_line(line.strip()):
+            break
+        region.append(line)
+
+    # Drop trailing blank lines (gap before the input box).
+    while region and not region[-1].strip():
+        region.pop()
+    return "\n".join(region).rstrip()
+
+
 def _observe_kimi_pane_turn(backend: object, pane_id: str, req_id: str) -> KimiTurnObservation | None:
     content = _pane_snapshot(backend, pane_id, lines=PANE_LINES_DEFAULT)
     if not content or req_id not in content:
@@ -938,6 +1106,25 @@ def _clean_kimi_pane_reply(text: str, req_id: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _strip_kimi_reply_bullet(text: str) -> str:
+    """Strip a leading kimi pane bullet (``●``/``•``) from the first reply line.
+
+    The pane renders the first assistant line with a ``●``/``•`` decoration that
+    is terminal chrome, not part of the answer.  The native TurnEnd reply path
+    never carries it; strip it from pane-derived replies so both paths persist
+    the same answer shape.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    if not lines:
+        return text
+    stripped = lines[0].lstrip()
+    if stripped[:1] in ("●", "•"):
+        lines[0] = stripped.lstrip("●•").lstrip()
+    return "\n".join(lines)
+
+
 def _looks_like_kimi_input_box_line(stripped: str) -> bool:
     if not stripped:
         return False
@@ -1002,6 +1189,29 @@ def _send_prompt(backend: object, pane_id: str, prompt: str) -> str | None:
     except Exception as exc:
         return f"send_text_failed:{exc!r}"
     return None
+
+
+def wrap_kimi_prompt(message: str, req_id: str) -> str:
+    """Wrap a kimi task prompt with the CCB request anchor + CCB_DONE sentinel.
+
+    Mirrors ``wrap_droid_prompt``: the generic ``wrap_native_prompt`` already
+    injects ``CCB_REQ_ID:<anchor>`` and reply guidance.  Kimi has NO native
+    authoritative task-complete signal (only TurnBegin/ContentPart/TurnEnd),
+    so we add an explicit instruction that kimi must close its final reply with
+    a single ``CCB_DONE:<anchor>`` line.  The marker is the authoritative
+    completion signal used by ``_kimi_sentinel_complete``.
+    """
+    body = wrap_native_prompt((message or "").rstrip(), req_id)
+    return (
+        f"{body}\n"
+        "IMPORTANT COMPLETION SIGNAL:\n"
+        "- When the requested task is FULLY complete, end your final reply with "
+        "this exact final line on its own line, verbatim, with nothing else on "
+        "that line and nothing after it:\n"
+        f"{DONE_PREFIX} {req_id}\n"
+        "- Emit this marker ONLY when the whole task is done, never during "
+        "inter-step thinking or tool-use pauses.\n"
+    )
 
 
 def _with_kimi_context_pointer(message: str, session: object) -> str:
@@ -1096,4 +1306,4 @@ def build_execution_adapter() -> KimiProviderAdapter:
     return KimiProviderAdapter()
 
 
-__all__ = ["KimiProviderAdapter", "build_execution_adapter"]
+__all__ = ["KimiProviderAdapter", "build_execution_adapter", "wrap_kimi_prompt"]
