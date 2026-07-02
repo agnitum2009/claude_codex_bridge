@@ -344,6 +344,16 @@ def _provider_runtime_activity(facts: AgentActivityFacts) -> AgentActivity | Non
             symbol_override='◆',
             color_override='green',
         )
+    if runtime_state == 'interrupted':
+        return AgentActivity(
+            ACTIVITY_PENDING,
+            'codex_runtime',
+            reason,
+            last_progress_at=last_progress_at,
+            current_job_id=facts.current_job_id,
+            symbol_override='!',
+            color_override='yellow',
+        )
     if runtime_state == 'reconnecting':
         return AgentActivity(
             ACTIVITY_PENDING,

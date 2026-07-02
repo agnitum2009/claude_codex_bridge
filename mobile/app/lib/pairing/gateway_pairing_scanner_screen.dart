@@ -1,35 +1,50 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'gateway_pairing.dart';
+import 'gateway_pairing_qr_scanner.dart';
 
 class GatewayPairingScannerScreen extends StatefulWidget {
-  const GatewayPairingScannerScreen({super.key});
+  const GatewayPairingScannerScreen({super.key, this.qrScanner});
+
+  final GatewayPairingQrScanner? qrScanner;
 
   @override
   State<GatewayPairingScannerScreen> createState() =>
       _GatewayPairingScannerScreenState();
 }
 
+@visibleForTesting
+MobileScannerController gatewayPairingScannerController() {
+  return MobileScannerController(formats: const [BarcodeFormat.qrCode]);
+}
+
 class _GatewayPairingScannerScreenState
     extends State<GatewayPairingScannerScreen>
     with WidgetsBindingObserver {
-  final MobileScannerController _controller = MobileScannerController(
-    autoStart: false,
-    formats: const [BarcodeFormat.qrCode],
-  );
+  final MobileScannerController _controller = gatewayPairingScannerController();
+  late final GatewayPairingQrScanner _qrScanner =
+      widget.qrScanner ?? const MethodChannelGatewayPairingQrScanner();
   bool _handled = false;
   String? _error;
-  String? _cameraError;
-  bool _startingCamera = false;
+  bool _scanningWithNativeCamera = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _scheduleScannerStart();
+    if (_usesNativeScanner) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_scanWithNativeCamera());
+        }
+      });
+    }
   }
 
   @override
@@ -41,80 +56,36 @@ class _GatewayPairingScannerScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        if (_cameraError == null) {
-          _scheduleScannerStart();
-        }
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.hidden:
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
+    if (_usesNativeScanner) {
+      return;
+    }
+    switch (gatewayPairingScannerLifecycleAction(
+      state: state,
+      isStarting: _controller.value.isStarting,
+      hasCameraPermission: _controller.value.hasCameraPermission,
+    )) {
+      case GatewayPairingScannerLifecycleAction.start:
+        unawaited(_controller.start());
+      case GatewayPairingScannerLifecycleAction.stop:
         unawaited(_controller.stop());
+      case GatewayPairingScannerLifecycleAction.ignore:
+        return;
     }
   }
 
-  void _scheduleScannerStart() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _cameraError != null) {
-        return;
-      }
-      unawaited(_startScanner());
-    });
-  }
+  bool get _usesNativeScanner =>
+      _qrScanner.usesNativeCamera &&
+      (Platform.isAndroid || widget.qrScanner != null);
 
-  Future<void> _startScanner() async {
-    if (_startingCamera || _controller.value.isRunning) {
+  void _retryScanner() {
+    if (_usesNativeScanner) {
+      unawaited(_scanWithNativeCamera());
       return;
     }
     setState(() {
-      _startingCamera = true;
-    });
-    try {
-      await _controller.start();
-      if (!mounted) {
-        return;
-      }
-      final scannerError = _controller.value.error;
-      if (scannerError != null) {
-        setState(() {
-          _cameraError = gatewayPairingCameraErrorMessage(scannerError);
-        });
-        return;
-      }
-      if (_controller.value.availableCameras == 0) {
-        setState(() {
-          _cameraError = gatewayPairingCameraErrorMessage(
-            const MobileScannerException(
-              errorCode: MobileScannerErrorCode.unsupported,
-            ),
-          );
-        });
-      }
-    } catch (error, stackTrace) {
-      debugPrint('Gateway pairing scanner failed to start: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _cameraError = gatewayPairingCameraErrorMessage(error);
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _startingCamera = false;
-        });
-      }
-    }
-  }
-
-  void _retryScanner() {
-    setState(() {
-      _cameraError = null;
       _error = null;
     });
-    _scheduleScannerStart();
+    unawaited(_controller.start());
   }
 
   void _handleDetect(BarcodeCapture capture) {
@@ -144,65 +115,245 @@ class _GatewayPairingScannerScreenState
     }
   }
 
+  void _handleRawQrText(String raw) {
+    if (_handled) {
+      return;
+    }
+    try {
+      final pairing = GatewayPairingPayload.fromQrText(raw.trim());
+      _handled = true;
+      Navigator.of(context).pop(pairing);
+    } on FormatException catch (error) {
+      setState(() {
+        _error = error.message;
+      });
+    } catch (error) {
+      setState(() {
+        _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _scanWithNativeCamera() async {
+    setState(() {
+      _error = null;
+      _scanningWithNativeCamera = true;
+    });
+    try {
+      final raw = await _qrScanner.scanCamera();
+      if (!mounted || _handled) {
+        return;
+      }
+      if (raw == null || raw.trim().isEmpty) {
+        setState(() {
+          _error =
+              'Scan canceled. Try camera, choose an image, or use manual setup.';
+        });
+        return;
+      }
+      _handleRawQrText(raw);
+    } on PlatformException catch (error) {
+      if (!mounted || _handled) {
+        return;
+      }
+      setState(() {
+        _error = gatewayPairingNativeScannerErrorMessage(error);
+      });
+    } catch (error) {
+      if (!mounted || _handled) {
+        return;
+      }
+      setState(() {
+        _error = gatewayPairingNativeScannerErrorMessage(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _scanningWithNativeCamera = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _scanFromImage() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        allowMultiple: false,
+        type: FileType.image,
+      );
+      final file =
+          result == null || result.files.isEmpty ? null : result.files.single;
+      final path = file?.path;
+      if (path == null || path.isEmpty) {
+        return;
+      }
+      setState(() {
+        _error = null;
+      });
+      final raw = await _qrScanner.scanImage(path);
+      if (!mounted || _handled) {
+        return;
+      }
+      if (raw == null || raw.trim().isEmpty) {
+        setState(() {
+          _error = 'No pairing QR code was found in that image.';
+        });
+        return;
+      }
+      _handleRawQrText(raw);
+    } on PlatformException catch (error) {
+      if (!mounted || _handled) {
+        return;
+      }
+      setState(() {
+        _error = gatewayPairingNativeScannerErrorMessage(error);
+      });
+    } catch (error) {
+      if (!mounted || _handled) {
+        return;
+      }
+      setState(() {
+        _error = gatewayPairingNativeScannerErrorMessage(error);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_usesNativeScanner) {
+      return _buildNativeScanner(context);
+    }
+    return _buildEmbeddedScanner(context);
+  }
+
+  Widget _buildEmbeddedScanner(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final cameraError = _cameraError;
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Pairing QR')),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (cameraError == null)
-            MobileScanner(
-              controller: _controller,
-              onDetect: _handleDetect,
-              errorBuilder: _buildScannerError,
-              placeholderBuilder:
-                  (context) => const ColoredBox(color: Colors.black),
-            )
-          else
-            GatewayPairingCameraErrorPanel(
-              message: cameraError,
-              onRetry: _retryScanner,
-              onUseManualSetup: () => Navigator.of(context).pop(),
-            ),
-          if (cameraError == null) ...[
-            Align(
-              alignment: Alignment.topCenter,
-              child: SafeArea(
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface.withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _error ??
-                        (_startingCamera
-                            ? 'Starting camera...'
-                            : 'Scan the CCB mobile pairing QR code'),
-                    key: const ValueKey('gateway-pairing-scan-status'),
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+          MobileScanner(
+            controller: _controller,
+            onDetect: _handleDetect,
+            errorBuilder: _buildScannerError,
+            placeholderBuilder:
+                (context) => const ColoredBox(color: Colors.black),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _error ?? 'Scan the CCB mobile pairing QR code',
+                  key: const ValueKey('gateway-pairing-scan-status'),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
             ),
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 260,
-                  height: 260,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: colorScheme.primary, width: 3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+          ),
+          Center(
+            child: IgnorePointer(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: colorScheme.primary, width: 3),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNativeScanner(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan Pairing QR')),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(
+                    Icons.qr_code_scanner,
+                    color: colorScheme.primary,
+                    size: 56,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Scan the CCB mobile pairing QR code',
+                    textAlign: TextAlign.center,
+                    style: textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _error ??
+                        'Camera scanning uses the Android system scanner first, then an embedded scanner if needed.',
+                    key: const ValueKey('gateway-pairing-native-scan-status'),
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color:
+                          _error == null
+                              ? colorScheme.onSurfaceVariant
+                              : colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    key: const ValueKey('gateway-pairing-native-scan-button'),
+                    onPressed:
+                        _scanningWithNativeCamera
+                            ? null
+                            : _scanWithNativeCamera,
+                    icon:
+                        _scanningWithNativeCamera
+                            ? SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.onPrimary,
+                              ),
+                            )
+                            : const Icon(Icons.qr_code_scanner),
+                    label: Text(
+                      _scanningWithNativeCamera ? 'Opening scanner' : 'Scan QR',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const ValueKey('gateway-pairing-image-scan-button'),
+                    onPressed: _scanFromImage,
+                    icon: const Icon(Icons.image_search),
+                    label: const Text('Scan QR from image'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    key: const ValueKey('gateway-pairing-scan-manual-button'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.keyboard),
+                    label: const Text('Use manual setup'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -217,6 +368,44 @@ class _GatewayPairingScannerScreenState
       onUseManualSetup: () => Navigator.of(context).pop(),
     );
   }
+}
+
+@visibleForTesting
+String gatewayPairingNativeScannerErrorMessage(Object error) {
+  if (error is PlatformException) {
+    switch (error.code) {
+      case 'scanner_busy':
+        return 'Scanner is already open.';
+      case 'scanner_unavailable':
+        return 'Android scanner could not be opened. Try image scan or manual setup.';
+      case 'image_no_qr':
+        return 'No pairing QR code was found in that image.';
+      case 'image_decode_failed':
+        return 'That image could not be decoded.';
+    }
+  }
+  return 'Scanner could not start. Try image scan or manual setup.';
+}
+
+@visibleForTesting
+enum GatewayPairingScannerLifecycleAction { start, stop, ignore }
+
+@visibleForTesting
+GatewayPairingScannerLifecycleAction gatewayPairingScannerLifecycleAction({
+  required AppLifecycleState state,
+  required bool isStarting,
+  required bool hasCameraPermission,
+}) {
+  if (isStarting || !hasCameraPermission) {
+    return GatewayPairingScannerLifecycleAction.ignore;
+  }
+  return switch (state) {
+    AppLifecycleState.resumed => GatewayPairingScannerLifecycleAction.start,
+    AppLifecycleState.inactive => GatewayPairingScannerLifecycleAction.stop,
+    AppLifecycleState.detached ||
+    AppLifecycleState.hidden ||
+    AppLifecycleState.paused => GatewayPairingScannerLifecycleAction.ignore,
+  };
 }
 
 @visibleForTesting

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -129,6 +131,60 @@ void main() {
       expect(find.text('pane output ready'), findsNothing);
     },
   );
+
+  testWidgets('paired gateway auto refreshes open project execution status', (
+    tester,
+  ) async {
+    await setTestSurfaceSize(tester, const Size(390, 844));
+    final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
+    final profileStore = await _profileStoreWith([profile]);
+    final gatewayRepository = _ServerProjectsRepository([
+      _projectFixture(
+        id: 'test_ccb2',
+        displayName: 'test_ccb2',
+        root: '/srv/ccb/test_ccb2',
+        activityState: 'idle',
+        activitySource: 'provider_pane',
+        activityReason: 'provider_prompt_idle',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectHomeScreen(
+          repository: FakeMobileCcbRepository.demo(),
+          profileStore: profileStore,
+          gatewayRepositoryFactory: (_) => gatewayRepository,
+          gatewayTerminalTransportFactory: (_) => RecordingTerminalTransport(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _activatePairedGatewayListOnly(tester);
+    await tester.tap(find.byKey(const ValueKey('project-open-test_ccb2')));
+    await tester.pumpAndSettle();
+
+    expect(gatewayRepository.getProjectViewCalls, ['test_ccb2']);
+    expect(find.text('Idle'), findsOneWidget);
+
+    gatewayRepository.replaceProjects([
+      _projectFixture(
+        id: 'test_ccb2',
+        displayName: 'test_ccb2',
+        root: '/srv/ccb/test_ccb2',
+        activityState: 'active',
+        activitySource: 'codex_runtime',
+        activityReason: 'codex_working_status_line',
+      ),
+    ]);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+
+    expect(gatewayRepository.getProjectViewCalls, ['test_ccb2', 'test_ccb2']);
+    expect(find.byKey(const ValueKey('agent-working-status')), findsOneWidget);
+    expect(find.text('Working'), findsOneWidget);
+  });
 
   testWidgets('paired gateway refreshes server project list', (tester) async {
     final profile = _pairedHost(hostId: 'server-host', deviceId: 'phone');
@@ -443,16 +499,37 @@ Map<String, Object?> _projectFixture({
   required String id,
   required String displayName,
   required String root,
+  String? activityState,
+  String? activitySource,
+  String? activityReason,
 }) {
-  final view = Map<String, Object?>.from(
-    demoProjectViewFixture['view']! as Map<String, Object?>,
-  );
+  final view =
+      jsonDecode(jsonEncode(demoProjectViewFixture['view']))
+          as Map<String, Object?>;
   view['project'] = <String, Object?>{
     'id': id,
     'root': root,
     'display_name': displayName,
     'health': 'healthy',
   };
+  if (activityState != null ||
+      activitySource != null ||
+      activityReason != null) {
+    final agents = view['agents']! as List<Object?>;
+    final targetAgent = agents.cast<Map<String, Object?>>().firstWhere(
+      (agent) => agent['name'] == 'mobile',
+      orElse: () => agents.first! as Map<String, Object?>,
+    );
+    if (activityState != null) {
+      targetAgent['activity_state'] = activityState;
+    }
+    if (activitySource != null) {
+      targetAgent['activity_source'] = activitySource;
+    }
+    if (activityReason != null) {
+      targetAgent['activity_reason'] = activityReason;
+    }
+  }
   return <String, Object?>{'view': view};
 }
 

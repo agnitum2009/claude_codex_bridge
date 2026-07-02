@@ -5,8 +5,7 @@ import '../../models/ccb_conversation_item.dart';
 import 'conversation_item_presentation.dart';
 
 const double _minLimitedConversationBodyHeight = 220;
-const double _maxLimitedConversationBodyHeight = 420;
-const double _conversationBodyViewportScreenFraction = 0.42;
+const double _conversationBodyViewportReserveHeight = 88;
 
 class ConversationBubble extends StatelessWidget {
   const ConversationBubble({
@@ -19,6 +18,8 @@ class ConversationBubble extends StatelessWidget {
     this.onOpenAttachment,
     this.downloadingAttachmentIds = const {},
     this.downloadedAttachmentIds = const {},
+    this.timelineViewportHeight,
+    this.isWorking = false,
     super.key,
   });
 
@@ -31,6 +32,8 @@ class ConversationBubble extends StatelessWidget {
   final ValueChanged<CcbMessageAttachment>? onOpenAttachment;
   final Set<String> downloadingAttachmentIds;
   final Set<String> downloadedAttachmentIds;
+  final double? timelineViewportHeight;
+  final bool isWorking;
 
   void _toggleExpanded() {
     onToggleExpanded(item.id);
@@ -46,6 +49,11 @@ class ConversationBubble extends StatelessWidget {
       hasCustomChild: child != null,
     );
     final sourceLabel = visibleConversationSourceLabel(item);
+    final timestampLabel = conversationTimestampLabel(
+      context,
+      item,
+      includeDuration: MediaQuery.sizeOf(context).width >= 360,
+    );
     final body =
         child ??
         ConversationBody(
@@ -71,14 +79,23 @@ class ConversationBubble extends StatelessWidget {
           },
         );
     final bubbleColor =
-        isUser ? colorScheme.primaryContainer : colorScheme.surfaceContainerLow;
+        isWorking
+            ? colorScheme.tertiaryContainer.withValues(alpha: 0.54)
+            : isUser
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerLow;
     final borderColor = switch (item.state) {
       CcbConversationDeliveryState.failed => colorScheme.error,
       CcbConversationDeliveryState.unconfirmed => colorScheme.tertiary,
+      _ when isWorking => colorScheme.primary,
       _ => colorScheme.outlineVariant,
     };
     final visibleState =
         item.state == CcbConversationDeliveryState.sent ? null : item.state;
+    final metadataColor =
+        isUser
+            ? colorScheme.onPrimaryContainer.withValues(alpha: 0.72)
+            : colorScheme.onSurfaceVariant;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
@@ -106,11 +123,40 @@ class ConversationBubble extends StatelessWidget {
                         Icon(conversationIcon(item.kind), size: 16),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: Text(
-                            item.title,
-                            style: Theme.of(context).textTheme.titleSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  conversationDisplayTitle(item),
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (timestampLabel != null) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  timestampLabel,
+                                  key: ValueKey(
+                                    'conversation-timestamp-${item.id}',
+                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: metadataColor),
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.fade,
+                                ),
+                              ],
+                              if (isWorking) ...[
+                                const SizedBox(width: 8),
+                                _ConversationWorkingIndicator(
+                                  key: ValueKey(
+                                    'conversation-working-${item.id}',
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         if (visibleState != null)
@@ -159,7 +205,11 @@ class ConversationBubble extends StatelessWidget {
                     ),
                   )
                 else
-                  ConversationBodyViewport(item: item, child: body),
+                  ConversationBodyViewport(
+                    item: item,
+                    timelineViewportHeight: timelineViewportHeight,
+                    child: body,
+                  ),
                 if (item.attachments.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   ConversationAttachmentList(
@@ -191,15 +241,60 @@ class ConversationBubble extends StatelessWidget {
   }
 }
 
+class _ConversationWorkingIndicator extends StatelessWidget {
+  const _ConversationWorkingIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final label = CcbMobileLocalizations.of(context).executionStatus('Working');
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        child: SizedBox.square(
+          dimension: 14,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colorScheme.primary, width: 2),
+                ),
+              ),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 @visibleForTesting
-double conversationBodyViewportMaxHeight(Size screenSize) {
-  final proportionalHeight =
-      screenSize.height * _conversationBodyViewportScreenFraction;
-  return proportionalHeight
-      .clamp(
-        _minLimitedConversationBodyHeight,
-        _maxLimitedConversationBodyHeight,
-      )
+double conversationBodyViewportMaxHeight(
+  Size screenSize, {
+  double? timelineViewportHeight,
+}) {
+  final baseHeight =
+      timelineViewportHeight != null &&
+              timelineViewportHeight.isFinite &&
+              timelineViewportHeight > 0
+          ? timelineViewportHeight
+          : screenSize.height;
+  if (baseHeight <= _minLimitedConversationBodyHeight) {
+    return baseHeight;
+  }
+  return (baseHeight - _conversationBodyViewportReserveHeight)
+      .clamp(_minLimitedConversationBodyHeight, baseHeight)
       .toDouble();
 }
 
@@ -218,11 +313,13 @@ class ConversationBodyViewport extends StatefulWidget {
   const ConversationBodyViewport({
     required this.item,
     required this.child,
+    this.timelineViewportHeight,
     super.key,
   });
 
   final CcbConversationItem item;
   final Widget child;
+  final double? timelineViewportHeight;
 
   @override
   State<ConversationBodyViewport> createState() =>
@@ -248,6 +345,7 @@ class _ConversationBodyViewportState extends State<ConversationBodyViewport> {
     }
     final maxHeight = conversationBodyViewportMaxHeight(
       MediaQuery.sizeOf(context),
+      timelineViewportHeight: widget.timelineViewportHeight,
     );
     return SizedBox(
       key: ValueKey('conversation-body-viewport-${widget.item.id}'),
@@ -419,6 +517,8 @@ void _showConversationAttachmentActions(
   required VoidCallback? onOpen,
 }) {
   final strings = CcbMobileLocalizations.of(context);
+  final download = onDownload;
+  final open = onOpen;
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -435,11 +535,11 @@ void _showConversationAttachmentActions(
               leading: const Icon(Icons.download),
               title: Text(strings.downloadAttachment),
               onTap:
-                  onDownload == null
+                  download == null
                       ? null
                       : () {
                         Navigator.of(context).pop();
-                        onDownload!();
+                        download();
                       },
             ),
             ListTile(
@@ -449,11 +549,11 @@ void _showConversationAttachmentActions(
               leading: const Icon(Icons.open_in_new),
               title: Text(strings.openAttachment),
               onTap:
-                  onOpen == null
+                  open == null
                       ? null
                       : () {
                         Navigator.of(context).pop();
-                        onOpen!();
+                        open();
                       },
             ),
             ListTile(

@@ -157,6 +157,32 @@ bool shouldRenderConversationMarkdown(CcbConversationItem item) {
   };
 }
 
+String conversationDisplayTitle(CcbConversationItem item) {
+  if (item.kind == CcbConversationItemKind.agentReply &&
+      !isTerminalDerivedConversationItem(item)) {
+    final agentName = item.agentName.trim();
+    return agentName.isEmpty ? 'Agent' : agentName;
+  }
+  return item.title;
+}
+
+String? conversationTimestampLabel(
+  BuildContext context,
+  CcbConversationItem item, {
+  bool includeDuration = true,
+}) {
+  final time = _conversationDisplayTime(item);
+  final duration =
+      includeDuration ? _conversationExecutionDuration(item) : null;
+  if (time == null && duration == null) {
+    return null;
+  }
+  return [
+    if (time != null) _formatConversationTime(context, time),
+    if (duration != null) _formatConversationDuration(duration),
+  ].join(' · ');
+}
+
 String? visibleConversationSourceLabel(CcbConversationItem item) {
   final source = item.source?.trim();
   if (source == null || source.isEmpty) {
@@ -176,6 +202,61 @@ String? visibleConversationSourceLabel(CcbConversationItem item) {
     CcbConversationItemKind.callbackRequest ||
     CcbConversationItemKind.commsItem => null,
   };
+}
+
+DateTime? _conversationDisplayTime(CcbConversationItem item) {
+  return switch (item.kind) {
+    CcbConversationItemKind.userMessage => item.sentAt,
+    CcbConversationItemKind.agentReply => item.sentAt ?? item.completedAt,
+    _ => null,
+  };
+}
+
+Duration? _conversationExecutionDuration(CcbConversationItem item) {
+  if (item.kind != CcbConversationItemKind.agentReply) {
+    return null;
+  }
+  final durationMs = item.durationMs;
+  if (durationMs != null && durationMs >= 0) {
+    return Duration(milliseconds: durationMs);
+  }
+  final startedAt = item.startedAt;
+  final completedAt = item.completedAt;
+  if (startedAt == null || completedAt == null) {
+    return null;
+  }
+  final duration = completedAt.difference(startedAt);
+  return duration.isNegative ? null : duration;
+}
+
+String _formatConversationTime(BuildContext context, DateTime value) {
+  final local = value.toLocal();
+  final mediaQuery = MediaQuery.maybeOf(context);
+  final time = MaterialLocalizations.of(context).formatTimeOfDay(
+    TimeOfDay.fromDateTime(local),
+    alwaysUse24HourFormat: mediaQuery?.alwaysUse24HourFormat ?? false,
+  );
+  final now = DateTime.now().toLocal();
+  if (local.year == now.year &&
+      local.month == now.month &&
+      local.day == now.day) {
+    return time;
+  }
+  return '${local.month}/${local.day} $time';
+}
+
+String _formatConversationDuration(Duration duration) {
+  final totalSeconds = duration.inSeconds;
+  final hours = totalSeconds ~/ 3600;
+  final minutes = (totalSeconds % 3600) ~/ 60;
+  final seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds}s';
+  }
+  return '${seconds}s';
 }
 
 IconData conversationIcon(CcbConversationItemKind kind) {

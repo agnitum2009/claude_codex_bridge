@@ -299,8 +299,9 @@ def test_working_text_after_worked_for_wins() -> None:
 
 
 def test_status_catalog_excludes_removed_fallback_states() -> None:
-    for state in ("streaming_answer", "stalled", "queued", "idle", "interrupted"):
+    for state in ("streaming_answer", "stalled", "queued", "idle"):
         assert state not in probe.STATUS_CATALOG
+    assert "interrupted" in probe.STATUS_CATALOG
     for state in ("free", "start", "working", "reconnecting", "unknown"):
         assert state in probe.STATUS_CATALOG
     assert "completed" not in probe.STATUS_CATALOG

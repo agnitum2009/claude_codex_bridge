@@ -8,11 +8,21 @@ from typing import Any
 from .codex_pane import ACTIVE_STATES, PaneStatus
 
 
+_SESSION_FREE_EVENTS: dict[str, str] = {
+    "task_complete": "codex_session_task_complete",
+}
+_SESSION_INTERRUPTED_EVENTS: dict[str, str] = {
+    "turn_aborted": "codex_session_turn_aborted",
+    "thread_rolled_back": "codex_session_thread_rolled_back",
+}
+_SESSION_TERMINAL_EVENTS = {**_SESSION_FREE_EVENTS, **_SESSION_INTERRUPTED_EVENTS}
+
 RUNTIME_STATUS_CATALOG: dict[str, str] = {
     "free": "Codex is explicitly available for a new turn from session evidence or pane completion evidence.",
     "start": "A prompt was submitted and Codex has not yet emitted a first explicit pane/session signal for that turn.",
     "working": "Codex is visibly or session-log actively working.",
     "tool_running": "A foreground or background tool/terminal is visibly running.",
+    "interrupted": "The latest Codex turn was interrupted or rolled back and needs user attention.",
     "waiting_for_user": "Codex is waiting for user confirmation, approval, trust, or menu input.",
     "auth_required": "Codex is not logged in or is waiting for sign-in/API-key setup.",
     "auth_failed": "Codex reports authentication or API-key rejection.",
@@ -160,6 +170,8 @@ def compose_codex_runtime_status(
     if session_status is not None:
         if session_status.state == "working":
             return _runtime_from_session(pane_status, session_status)
+        if session_status.state == "interrupted":
+            return _runtime_from_session(pane_status, session_status)
         if session_status.state == "free" and pane_status.reason != "empty_capture":
             return _runtime_from_session(pane_status, session_status)
 
@@ -192,8 +204,8 @@ def _classify_session_file(
         payload_type = str(payload.get("type") or "")
         if entry_type == "event_msg" and payload_type == "task_started":
             latest_task_event = "task_started"
-        elif entry_type == "event_msg" and payload_type == "task_complete":
-            latest_task_event = "task_complete"
+        elif entry_type == "event_msg" and payload_type in _SESSION_TERMINAL_EVENTS:
+            latest_task_event = payload_type
         elif entry_type == "response_item" and payload_type == "message" and str(payload.get("role") or "") == "assistant":
             saw_assistant_response = True
 
@@ -204,11 +216,18 @@ def _classify_session_file(
         "scanned_session_count": scanned_session_count,
         "latest_session_mtime_s": latest_session_mtime_s,
     }
-    if latest_task_event == "task_complete":
+    if latest_task_event in _SESSION_FREE_EVENTS:
         return CodexSessionStatus(
             "free",
-            "codex_session_task_complete",
-            matched_patterns=("task_complete",),
+            _SESSION_FREE_EVENTS[latest_task_event],
+            matched_patterns=(latest_task_event,),
+            **base,
+        )
+    if latest_task_event in _SESSION_INTERRUPTED_EVENTS:
+        return CodexSessionStatus(
+            "interrupted",
+            _SESSION_INTERRUPTED_EVENTS[latest_task_event],
+            matched_patterns=(latest_task_event,),
             **base,
         )
     if latest_task_event == "task_started":

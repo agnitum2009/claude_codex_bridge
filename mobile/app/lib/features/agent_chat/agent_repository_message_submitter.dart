@@ -46,10 +46,20 @@ class AgentRepositoryMessageSubmitter {
           attachments: uploadedAttachments,
         ),
       );
-      final replacement = (result.message ?? message).copyWith(
+      final resultMessage = result.message;
+      final replacementBase =
+          resultMessage == null
+              ? message
+              : resultMessage.copyWith(
+                sentAt: resultMessage.sentAt ?? message.sentAt,
+                startedAt: resultMessage.startedAt ?? message.startedAt,
+                completedAt: resultMessage.completedAt ?? message.completedAt,
+                durationMs: resultMessage.durationMs ?? message.durationMs,
+              );
+      final replacement = replacementBase.copyWith(
         state: result.state,
         attachments:
-            result.message?.attachments.isNotEmpty == true
+            resultMessage?.attachments.isNotEmpty == true
                 ? null
                 : uploadedAttachments,
       );

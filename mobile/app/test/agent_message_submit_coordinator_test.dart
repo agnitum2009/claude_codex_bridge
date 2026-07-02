@@ -68,6 +68,7 @@ void main() {
         expect(chatController.localMessagesFor('lead'), [
           isA<CcbConversationItem>()
               .having((item) => item.id, 'id', 'remote-msg')
+              .having((item) => item.sentAt, 'sentAt', isNotNull)
               .having(
                 (item) => item.state,
                 'state',

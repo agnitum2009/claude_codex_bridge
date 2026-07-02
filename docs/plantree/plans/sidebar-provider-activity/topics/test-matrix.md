@@ -161,6 +161,12 @@ Required scenarios:
 - one ProjectView build reads each activity artifact at most once per agent
 - repeated ProjectView builds do not oscillate `runtime_status.state` when raw
   evidence alternates within the configured smoothing windows
+- Codex visible `working`/`tool_running`/`reconnecting` pane status remains
+  active even when the status line is unchanged for more than 60s
+- Codex pane without an active status line becomes display `free` after 60s of
+  unchanged pane content with reason `codex_pane_no_active_stale_no_progress`
+- Codex pane without an active status line resets the 60s no-progress timer
+  when pane content changes
 
 Performance assertions:
 

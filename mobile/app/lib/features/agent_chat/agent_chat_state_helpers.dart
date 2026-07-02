@@ -27,6 +27,10 @@ String conversationSignature(CcbAgentConversation? conversation) {
         item.id,
         item.kind.wireName,
         item.state?.wireName ?? '',
+        item.sentAt?.toUtc().toIso8601String() ?? '',
+        item.startedAt?.toUtc().toIso8601String() ?? '',
+        item.completedAt?.toUtc().toIso8601String() ?? '',
+        item.durationMs?.toString() ?? '',
         item.body.hashCode,
       ].join(':'),
   ].join('|');

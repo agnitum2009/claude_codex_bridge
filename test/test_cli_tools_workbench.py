@@ -42,6 +42,10 @@ def _prepare_env(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv('TERM', 'xterm-256color')
     monkeypatch.setenv('TERM_PROGRAM', 'WezTerm')
     monkeypatch.setenv('CCB_RICH_DOWNLOAD_BINARIES', '0')
+    fake_proc = tmp_path / 'fake-proc'
+    (fake_proc / 'sys' / 'fs' / 'inotify').mkdir(parents=True)
+    (fake_proc / 'sys' / 'fs' / 'inotify' / 'max_user_instances').write_text('1024\n', encoding='utf-8')
+    monkeypatch.setenv('CCB_WORKBENCH_PROC_ROOT', str(fake_proc))
     monkeypatch.delenv('CCB_WORKBENCH_THEME', raising=False)
     monkeypatch.delenv('CCB_TMUX_THEME_PROFILE', raising=False)
     monkeypatch.delenv('CCB_SIDEBAR_THEME_PROFILE', raising=False)
@@ -524,6 +528,50 @@ def test_workbench_terminal_reads_global_theme_config(tmp_path: Path, monkeypatc
     assert 'CCB_WORKBENCH_THEME=solarized_light' in argv
     assert 'CCB_TMUX_THEME_PROFILE=light' in argv
     assert 'CCB_SIDEBAR_THEME_PROFILE=light' in argv
+
+
+def test_workbench_terminal_reports_inotify_exhaustion_before_new_wezterm(tmp_path: Path, monkeypatch) -> None:
+    fake_bin = _prepare_env(tmp_path, monkeypatch)
+    _stub_neovim(monkeypatch, tmp_path)
+    workbench_tools.provision_workbench(profile='rich')
+    project_root = tmp_path / 'project'
+    project_root.mkdir()
+    wezterm_log = tmp_path / 'wezterm-argv-inotify.txt'
+    (tmp_path / 'fake-proc' / 'sys' / 'fs' / 'inotify' / 'max_user_instances').write_text('0\n', encoding='utf-8')
+    (fake_bin / 'wezterm').write_text(
+        '#!/usr/bin/env sh\n'
+        'printf "%s\\n" "$@" > "$WEZTERM_ARGV_LOG"\n',
+        encoding='utf-8',
+    )
+    (fake_bin / 'wezterm').chmod(0o755)
+    (fake_bin / 'python3').write_text('#!/usr/bin/env sh\nexit 75\n', encoding='utf-8')
+    (fake_bin / 'python3').chmod(0o755)
+    monkeypatch.setenv('WEZTERM_ARGV_LOG', str(wezterm_log))
+
+    env = workbench_tools._detached_terminal_env()
+    env['PATH'] = f'{fake_bin}:/usr/bin:/bin'
+    env.pop('CCB_WORKBENCH_PROFILE', None)
+    env.pop('CCB_WORKBENCH_ROOT', None)
+    result = workbench_tools.subprocess.run(
+        [
+            str(tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'workbench' / 'bin' / 'ccb-workbench'),
+            'terminal',
+            '/bin/sh',
+            '-lc',
+            'echo rich',
+        ],
+        cwd=project_root,
+        env=env,
+        text=True,
+        stdout=workbench_tools.subprocess.PIPE,
+        stderr=workbench_tools.subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 75
+    assert 'Linux inotify instance allocation failed' in result.stderr
+    assert 'fs.inotify.max_user_instances=1024' in result.stderr
+    assert not wezterm_log.exists()
 
 
 def test_workbench_terminal_reuses_current_ccb_rich_wezterm_window(tmp_path: Path, monkeypatch) -> None:

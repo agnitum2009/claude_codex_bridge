@@ -113,8 +113,15 @@ class CcbAgentMessageSubmitResult {
     final submit = _map(json['message_submit']);
     final source = submit.isEmpty ? json : submit;
     final messageJson = _map(source['message']);
-    final message =
+    final parsedMessage =
         messageJson.isEmpty ? null : CcbConversationItem.fromJson(messageJson);
+    final submitCreatedAt = _optionalDateTime(source['created_at']);
+    final message =
+        parsedMessage == null ||
+                parsedMessage.sentAt != null ||
+                submitCreatedAt == null
+            ? parsedMessage
+            : parsedMessage.copyWith(sentAt: submitCreatedAt);
     final conversationJson = _map(source['conversation']);
     final conversation =
         conversationJson.isEmpty

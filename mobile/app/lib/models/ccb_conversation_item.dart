@@ -134,6 +134,10 @@ class CcbConversationItem {
     this.state,
     this.contentId,
     this.source,
+    this.sentAt,
+    this.startedAt,
+    this.completedAt,
+    this.durationMs,
     this.attachments = const [],
   });
 
@@ -146,6 +150,10 @@ class CcbConversationItem {
   final CcbConversationDeliveryState? state;
   final String? contentId;
   final String? source;
+  final DateTime? sentAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final int? durationMs;
   final List<CcbMessageAttachment> attachments;
 
   factory CcbConversationItem.userMessage({
@@ -154,6 +162,7 @@ class CcbConversationItem {
     required String body,
     List<CcbMessageAttachment> attachments = const [],
     CcbConversationDeliveryState state = CcbConversationDeliveryState.pending,
+    DateTime? sentAt,
   }) {
     return CcbConversationItem(
       id: id,
@@ -164,6 +173,7 @@ class CcbConversationItem {
       format: 'markdown',
       state: state,
       source: 'mobile',
+      sentAt: sentAt,
       attachments: attachments,
     );
   }
@@ -181,6 +191,10 @@ class CcbConversationItem {
       format: content.format,
       contentId: content.id,
       source: content.source,
+      sentAt: content.sentAt ?? content.completedAt,
+      startedAt: content.startedAt,
+      completedAt: content.completedAt,
+      durationMs: content.durationMs,
       attachments: const [],
     );
   }
@@ -248,6 +262,19 @@ class CcbConversationItem {
       contentId:
           _optionalText(json['content_id']) ?? _optionalText(json['contentId']),
       source: _optionalText(json['source']),
+      sentAt:
+          _optionalDateTime(json['sent_at']) ??
+          _optionalDateTime(json['created_at']),
+      startedAt:
+          _optionalDateTime(json['started_at']) ??
+          _optionalDateTime(json['execution_started_at']),
+      completedAt:
+          _optionalDateTime(json['completed_at']) ??
+          _optionalDateTime(json['finished_at']) ??
+          _optionalDateTime(json['execution_completed_at']),
+      durationMs:
+          _optionalInt(json['duration_ms']) ??
+          _durationSecondsToMs(json['duration_seconds']),
       attachments: [
         if (json['attachments'] is Iterable)
           for (final item in json['attachments'] as Iterable)
@@ -271,6 +298,11 @@ class CcbConversationItem {
       if (state != null) 'state': state!.wireName,
       if (contentId != null) 'content_id': contentId,
       if (source != null) 'source': source,
+      if (sentAt != null) 'sent_at': sentAt!.toUtc().toIso8601String(),
+      if (startedAt != null) 'started_at': startedAt!.toUtc().toIso8601String(),
+      if (completedAt != null)
+        'completed_at': completedAt!.toUtc().toIso8601String(),
+      if (durationMs != null) 'duration_ms': durationMs,
       if (attachments.isNotEmpty)
         'attachments': [for (final a in attachments) a.toJson()],
     };
@@ -279,6 +311,10 @@ class CcbConversationItem {
   CcbConversationItem copyWith({
     CcbConversationDeliveryState? state,
     List<CcbMessageAttachment>? attachments,
+    DateTime? sentAt,
+    DateTime? startedAt,
+    DateTime? completedAt,
+    int? durationMs,
   }) {
     return CcbConversationItem(
       id: id,
@@ -290,6 +326,10 @@ class CcbConversationItem {
       state: state ?? this.state,
       contentId: contentId,
       source: source,
+      sentAt: sentAt ?? this.sentAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      durationMs: durationMs ?? this.durationMs,
       attachments: attachments ?? this.attachments,
     );
   }
@@ -317,6 +357,23 @@ String _text(Object? value, {String fallback = ''}) {
 String? _optionalText(Object? value) {
   final text = _text(value);
   return text.isEmpty ? null : text;
+}
+
+DateTime? _optionalDateTime(Object? value) {
+  final parsed = DateTime.tryParse((value ?? '').toString());
+  return parsed?.toUtc();
+}
+
+int? _optionalInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  return int.tryParse((value ?? '').toString());
+}
+
+int? _durationSecondsToMs(Object? value) {
+  final seconds = double.tryParse((value ?? '').toString());
+  return seconds == null ? null : (seconds * 1000).round();
 }
 
 class CcbMessageAttachment {

@@ -118,6 +118,11 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
   output as the low-latency live source, keep provider-native transcript as
   final readable history, avoid blind polling, and validate `/status`, long
   executions, scroll stability, and idle power on real server-wide AVD runs.
+- [topics/task-completion-notification-lifecycle.md](topics/task-completion-notification-lifecycle.md)
+  defines the follow-up notification lifecycle fix: suppress retained old
+  completion events on first subscription, keep the stream alive for future
+  completions, maintain app-internal unread markers, and show project-level
+  running indicators without parsing conversation text.
 - [topics/relay-route-provider-spike.md](topics/relay-route-provider-spike.md)
   defines the first relay route-provider contract and emulator-only fake/local
   acceptance gates before a public relay exists.

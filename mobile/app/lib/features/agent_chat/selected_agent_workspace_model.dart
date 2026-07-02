@@ -5,6 +5,9 @@ import '../../models/ccb_project_view.dart';
 import '../../models/readable_terminal_history.dart';
 import 'agent_chat_controller.dart';
 import 'agent_chat_timeline_items.dart';
+import 'agent_execution_status.dart';
+
+export 'agent_execution_status.dart';
 
 class SelectedAgentWorkspaceModel {
   const SelectedAgentWorkspaceModel({
@@ -21,6 +24,7 @@ class SelectedAgentWorkspaceModel {
     required this.isAwaitingAgentResponse,
     required this.isComposerCollapsed,
     required this.executionStatus,
+    this.workingReplyItemId,
   });
 
   final CcbAgent agent;
@@ -36,18 +40,7 @@ class SelectedAgentWorkspaceModel {
   final bool isAwaitingAgentResponse;
   final bool isComposerCollapsed;
   final AgentExecutionStatus? executionStatus;
-}
-
-class AgentExecutionStatus {
-  const AgentExecutionStatus({
-    required this.label,
-    required this.state,
-    required this.isRefreshing,
-  });
-
-  final String label;
-  final String state;
-  final bool isRefreshing;
+  final String? workingReplyItemId;
 }
 
 SelectedAgentWorkspaceModel selectedAgentWorkspaceModel({
@@ -77,14 +70,21 @@ SelectedAgentWorkspaceModel selectedAgentWorkspaceModel({
     preferSupplementalTerminalHistoryAtEnd: refreshedTerminalHistory != null,
     isLoadingConversation: isLoadingConversation,
   );
+  final timelineItems = [
+    for (final item in allTimelineItems)
+      if (item.kind != CcbConversationItemKind.commsItem) item,
+  ];
+  final executionStatus = agentExecutionStatus(
+    agent: agent,
+    isAwaitingAgentResponse: isAwaitingAgentResponse,
+    isLoadingConversation: isLoadingConversation,
+    hasLocalExecutionException: hasLocalExecutionException,
+  );
   return SelectedAgentWorkspaceModel(
     agent: agent,
     contentItems: contentItems,
     initialHistory: terminalHistory,
-    timelineItems: [
-      for (final item in allTimelineItems)
-        if (item.kind != CcbConversationItemKind.commsItem) item,
-    ],
+    timelineItems: timelineItems,
     commsItems: [
       for (final item in allTimelineItems)
         if (item.kind == CcbConversationItemKind.commsItem) item,
@@ -96,150 +96,51 @@ SelectedAgentWorkspaceModel selectedAgentWorkspaceModel({
     isSending: chatController.isSubmitting(agent.name),
     isAwaitingAgentResponse: isAwaitingAgentResponse,
     isComposerCollapsed: chatController.isComposerCollapsed(agent.name),
-    executionStatus: agentExecutionStatus(
-      agent: agent,
-      isAwaitingAgentResponse: isAwaitingAgentResponse,
-      isLoadingConversation: isLoadingConversation,
-      hasLocalExecutionException: hasLocalExecutionException,
-    ),
+    executionStatus: executionStatus,
+    workingReplyItemId:
+        executionStatus.state == 'working'
+            ? selectedAgentWorkingReplyItemId(timelineItems)
+            : null,
   );
 }
 
-AgentExecutionStatus? agentExecutionStatus({
-  required CcbAgent agent,
-  required bool isAwaitingAgentResponse,
-  required bool isLoadingConversation,
-  bool hasLocalExecutionException = false,
-}) {
-  if (hasLocalExecutionException) {
-    return const AgentExecutionStatus(
-      label: 'Exception',
-      state: 'exception',
-      isRefreshing: false,
-    );
+String? selectedAgentWorkingReplyItemId(List<CcbConversationItem> items) {
+  var latestUserIndex = -1;
+  CcbConversationItem? latestUser;
+  var latestReplyIndex = -1;
+  CcbConversationItem? latestReply;
+  for (var index = 0; index < items.length; index += 1) {
+    final item = items[index];
+    if (item.kind == CcbConversationItemKind.userMessage) {
+      latestUserIndex = index;
+      latestUser = item;
+    } else if (item.kind == CcbConversationItemKind.agentReply) {
+      latestReplyIndex = index;
+      latestReply = item;
+    }
   }
-
-  final state = _normalized(agent.activityState);
-  final source = _normalized(agent.activitySource);
-  final reason = _normalized(agent.activityReason);
-  if (_isExceptionActivity(state: state, source: source, reason: reason)) {
-    return const AgentExecutionStatus(
-      label: 'Exception',
-      state: 'exception',
-      isRefreshing: false,
-    );
+  if (latestReply == null || latestUserIndex > latestReplyIndex) {
+    return null;
   }
-  if (isAwaitingAgentResponse) {
-    return const AgentExecutionStatus(
-      label: 'Working',
-      state: 'working',
-      isRefreshing: false,
-    );
+  if (latestReply.completedAt != null) {
+    return null;
   }
-  if (isLoadingConversation) {
-    return const AgentExecutionStatus(
-      label: 'Working',
-      state: 'working',
-      isRefreshing: true,
-    );
+  final replyStartedAt = latestReply.startedAt ?? latestReply.sentAt;
+  if (replyStartedAt == null) {
+    return _isTerminalDerivedConversationItem(latestReply)
+        ? latestReply.id
+        : null;
   }
-  if (_isIdleActivity(state)) {
-    return const AgentExecutionStatus(
-      label: 'Idle',
-      state: 'idle',
-      isRefreshing: false,
-    );
+  final userSentAt = latestUser?.sentAt;
+  if (userSentAt != null && replyStartedAt.isBefore(userSentAt)) {
+    return null;
   }
-  if (_isWorkingActivity(
-    state: state,
-    source: source,
-    reason: reason,
-    queueDepth: agent.queueDepth,
-  )) {
-    return AgentExecutionStatus(
-      label: 'Working',
-      state: 'working',
-      isRefreshing: state == 'pending',
-    );
-  }
-  return const AgentExecutionStatus(
-    label: 'Idle',
-    state: 'idle',
-    isRefreshing: false,
-  );
+  return latestReply.id;
 }
 
-bool _isIdleActivity(String? state) {
-  return const {
-    'idle',
-    'free',
-    'completed',
-    'complete',
-    'done',
-  }.contains(state);
-}
-
-bool _isExceptionActivity({
-  required String? state,
-  required String? source,
-  required String? reason,
-}) {
-  if (const {
-    'failed',
-    'failure',
-    'error',
-    'faulted',
-    'offline',
-    'crashed',
-  }.contains(state)) {
-    return true;
-  }
-  final text = '${source ?? ''} ${reason ?? ''}';
-  return text.contains('failed') ||
-      text.contains('failure') ||
-      text.contains('error') ||
-      text.contains('offline') ||
-      text.contains('auth') ||
-      text.contains('interrupt') ||
-      text.contains('cancel') ||
-      text.contains('abort') ||
-      text.contains('dead') ||
-      text.contains('timeout') ||
-      text.contains('timed_out') ||
-      text.contains('denied');
-}
-
-bool _isWorkingActivity({
-  required String? state,
-  required String? source,
-  required String? reason,
-  required int queueDepth,
-}) {
-  if (const {
-    'active',
-    'busy',
-    'pending',
-    'running',
-    'start',
-    'starting',
-    'working',
-  }.contains(state)) {
-    return true;
-  }
-  final text = '${source ?? ''} ${reason ?? ''}';
-  return queueDepth > 0 ||
-      text.contains('queued') ||
-      text.contains('reconnect') ||
-      text.contains('running') ||
-      text.contains('start') ||
-      text.contains('submitted') ||
-      text.contains('tool') ||
-      text.contains('waiting') ||
-      text.contains('working') ||
-      text.contains('prompt');
-}
-
-String? _normalized(String? value) {
-  final text = value?.trim().toLowerCase();
-  return text == null || text.isEmpty ? null : text;
+bool _isTerminalDerivedConversationItem(CcbConversationItem item) {
+  final source = item.source ?? '';
+  return item.kind == CcbConversationItemKind.terminalHistoryBlock ||
+      source.startsWith('tmux output /') ||
+      source.startsWith('terminal ');
 }

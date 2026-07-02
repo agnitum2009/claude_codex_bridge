@@ -22,6 +22,7 @@ export 'models/ccb_window.dart';
 export 'models/readable_terminal_history.dart';
 export 'notifications/task_completion_notifications.dart';
 export 'pairing/gateway_pairing.dart';
+export 'pairing/gateway_pairing_qr_scanner.dart';
 export 'pairing/gateway_pairing_scanner_screen.dart';
 export 'repository/fake_mobile_ccb_repository.dart';
 export 'repository/gateway_mobile_ccb_repository.dart';

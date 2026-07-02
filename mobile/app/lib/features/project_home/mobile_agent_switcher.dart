@@ -15,6 +15,7 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
     required this.onExpand,
     required this.onWindowSelected,
     required this.onAgentSelected,
+    this.unreadAgentNames = const {},
     super.key,
   });
 
@@ -25,6 +26,7 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
   final VoidCallback onExpand;
   final ValueChanged<String> onWindowSelected;
   final ValueChanged<String> onAgentSelected;
+  final Set<String> unreadAgentNames;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +41,12 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
             ? view.agents
             : agentsForWindow(view, selectedWindow.name);
     final agent = selectedAgent;
+    final unreadWindowNames = _unreadWindowNames(
+      view: view,
+      selectedWindow: selectedWindow,
+      unreadAgentNames: unreadAgentNames,
+    );
+    final hasUnread = unreadAgentNames.isNotEmpty;
     if (collapsed) {
       return Material(
         key: const ValueKey('mobile-agent-switcher-collapsed'),
@@ -51,10 +59,16 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 20,
-                    color: colorScheme.primary,
+                  TaskCompletionUnreadIcon(
+                    unreadKey: const ValueKey(
+                      'mobile-agent-switcher-unread-star',
+                    ),
+                    showUnread: hasUnread,
+                    child: Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 20,
+                      color: colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -95,12 +109,14 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
         WindowSwitcher(
           windows: windows,
           selectedWindowName: selectedWindow?.name,
+          unreadWindowNames: unreadWindowNames,
           onWindowSelected: onWindowSelected,
         ),
         const SizedBox(height: 4),
         AgentSwitcher(
           agents: currentAgents.isEmpty ? view.agents : currentAgents,
           selectedAgentName: selectedAgent?.name,
+          unreadAgentNames: unreadAgentNames,
           onAgentSelected: (agent) {
             onAgentSelected(agent.name);
           },
@@ -143,4 +159,26 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
     }
     return '${window.label} / ${agent.name}';
   }
+}
+
+Set<String> _unreadWindowNames({
+  required CcbProjectView view,
+  required CcbWindow? selectedWindow,
+  required Set<String> unreadAgentNames,
+}) {
+  if (unreadAgentNames.isEmpty) {
+    return const {};
+  }
+  final selectedName = selectedWindow?.name;
+  final unread = <String>{};
+  for (final window in orderedWindowsForView(view)) {
+    if (window.name == selectedName) {
+      continue;
+    }
+    final agents = agentsForWindow(view, window.name);
+    if (agents.any((agent) => unreadAgentNames.contains(agent.name))) {
+      unread.add(window.name);
+    }
+  }
+  return unread;
 }

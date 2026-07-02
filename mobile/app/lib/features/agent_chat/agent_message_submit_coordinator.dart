@@ -71,6 +71,7 @@ class AgentMessageSubmitCoordinator {
       agentName: agent.name,
       body: trimmedBody,
       attachments: attachments,
+      sentAt: DateTime.now().toUtc(),
     );
     const shouldScroll = true;
     _mutateState(() {

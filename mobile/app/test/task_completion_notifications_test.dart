@@ -143,6 +143,96 @@ void main() {
       },
     );
 
+    test(
+      'baseline events are marked seen without notification or live event',
+      () async {
+        final secureStore = MemorySecureStore();
+        final streamClient = _FakeTaskCompletionStreamClient();
+        final localNotifications = _FakeTaskCompletionLocalNotifications();
+        final liveEvents = <TaskCompletionNotificationEvent>[];
+        final controller = _controller(
+          streamClient: streamClient,
+          localNotifications: localNotifications,
+          seenStore: TaskCompletionSeenDedupeStore(secureStore: secureStore),
+          clock: () => DateTime.utc(2026, 6, 30, 12, 0, 1),
+          onLiveEvent: liveEvents.add,
+        );
+        final oldEvent = _event(dedupeKey: 'old');
+
+        await controller.start(_host(scopes: const {'notify'}));
+        streamClient.add(oldEvent);
+        await _drain();
+
+        expect(localNotifications.shown, isEmpty);
+        expect(liveEvents, isEmpty);
+        expect(
+          await TaskCompletionSeenDedupeStore(
+            secureStore: secureStore,
+          ).readSeenKeys(),
+          ['old'],
+        );
+
+        await controller.dispose();
+      },
+    );
+
+    test('live event callback fires before optional OS notification', () async {
+      final streamClient = _FakeTaskCompletionStreamClient();
+      final localNotifications = _FakeTaskCompletionLocalNotifications();
+      final liveEvents = <TaskCompletionNotificationEvent>[];
+      final controller = _controller(
+        streamClient: streamClient,
+        localNotifications: localNotifications,
+        onLiveEvent: liveEvents.add,
+        shouldShowNotification: (_) => false,
+      );
+      final event = _event(dedupeKey: 'live-callback');
+
+      await controller.start(_host(scopes: const {'notify'}));
+      streamClient.add(event);
+      await _drain();
+
+      expect(liveEvents.map((event) => event.dedupeKey), ['live-callback']);
+      expect(localNotifications.shown, isEmpty);
+
+      await controller.dispose();
+    });
+
+    test(
+      'stream completion reconnects and keeps future notifications alive',
+      () async {
+        final streamClient = _ReconnectTaskCompletionStreamClient();
+        final localNotifications = _FakeTaskCompletionLocalNotifications();
+        final controller = TaskCompletionNotificationController(
+          streamClient: streamClient,
+          localNotifications: localNotifications,
+          seenStore: TaskCompletionSeenDedupeStore(
+            secureStore: MemorySecureStore(),
+          ),
+          onTap: (_) {},
+          clock: () => DateTime.utc(2026, 6, 30, 11, 59),
+          initialReconnectDelay: Duration.zero,
+          maxReconnectDelay: Duration.zero,
+        );
+
+        await controller.start(_host(scopes: const {'notify'}));
+        expect(streamClient.subscribeCalls, 1);
+
+        await streamClient.closeLatest();
+        await _drain();
+        expect(streamClient.subscribeCalls, 2);
+
+        streamClient.add(_event(dedupeKey: 'after-reconnect'));
+        await _drain();
+
+        expect(localNotifications.shown.map((event) => event.dedupeKey), [
+          'after-reconnect',
+        ]);
+
+        await controller.dispose();
+      },
+    );
+
     test('HTTP client uses gateway notification SSE contract', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
@@ -253,6 +343,9 @@ TaskCompletionNotificationController _controller({
   required _FakeTaskCompletionStreamClient streamClient,
   required _FakeTaskCompletionLocalNotifications localNotifications,
   TaskCompletionSeenDedupeStore? seenStore,
+  TaskCompletionNotificationEventHandler? onLiveEvent,
+  TaskCompletionNotificationPredicate? shouldShowNotification,
+  DateTime Function()? clock,
 }) {
   return TaskCompletionNotificationController(
     streamClient: streamClient,
@@ -261,17 +354,23 @@ TaskCompletionNotificationController _controller({
         seenStore ??
         TaskCompletionSeenDedupeStore(secureStore: MemorySecureStore()),
     onTap: (_) {},
+    onLiveEvent: onLiveEvent,
+    shouldShowNotification: shouldShowNotification,
+    clock: clock ?? () => DateTime.utc(2026, 6, 30, 11, 59),
   );
 }
 
-TaskCompletionNotificationEvent _event({required String dedupeKey}) {
+TaskCompletionNotificationEvent _event({
+  required String dedupeKey,
+  DateTime? completedAt,
+}) {
   return TaskCompletionNotificationEvent(
     id: 'event-$dedupeKey',
     kind: TaskCompletionNotificationEvent.taskCompletedKind,
     projectId: 'proj-demo',
     projectShortName: 'demo',
     agent: 'mobile',
-    completedAt: DateTime.utc(2026, 6, 30, 12),
+    completedAt: completedAt ?? DateTime.utc(2026, 6, 30, 12),
     dedupeKey: dedupeKey,
   );
 }
@@ -349,6 +448,28 @@ class _FakeTaskCompletionStreamClient
   Stream<TaskCompletionNotificationEvent> subscribe(GatewayPairedHost host) {
     subscribeCalls += 1;
     return _controller.stream;
+  }
+}
+
+class _ReconnectTaskCompletionStreamClient
+    implements GatewayTaskCompletionNotificationStreamClient {
+  final _controllers = <StreamController<TaskCompletionNotificationEvent>>[];
+  var subscribeCalls = 0;
+
+  void add(TaskCompletionNotificationEvent event) {
+    _controllers.last.add(event);
+  }
+
+  Future<void> closeLatest() {
+    return _controllers.last.close();
+  }
+
+  @override
+  Stream<TaskCompletionNotificationEvent> subscribe(GatewayPairedHost host) {
+    subscribeCalls += 1;
+    final controller = StreamController<TaskCompletionNotificationEvent>();
+    _controllers.add(controller);
+    return controller.stream;
   }
 }
 

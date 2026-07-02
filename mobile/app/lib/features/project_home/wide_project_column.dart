@@ -11,6 +11,8 @@ class WideProjectColumn extends StatelessWidget {
     required this.onProjectSelected,
     required this.onOpenNotifications,
     required this.onOpenConnectionDetails,
+    this.hasUnreadTaskCompletion = false,
+    this.hasWorkingAgents = false,
     super.key,
   });
 
@@ -19,6 +21,8 @@ class WideProjectColumn extends StatelessWidget {
   final VoidCallback onProjectSelected;
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenConnectionDetails;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +66,8 @@ class WideProjectColumn extends StatelessWidget {
                   view: view,
                   selectedAgent: selectedAgent,
                   selected: true,
+                  hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+                  hasWorkingAgents: hasWorkingAgents,
                   onOpen: onProjectSelected,
                 ),
               ],

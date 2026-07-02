@@ -679,6 +679,222 @@ def test_project_view_codex_runtime_status_overrides_sidebar_presentation(tmp_pa
     assert agent['provider_runtime_status']['pane_state'] == 'working'
 
 
+def test_project_view_codex_visible_working_remains_working_after_no_progress_threshold(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-codex-runtime-stale-working'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent1', project_id=project_id))
+    current_time = ['2026-05-20T12:00:00Z']
+    mount_manager = MountManager(layout, clock=lambda: current_time[0])
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-codex-runtime-stale-working',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: current_time[0])
+
+    class CodexWorkingTimerOnlyBackend(_SnapshotBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pane_text = '• Working (1s • esc to interrupt)\n'
+
+        def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+            self.calls.append(list(args))
+            if args[:3] == ['capture-pane', '-p', '-t']:
+                return type('CP', (), {'returncode': 0, 'stdout': self.pane_text, 'stderr': ''})()
+            return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
+
+    backend = CodexWorkingTimerOnlyBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            paths=layout,
+            clock=lambda: current_time[0],
+            cache_ttl_ms=0,
+        )
+    )
+
+    first = service.build_response()['view']['agents'][0]
+    backend.pane_text = '• Working (59s • esc to interrupt)\n'
+    current_time[0] = '2026-05-20T12:00:59Z'
+    before_threshold = service.build_response()['view']['agents'][0]
+    backend.pane_text = '• Working (1m 1s • esc to interrupt)\n'
+    current_time[0] = '2026-05-20T12:01:01Z'
+    after_threshold = service.build_response()['view']['agents'][0]
+
+    assert first['provider_runtime_status']['state'] == 'working'
+    assert before_threshold['provider_runtime_status']['state'] == 'working'
+    assert after_threshold['activity_state'] == 'active'
+    assert after_threshold['activity_source'] == 'codex_runtime'
+    assert after_threshold['activity_reason'] == 'codex_working_status_line'
+    assert after_threshold['activity_symbol'] == '●'
+    assert after_threshold['provider_runtime_status']['state'] == 'working'
+    assert after_threshold['provider_runtime_status']['source'] == 'pane'
+    assert after_threshold['provider_runtime_status']['pane_state'] == 'working'
+
+
+def test_project_view_codex_no_active_status_without_pane_progress_becomes_free(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-codex-runtime-no-active-stale'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent1', project_id=project_id))
+    current_time = ['2026-05-20T12:00:00Z']
+    mount_manager = MountManager(layout, clock=lambda: current_time[0])
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-codex-runtime-no-active-stale',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: current_time[0])
+
+    class CodexNoActiveBackend(_SnapshotBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pane_text = 'Conversation interrupted\n'
+
+        def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+            self.calls.append(list(args))
+            if args[:3] == ['capture-pane', '-p', '-t']:
+                return type('CP', (), {'returncode': 0, 'stdout': self.pane_text, 'stderr': ''})()
+            return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
+
+    backend = CodexNoActiveBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            paths=layout,
+            clock=lambda: current_time[0],
+            cache_ttl_ms=0,
+        )
+    )
+
+    first = service.build_response()['view']['agents'][0]
+    current_time[0] = '2026-05-20T12:00:59Z'
+    before_threshold = service.build_response()['view']['agents'][0]
+    current_time[0] = '2026-05-20T12:01:01Z'
+    stale = service.build_response()['view']['agents'][0]
+
+    assert first['provider_runtime_status']['state'] == 'unknown'
+    assert before_threshold['provider_runtime_status']['state'] == 'unknown'
+    assert stale['activity_state'] == 'idle'
+    assert stale['activity_source'] == 'codex_runtime'
+    assert stale['activity_reason'] == 'codex_pane_no_active_stale_no_progress'
+    assert stale['activity_symbol'] == '◇'
+    assert stale['provider_runtime_status']['state'] == 'free'
+    assert stale['provider_runtime_status']['source'] == 'stabilizer'
+    assert stale['provider_runtime_status']['pane_state'] == 'unknown'
+    assert 'raw_state=unknown' in stale['provider_runtime_status']['notes']
+    assert 'raw_reason=no_known_status_pattern' in stale['provider_runtime_status']['notes']
+
+
+def test_project_view_codex_no_active_status_progress_resets_no_progress_timer(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-codex-runtime-progress-reset'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent1', project_id=project_id))
+    current_time = ['2026-05-20T12:00:00Z']
+    mount_manager = MountManager(layout, clock=lambda: current_time[0])
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-codex-runtime-progress-reset',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: current_time[0])
+
+    class CodexWorkingOutputBackend(_SnapshotBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pane_text = 'Conversation interrupted\nchunk A\n'
+
+        def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+            self.calls.append(list(args))
+            if args[:3] == ['capture-pane', '-p', '-t']:
+                return type('CP', (), {'returncode': 0, 'stdout': self.pane_text, 'stderr': ''})()
+            return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
+
+    backend = CodexWorkingOutputBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            paths=layout,
+            clock=lambda: current_time[0],
+            cache_ttl_ms=0,
+        )
+    )
+
+    service.build_response()
+    backend.pane_text = 'Conversation interrupted\nchunk B\n'
+    current_time[0] = '2026-05-20T12:01:01Z'
+    progressed = service.build_response()['view']['agents'][0]
+    backend.pane_text = 'Conversation interrupted\nchunk B\n'
+    current_time[0] = '2026-05-20T12:02:02Z'
+    stale = service.build_response()['view']['agents'][0]
+
+    assert progressed['provider_runtime_status']['state'] == 'unknown'
+    assert stale['provider_runtime_status']['state'] == 'free'
+    assert stale['activity_reason'] == 'codex_pane_no_active_stale_no_progress'
+
+
 def test_project_view_codex_running_unknown_displays_start(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-codex-runtime-start'
     project_root.mkdir()
@@ -3776,6 +3992,18 @@ def test_activity_resolver_codex_runtime_status_presentation() -> None:
         ),
         now=NOW,
     )
+    interrupted = resolve_agent_activity(
+        AgentActivityFacts(
+            namespace_mounted=True,
+            runtime_state='idle',
+            pane_id='%1',
+            pane_state='alive',
+            provider_runtime_state='interrupted',
+            provider_runtime_source='codex_runtime',
+            provider_runtime_reason='codex_session_turn_aborted',
+        ),
+        now=NOW,
+    )
     unknown = resolve_agent_activity(
         AgentActivityFacts(
             namespace_mounted=True,
@@ -3802,6 +4030,11 @@ def test_activity_resolver_codex_runtime_status_presentation() -> None:
     assert free.to_record()['activity_state'] == 'idle'
     assert free.to_record()['activity_symbol'] == '◇'
     assert free.to_record()['activity_color'] == 'blue'
+    assert interrupted.to_record()['activity_state'] == 'pending'
+    assert interrupted.to_record()['activity_symbol'] == '!'
+    assert interrupted.to_record()['activity_color'] == 'yellow'
+    assert interrupted.to_record()['activity_source'] == 'codex_runtime'
+    assert interrupted.to_record()['activity_reason'] == 'codex_session_turn_aborted'
     assert unknown.to_record()['activity_state'] == 'pending'
     assert unknown.to_record()['activity_symbol'] == '?'
     assert unknown.to_record()['activity_color'] == 'gray'

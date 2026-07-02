@@ -88,6 +88,28 @@ void main() {
     expect(conversationPreviewTextFor(item), 'MOBILE_DYNAMIC_SYNC_OK');
   });
 
+  test('agent reply display titles use agent name for normal chat replies', () {
+    final item = CcbConversationItem(
+      id: 'reply',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: 'hello',
+      source: 'completion_snapshot',
+    );
+    final terminalItem = CcbConversationItem(
+      id: 'terminal-output',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Terminal output',
+      body: 'output',
+      source: 'tmux output / live',
+    );
+
+    expect(conversationDisplayTitle(item), 'lead');
+    expect(conversationDisplayTitle(terminalItem), 'Terminal output');
+  });
+
   testWidgets('normal chat bubbles do not render internal source labels', (
     tester,
   ) async {
@@ -115,6 +137,85 @@ void main() {
     expect(find.text('completion_snapshot'), findsNothing);
     expect(find.text('hello'), findsOneWidget);
   });
+
+  testWidgets('user message title row shows sent time next to sender', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final item = CcbConversationItem(
+      id: 'user-1',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.userMessage,
+      title: 'You',
+      body: 'hello',
+      sentAt: DateTime(now.year, now.month, now.day, 11, 42),
+      state: CcbConversationDeliveryState.sent,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(400, 800),
+            alwaysUse24HourFormat: true,
+          ),
+          child: Scaffold(
+            body: ConversationBubble(
+              item: item,
+              expanded: true,
+              onToggleExpanded: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('11:42'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('conversation-timestamp-user-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'agent reply title row uses agent name with sent time and duration',
+    (tester) async {
+      final now = DateTime.now();
+      final item = CcbConversationItem(
+        id: 'reply',
+        agentName: 'lead',
+        kind: CcbConversationItemKind.agentReply,
+        title: 'Agent reply',
+        body: 'done',
+        sentAt: DateTime(now.year, now.month, now.day, 12, 3),
+        durationMs: 72000,
+        source: 'completion_snapshot',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(400, 800),
+              alwaysUse24HourFormat: true,
+            ),
+            child: Scaffold(
+              body: ConversationBubble(
+                item: item,
+                expanded: true,
+                onToggleExpanded: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('lead'), findsOneWidget);
+      expect(find.text('Agent reply'), findsNothing);
+      expect(find.text('12:03 · 1m 12s'), findsOneWidget);
+    },
+  );
 
   testWidgets('sent user messages omit redundant state chip', (tester) async {
     const item = CcbConversationItem(
@@ -179,7 +280,45 @@ void main() {
     );
   });
 
-  testWidgets('expanded long bubbles are height limited and scrollable', (
+  testWidgets('working reply bubble shows status glyph and active border', (
+    tester,
+  ) async {
+    const item = CcbConversationItem(
+      id: 'reply-working',
+      agentName: 'lead',
+      kind: CcbConversationItemKind.agentReply,
+      title: 'Agent reply',
+      body: 'Still running',
+      source: 'provider_native/codex',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConversationBubble(
+            item: item,
+            expanded: true,
+            isWorking: true,
+            onToggleExpanded: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('conversation-working-reply-working')),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    final material = tester.widget<Material>(
+      find.byKey(const ValueKey('conversation-item-reply-working')),
+    );
+    final shape = material.shape as RoundedRectangleBorder;
+    expect(shape.side.color, ThemeData().colorScheme.primary);
+  });
+
+  testWidgets('expanded long bubbles can fill available height and scroll', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 800);
@@ -216,6 +355,7 @@ void main() {
       tester.getSize(viewportFinder).height,
       conversationBodyViewportMaxHeight(const Size(400, 800)),
     );
+    expect(tester.getSize(viewportFinder).height, greaterThan(420));
     expect(find.byType(Scrollbar), findsOneWidget);
   });
 

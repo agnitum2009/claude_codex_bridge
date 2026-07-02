@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
@@ -19,6 +20,7 @@ import '../../repository/mobile_ccb_repository.dart';
 import '../../transport/gateway_route_diagnostics.dart';
 import '../../transport/route_provider.dart';
 import '../../transport/terminal_transport.dart';
+import '../agent_chat/agent_execution_status.dart';
 import 'project_home_connection_details_panel_host.dart';
 import 'project_home_focus_coordinator.dart';
 import 'project_home_lifecycle_coordinator.dart';
@@ -55,6 +57,7 @@ class ProjectHomeScreen extends StatelessWidget {
     this.taskNotificationStreamClient,
     this.taskCompletionLocalNotifications,
     this.taskCompletionSeenStore,
+    this.taskCompletionUnreadStore,
     super.key,
   });
 
@@ -73,6 +76,7 @@ class ProjectHomeScreen extends StatelessWidget {
   taskNotificationStreamClient;
   final TaskCompletionLocalNotifications? taskCompletionLocalNotifications;
   final TaskCompletionSeenDedupeStore? taskCompletionSeenStore;
+  final TaskCompletionUnreadStore? taskCompletionUnreadStore;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +95,7 @@ class ProjectHomeScreen extends StatelessWidget {
       taskNotificationStreamClient: taskNotificationStreamClient,
       taskCompletionLocalNotifications: taskCompletionLocalNotifications,
       taskCompletionSeenStore: taskCompletionSeenStore,
+      taskCompletionUnreadStore: taskCompletionUnreadStore,
     );
   }
 }
@@ -111,6 +116,7 @@ class _ProjectHomeView extends StatefulWidget {
     required this.taskNotificationStreamClient,
     required this.taskCompletionLocalNotifications,
     required this.taskCompletionSeenStore,
+    required this.taskCompletionUnreadStore,
   });
 
   final MobileCcbRepository repository;
@@ -128,13 +134,16 @@ class _ProjectHomeView extends StatefulWidget {
   taskNotificationStreamClient;
   final TaskCompletionLocalNotifications? taskCompletionLocalNotifications;
   final TaskCompletionSeenDedupeStore? taskCompletionSeenStore;
+  final TaskCompletionUnreadStore? taskCompletionUnreadStore;
 
   @override
   State<_ProjectHomeView> createState() => _ProjectHomeViewState();
 }
 
-class _ProjectHomeViewState extends State<_ProjectHomeView> {
+class _ProjectHomeViewState extends State<_ProjectHomeView>
+    with WidgetsBindingObserver {
   static const _defaultProjectId = 'proj-demo';
+  static const _activeProjectStatusRefreshInterval = Duration(seconds: 2);
 
   final _pairingForm = ProjectHomePairingFormController();
 
@@ -165,6 +174,14 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   WideSidebarState _wideSidebarDragStartState = WideSidebarState.expanded;
   double _wideSidebarDragDelta = 0;
   bool _mobileAgentsCollapsed = false;
+  Timer? _activeProjectStatusRefreshTimer;
+  bool _activeProjectStatusRefreshInFlight = false;
+  AppLifecycleState _appLifecycleState =
+      WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+  String? _visibleTaskCompletionProjectId;
+  String? _visibleTaskCompletionAgentName;
+  final Map<String, bool> _knownProjectWorkingAgents = {};
+  List<TaskCompletionUnreadItem> _unreadTaskCompletions = const [];
 
   late final ProjectHomeProfileBootstrapper _profileBootstrapper =
       ProjectHomeProfileBootstrapper(store: widget.profileStore);
@@ -178,11 +195,16 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   final _runtimeSessionCoordinator =
       const ProjectHomeRuntimeSessionCoordinator();
   final _viewRefreshCoordinator = const ProjectHomeViewRefreshCoordinator();
+  final _taskCompletionUnreadClearInFlight = <String>{};
+  late final TaskCompletionUnreadStore _taskCompletionUnreadStore;
   late final TaskCompletionNotificationController _taskNotifications;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _taskCompletionUnreadStore =
+        widget.taskCompletionUnreadStore ?? TaskCompletionUnreadStore();
     _taskNotifications = TaskCompletionNotificationController(
       streamClient:
           widget.taskNotificationStreamClient ??
@@ -193,6 +215,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       seenStore:
           widget.taskCompletionSeenStore ?? TaskCompletionSeenDedupeStore(),
       onTap: _handleTaskCompletionNotificationTap,
+      onLiveEvent: _handleLiveTaskCompletionEvent,
+      shouldShowNotification: _shouldShowTaskCompletionNotification,
     );
     _activeRepository = widget.repository;
     _viewFuture = _loadActiveProjectView();
@@ -201,11 +225,18 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
 
   @override
   void dispose() {
+    _stopActiveProjectStatusRefresh();
+    WidgetsBinding.instance.removeObserver(this);
     _pairingForm.dispose();
     unawaited(_taskNotifications.dispose());
     _lifecycleResultNotifier.dispose();
     _runningLifecycleActionNotifier.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
   }
 
   @override
@@ -223,6 +254,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     if (_mode == AppRuntimeMode.pairedGateway &&
         _activeProjectId.isEmpty &&
         serverProjectsFuture != null) {
+      _setVisibleTaskCompletionTarget(projectId: null, agentName: null);
       return _buildServerProjectList(serverProjectsFuture);
     }
     return FutureBuilder<CcbProjectView>(
@@ -235,12 +267,26 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         final view = snapshot.data;
         final selectedAgent = view == null ? null : _selectedAgentFor(view);
         if (view == null) {
+          _setVisibleTaskCompletionTarget(projectId: null, agentName: null);
           return const Scaffold(
             body: SafeArea(child: Center(child: CircularProgressIndicator())),
           );
         }
-        if (MediaQuery.sizeOf(context).width >=
-            projectHomeWideLayoutBreakpoint) {
+        _rememberProjectActivity(view);
+        final wide =
+            MediaQuery.sizeOf(context).width >= projectHomeWideLayoutBreakpoint;
+        final mobileChatVisible = _openedProjectId == view.project.id;
+        _setVisibleTaskCompletionTarget(
+          projectId: wide || mobileChatVisible ? view.project.id : null,
+          agentName: wide || mobileChatVisible ? selectedAgent?.name : null,
+        );
+        if (wide || mobileChatVisible) {
+          _clearVisibleTaskCompletionUnread(
+            projectId: view.project.id,
+            agentName: selectedAgent?.name,
+          );
+        }
+        if (wide) {
           return _buildWideProjectScaffold(view, selectedAgent);
         }
         if (_openedProjectId != view.project.id) {
@@ -253,6 +299,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           terminalTransport: _terminalTransport,
           usePaneInputForMessages: _mode == AppRuntimeMode.pairedGateway,
           mobileAgentsCollapsed: _mobileAgentsCollapsed,
+          unreadAgentNames: _unreadAgentNamesForProject(view.project.id),
           onBack: _closeProject,
           onOpenTerminal: (agentName) {
             _openAgentTerminal(view, agentName);
@@ -275,11 +322,13 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   Future<CcbProjectView> _loadActiveProjectView() {
-    return _deferredBuilderFuture(
-      () => _activeRepository
+    return _deferredBuilderFuture(() async {
+      final view = await _activeRepository
           .getProjectView(_activeProjectId)
-          .timeout(projectHomeRuntimeViewLoadTimeout),
-    );
+          .timeout(projectHomeRuntimeViewLoadTimeout);
+      _rememberProjectActivity(view);
+      return view;
+    });
   }
 
   Future<List<CcbProject>> _loadServerProjects() {
@@ -417,6 +466,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   void _returnToServerProjectList() {
+    _stopActiveProjectStatusRefresh();
     setState(() {
       _activeProjectId = '';
       _openedProjectId = null;
@@ -444,6 +494,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
           onRefreshProjects: _retryServerProjects,
           onOpenSettings: _openPairingSettings,
           onOpenProject: _openServerProject,
+          unreadProjectIds: _unreadProjectIds,
+          workingProjectIds: _workingProjectIdsFor(projects),
         );
       },
     );
@@ -530,6 +582,9 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       onHorizontalDragUpdate: _updateWideSidebarDrag,
       onHorizontalDragEnd: _endWideSidebarDrag,
       onRefreshView: _refreshActiveView,
+      unreadAgentNames: _unreadAgentNamesForProject(view.project.id),
+      hasUnreadTaskCompletion: _projectHasUnreadTaskCompletion(view.project.id),
+      hasWorkingAgents: _viewHasWorkingAgents(view),
     );
   }
 
@@ -609,6 +664,8 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       onOpenConnectionDetails: () {
         _openConnectionDetails(view);
       },
+      hasUnreadTaskCompletion: _projectHasUnreadTaskCompletion(view.project.id),
+      hasWorkingAgents: _viewHasWorkingAgents(view),
     );
   }
 
@@ -621,6 +678,12 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     setState(() {
       _selectedAgentName = outcome.selectedAgentName;
     });
+    unawaited(
+      _clearTaskCompletionUnreadForAgent(
+        projectId: _activeProjectId,
+        agent: agentName,
+      ),
+    );
   }
 
   void _handleMobileTimelineScrollDirection(ScrollDirection direction) {
@@ -648,6 +711,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     setState(() {
       _openedProjectId = outcome.openedProjectId;
     });
+    _restartActiveProjectStatusRefresh();
   }
 
   void _openServerProject(CcbProject project) {
@@ -657,6 +721,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       _selectedAgentName = null;
       _viewFuture = _loadActiveProjectView();
     });
+    _restartActiveProjectStatusRefresh();
   }
 
   void _closeProject() {
@@ -745,6 +810,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   void _setRuntimeMode(AppRuntimeMode mode) {
     switch (mode) {
       case AppRuntimeMode.fake:
+        _stopActiveProjectStatusRefresh();
         final reset = resetProjectHomeFakeRuntime(
           defaultProjectId: _defaultProjectId,
         );
@@ -802,6 +868,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       session.projectsFuture.catchError((Object _) => const <CcbProject>[]),
     );
     final profile = session.activation.profile;
+    _stopActiveProjectStatusRefresh();
     setState(() {
       _mode = AppRuntimeMode.pairedGateway;
       _showPairingSetup = false;
@@ -819,6 +886,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   void _returnToPairingSetup() {
+    _stopActiveProjectStatusRefresh();
     unawaited(_taskNotifications.stop());
     setState(() {
       _mode = AppRuntimeMode.fake;
@@ -1012,7 +1080,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       }
       final refreshed = outcome.refreshedView!;
       setState(() {
-        _viewFuture = Future<CcbProjectView>.value(refreshed);
+        _viewFuture = SynchronousFuture(refreshed);
         _selectedAgentName = outcome.selectedAgentName;
       });
       return refreshed;
@@ -1021,6 +1089,65 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
       _showSnack(outcome.snackMessage!);
     }
     return null;
+  }
+
+  bool get _shouldRefreshActiveProjectStatus =>
+      _mode == AppRuntimeMode.pairedGateway &&
+      !_showPairingSetup &&
+      _activeProjectId.isNotEmpty &&
+      _openedProjectId == _activeProjectId;
+
+  void _restartActiveProjectStatusRefresh() {
+    _stopActiveProjectStatusRefresh();
+    if (!_shouldRefreshActiveProjectStatus) {
+      return;
+    }
+    _activeProjectStatusRefreshTimer = Timer.periodic(
+      _activeProjectStatusRefreshInterval,
+      (_) {
+        unawaited(_refreshActiveProjectStatus());
+      },
+    );
+  }
+
+  void _stopActiveProjectStatusRefresh() {
+    _activeProjectStatusRefreshTimer?.cancel();
+    _activeProjectStatusRefreshTimer = null;
+    _activeProjectStatusRefreshInFlight = false;
+  }
+
+  Future<void> _refreshActiveProjectStatus() async {
+    if (!_shouldRefreshActiveProjectStatus ||
+        _activeProjectStatusRefreshInFlight) {
+      return;
+    }
+    _activeProjectStatusRefreshInFlight = true;
+    final projectId = _activeProjectId;
+    try {
+      final current = await _viewFuture;
+      final refreshed = await _activeRepository
+          .getProjectView(projectId)
+          .timeout(projectHomeRuntimeViewLoadTimeout);
+      if (!mounted ||
+          projectId != _activeProjectId ||
+          !_shouldRefreshActiveProjectStatus ||
+          _sameProjectViewActivity(current, refreshed)) {
+        return;
+      }
+      _rememberProjectActivity(refreshed);
+      setState(() {
+        _viewFuture = SynchronousFuture(
+          _projectViewWithRefreshedActivity(
+            current: current,
+            refreshed: refreshed,
+          ),
+        );
+      });
+    } catch (_) {
+      // Status polling is best-effort; explicit refresh still surfaces errors.
+    } finally {
+      _activeProjectStatusRefreshInFlight = false;
+    }
   }
 
   Future<CcbProjectView?> _focusAgent(
@@ -1044,10 +1171,20 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         return null;
       }
       final focusedView = outcome.focusedView!;
+      _rememberProjectActivity(focusedView);
       setState(() {
         _selectedAgentName = outcome.selectedAgentName;
         _viewFuture = Future<CcbProjectView>.value(focusedView);
       });
+      final selectedAgent = outcome.selectedAgentName;
+      if (selectedAgent != null) {
+        unawaited(
+          _clearTaskCompletionUnreadForAgent(
+            projectId: focusedView.project.id,
+            agent: selectedAgent,
+          ),
+        );
+      }
       return focusedView;
     }
     if (!mounted) {
@@ -1082,10 +1219,20 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
         return null;
       }
       final focusedView = outcome.focusedView!;
+      _rememberProjectActivity(focusedView);
       setState(() {
         _selectedAgentName = outcome.selectedAgentName;
         _viewFuture = Future<CcbProjectView>.value(focusedView);
       });
+      final selectedAgent = outcome.selectedAgentName;
+      if (selectedAgent != null) {
+        unawaited(
+          _clearTaskCompletionUnreadForAgent(
+            projectId: focusedView.project.id,
+            agent: selectedAgent,
+          ),
+        );
+      }
       return focusedView;
     }
     if (!mounted) {
@@ -1194,21 +1341,154 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
   }
 
   void _startTaskCompletionNotifications(GatewayPairedHost profile) {
-    unawaited(
-      _taskNotifications.start(profile).then((status) {
-        if (!mounted) {
-          return;
-        }
-        if (status ==
-            TaskCompletionNotificationSubscriptionStatus.missingNotifyScope) {
-          _showSnack(taskCompletionMissingNotifyScopeMessage);
-        }
-      }),
-    );
+    unawaited(_startTaskCompletionNotificationsAfterUnreadLoad(profile));
+  }
+
+  Future<void> _startTaskCompletionNotificationsAfterUnreadLoad(
+    GatewayPairedHost profile,
+  ) async {
+    await _loadTaskCompletionUnread();
+    final status = await _taskNotifications.start(profile);
+    if (!mounted) {
+      return;
+    }
+    if (status ==
+        TaskCompletionNotificationSubscriptionStatus.missingNotifyScope) {
+      _showSnack(taskCompletionMissingNotifyScopeMessage);
+    }
   }
 
   void _handleTaskCompletionNotificationTap(TaskCompletionNotificationTap tap) {
     unawaited(_openTaskCompletionNotificationTap(tap));
+  }
+
+  Future<void> _loadTaskCompletionUnread() async {
+    final items = await _taskCompletionUnreadStore.readUnreadItems();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _unreadTaskCompletions = items;
+    });
+  }
+
+  Future<void> _handleLiveTaskCompletionEvent(
+    TaskCompletionNotificationEvent event,
+  ) async {
+    if (_isTaskCompletionTargetVisible(event)) {
+      await _clearTaskCompletionUnreadForAgent(
+        projectId: event.projectId,
+        agent: event.agent,
+      );
+      return;
+    }
+    final items = await _taskCompletionUnreadStore.addIfNew(event);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _unreadTaskCompletions = items;
+    });
+  }
+
+  bool _shouldShowTaskCompletionNotification(
+    TaskCompletionNotificationEvent event,
+  ) {
+    return !_isTaskCompletionTargetVisible(event);
+  }
+
+  bool _isTaskCompletionTargetVisible(TaskCompletionNotificationEvent event) {
+    return _appLifecycleState == AppLifecycleState.resumed &&
+        _visibleTaskCompletionProjectId == event.projectId &&
+        _visibleTaskCompletionAgentName == event.agent;
+  }
+
+  void _setVisibleTaskCompletionTarget({
+    required String? projectId,
+    required String? agentName,
+  }) {
+    _visibleTaskCompletionProjectId = projectId;
+    _visibleTaskCompletionAgentName = agentName;
+  }
+
+  Future<void> _clearTaskCompletionUnreadForAgent({
+    required String projectId,
+    required String agent,
+  }) async {
+    if (!_unreadTaskCompletions.any(
+      (item) => item.projectId == projectId && item.agent == agent,
+    )) {
+      return;
+    }
+    final items = await _taskCompletionUnreadStore.clearAgent(
+      projectId: projectId,
+      agent: agent,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _unreadTaskCompletions = items;
+    });
+  }
+
+  void _clearVisibleTaskCompletionUnread({
+    required String projectId,
+    required String? agentName,
+  }) {
+    final agent = agentName;
+    if (agent == null) {
+      return;
+    }
+    if (!_unreadTaskCompletions.any(
+      (item) => item.projectId == projectId && item.agent == agent,
+    )) {
+      return;
+    }
+    final key = '$projectId\x00$agent';
+    if (!_taskCompletionUnreadClearInFlight.add(key)) {
+      return;
+    }
+    unawaited(
+      _clearTaskCompletionUnreadForAgent(
+        projectId: projectId,
+        agent: agent,
+      ).whenComplete(() {
+        _taskCompletionUnreadClearInFlight.remove(key);
+      }),
+    );
+  }
+
+  Set<String> get _unreadProjectIds {
+    return {for (final item in _unreadTaskCompletions) item.projectId};
+  }
+
+  bool _projectHasUnreadTaskCompletion(String projectId) {
+    return _unreadTaskCompletions.any((item) => item.projectId == projectId);
+  }
+
+  Set<String> _unreadAgentNamesForProject(String projectId) {
+    return {
+      for (final item in _unreadTaskCompletions)
+        if (item.projectId == projectId) item.agent,
+    };
+  }
+
+  Set<String> _workingProjectIdsFor(List<CcbProject> projects) {
+    return {
+      for (final project in projects)
+        if (project.hasWorkingAgents ||
+            _knownProjectWorkingAgents[project.id] == true)
+          project.id,
+    };
+  }
+
+  void _rememberProjectActivity(CcbProjectView view) {
+    _knownProjectWorkingAgents[view.project.id] = _viewHasWorkingAgents(view);
+  }
+
+  bool _viewHasWorkingAgents(CcbProjectView view) {
+    return view.agents.any(agentHasSourceWorkingActivity);
   }
 
   Future<void> _openTaskCompletionNotificationTap(
@@ -1234,14 +1514,23 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     );
     switch (route.kind) {
       case ProjectHomeTaskCompletionNotificationRouteKind.openProjectAgent:
+        _rememberProjectActivity(route.view!);
         setState(() {
           _activeProjectId = route.projectId!;
           _openedProjectId = route.projectId;
           _selectedAgentName = route.agentName;
           _serverProjectsFuture = null;
-          _viewFuture = Future<CcbProjectView>.value(route.view!);
+          _viewFuture = SynchronousFuture(route.view!);
         });
+        unawaited(
+          _clearTaskCompletionUnreadForAgent(
+            projectId: route.projectId!,
+            agent: route.agentName!,
+          ),
+        );
+        _restartActiveProjectStatusRefresh();
       case ProjectHomeTaskCompletionNotificationRouteKind.projectList:
+        _stopActiveProjectStatusRefresh();
         setState(() {
           _activeProjectId = '';
           _openedProjectId = null;
@@ -1256,4 +1545,76 @@ class _ProjectHomeViewState extends State<_ProjectHomeView> {
     messenger.clearSnackBars();
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+CcbProjectView _projectViewWithRefreshedActivity({
+  required CcbProjectView current,
+  required CcbProjectView refreshed,
+}) {
+  return CcbProjectView(
+    project: refreshed.project,
+    namespaceEpoch: refreshed.namespaceEpoch,
+    tmuxSocketPath: refreshed.tmuxSocketPath,
+    tmuxSessionName: refreshed.tmuxSessionName,
+    activeWindow: refreshed.activeWindow,
+    activePaneId: refreshed.activePaneId,
+    windows: refreshed.windows,
+    agents: refreshed.agents,
+    contentItems: current.contentItems,
+    notifications: current.notifications,
+    terminalHistories: current.terminalHistories,
+  );
+}
+
+bool _sameProjectViewActivity(
+  CcbProjectView current,
+  CcbProjectView refreshed,
+) {
+  return _projectViewActivitySignature(current) ==
+      _projectViewActivitySignature(refreshed);
+}
+
+String _projectViewActivitySignature(CcbProjectView view) {
+  final buffer =
+      StringBuffer()
+        ..write(view.namespaceEpoch)
+        ..write('|')
+        ..write(view.activeWindow)
+        ..write('|')
+        ..write(view.activePaneId);
+  for (final window in view.windows) {
+    buffer
+      ..write('|w:')
+      ..write(window.name)
+      ..write(',')
+      ..write(window.active)
+      ..write(',')
+      ..write(window.order)
+      ..write(',')
+      ..write(window.agents.join(','));
+  }
+  for (final agent in view.agents) {
+    buffer
+      ..write('|a:')
+      ..write(agent.name)
+      ..write(',')
+      ..write(agent.active)
+      ..write(',')
+      ..write(agent.queueDepth)
+      ..write(',')
+      ..write(agent.runtimeHealth)
+      ..write(',')
+      ..write(agent.activityState)
+      ..write(',')
+      ..write(agent.activitySource)
+      ..write(',')
+      ..write(agent.activityReason)
+      ..write(',')
+      ..write(agent.activitySymbol)
+      ..write(',')
+      ..write(agent.activityColor)
+      ..write(',')
+      ..write(agent.lastProgressAt);
+  }
+  return buffer.toString();
 }

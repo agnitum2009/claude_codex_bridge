@@ -17,6 +17,8 @@ class ProjectHomeProjectListHost extends StatelessWidget {
     required this.onOpenProject,
     required this.onOpenNotifications,
     required this.onOpenConnectionDetails,
+    this.hasUnreadTaskCompletion = false,
+    this.hasWorkingAgents = false,
     super.key,
   });
 
@@ -25,6 +27,8 @@ class ProjectHomeProjectListHost extends StatelessWidget {
   final VoidCallback onOpenProject;
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenConnectionDetails;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +38,8 @@ class ProjectHomeProjectListHost extends StatelessWidget {
       onOpenProject: onOpenProject,
       onOpenNotifications: onOpenNotifications,
       onOpenConnectionDetails: onOpenConnectionDetails,
+      hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+      hasWorkingAgents: hasWorkingAgents,
     );
   }
 }
@@ -44,6 +50,8 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
     required this.onRefreshProjects,
     required this.onOpenSettings,
     required this.onOpenProject,
+    this.unreadProjectIds = const {},
+    this.workingProjectIds = const {},
     super.key,
   });
 
@@ -51,6 +59,8 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
   final VoidCallback onRefreshProjects;
   final VoidCallback onOpenSettings;
   final ValueChanged<CcbProject> onOpenProject;
+  final Set<String> unreadProjectIds;
+  final Set<String> workingProjectIds;
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +108,11 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
                             final project = projects[index];
                             return _ServerProjectListTile(
                               project: project,
+                              hasUnreadTaskCompletion: unreadProjectIds
+                                  .contains(project.id),
+                              hasWorkingAgents:
+                                  project.hasWorkingAgents ||
+                                  workingProjectIds.contains(project.id),
                               onOpen: () {
                                 onOpenProject(project);
                               },
@@ -114,10 +129,17 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
 }
 
 class _ServerProjectListTile extends StatelessWidget {
-  const _ServerProjectListTile({required this.project, required this.onOpen});
+  const _ServerProjectListTile({
+    required this.project,
+    required this.onOpen,
+    required this.hasUnreadTaskCompletion,
+    required this.hasWorkingAgents,
+  });
 
   final CcbProject project;
   final VoidCallback onOpen;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -127,9 +149,11 @@ class _ServerProjectListTile extends StatelessWidget {
     return ListTile(
       key: ValueKey('project-open-${project.id}'),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: CircleAvatar(
-        radius: 22,
-        child: Icon(project.favorite ? Icons.star : Icons.terminal),
+      leading: ProjectAttentionAvatar(
+        projectId: project.id,
+        favorite: project.favorite,
+        hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+        hasWorkingAgents: hasWorkingAgents,
       ),
       title: Text(
         project.displayName,
@@ -178,6 +202,7 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
     required this.onAgentSelected,
     required this.onRefreshView,
     required this.onTimelineScrollDirectionChanged,
+    this.unreadAgentNames = const {},
     super.key,
   });
 
@@ -196,6 +221,7 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
   final ValueChanged<String> onAgentSelected;
   final Future<CcbProjectView?> Function() onRefreshView;
   final ValueChanged<ScrollDirection> onTimelineScrollDirectionChanged;
+  final Set<String> unreadAgentNames;
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +248,7 @@ class ProjectHomeMobileChatScaffoldHost extends StatelessWidget {
                 view: view,
                 selectedAgent: selectedAgent,
                 collapsed: mobileAgentsCollapsed,
+                unreadAgentNames: unreadAgentNames,
                 onCollapse: onCollapseAgents,
                 onExpand: onExpandAgents,
                 onWindowSelected: onWindowSelected,
@@ -268,6 +295,9 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
     required this.onHorizontalDragUpdate,
     required this.onHorizontalDragEnd,
     required this.onRefreshView,
+    this.unreadAgentNames = const {},
+    this.hasUnreadTaskCompletion = false,
+    this.hasWorkingAgents = false,
     super.key,
   });
 
@@ -288,6 +318,9 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
   final GestureDragUpdateCallback onHorizontalDragUpdate;
   final GestureDragEndCallback onHorizontalDragEnd;
   final Future<CcbProjectView?> Function() onRefreshView;
+  final Set<String> unreadAgentNames;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -301,6 +334,8 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
             onProjectSelected: onOpenProject,
             onOpenNotifications: onOpenNotifications,
             onOpenConnectionDetails: onOpenConnectionDetails,
+            hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+            hasWorkingAgents: hasWorkingAgents,
           ),
         ),
         const VerticalDivider(width: 1),
@@ -309,6 +344,7 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
           child: WideAgentColumn(
             view: view,
             selectedAgentName: selectedAgent?.name,
+            unreadAgentNames: unreadAgentNames,
             onAgentSelected: onAgentSelected,
           ),
         ),
@@ -319,6 +355,7 @@ class ProjectHomeWideScaffoldHost extends StatelessWidget {
           child: WideAgentColumn(
             view: view,
             selectedAgentName: selectedAgent?.name,
+            unreadAgentNames: unreadAgentNames,
             onShowProjects: onShowProjects,
             onAgentSelected: onAgentSelected,
           ),

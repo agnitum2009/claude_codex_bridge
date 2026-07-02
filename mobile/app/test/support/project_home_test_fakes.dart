@@ -353,9 +353,13 @@ class LongConversationRepository extends RecordingGatewayRepository {
 
   final int messageCount;
   final CcbProjectView _view;
+  var getProjectViewCalls = 0;
 
   @override
-  Future<CcbProjectView> getProjectView(String projectId) async => _view;
+  Future<CcbProjectView> getProjectView(String projectId) async {
+    getProjectViewCalls += 1;
+    return _view;
+  }
 
   @override
   Future<CcbAgentConversation> getAgentConversation({

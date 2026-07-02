@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/xterm.dart';
 
 import 'package:ccb_mobile/ccb_mobile.dart';
+import 'package:ccb_mobile/features/agent_chat/conversation_timeline.dart';
 
 import 'support/project_home_test_driver.dart';
 import 'support/project_home_test_fakes.dart';
@@ -174,6 +175,68 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'expanding bottom bubble scrolls it to top and collapse restores',
+    (tester) async {
+      await setTestSurfaceSize(tester, const Size(390, 844));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectHomeScreen(
+            repository: LongConversationRepository(messageCount: 160),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openCurrentProject(tester);
+
+      await dragUntilVisible(
+        tester,
+        const ValueKey('conversation-expand-long-159'),
+        const Offset(0, -700),
+      );
+      final timeline = tester.widget<ListView>(
+        find.byKey(const ValueKey('agent-chat-timeline')),
+      );
+      final controller = timeline.controller!;
+      final beforeExpandOffset = controller.position.pixels;
+
+      await tester.tap(
+        find.byKey(const ValueKey('conversation-expand-long-159')),
+      );
+      await tester.pumpAndSettle();
+
+      final timelineTop =
+          tester
+              .getTopLeft(find.byKey(const ValueKey('agent-chat-timeline')))
+              .dy;
+      final itemTop =
+          tester
+              .getTopLeft(find.byKey(conversationTimelineItemKey('long-159')))
+              .dy;
+
+      expect((itemTop - timelineTop).abs(), lessThan(24));
+      expect(
+        tester
+            .getSize(
+              find.byKey(const ValueKey('conversation-body-viewport-long-159')),
+            )
+            .height,
+        greaterThan(420),
+      );
+      expect(
+        find.byKey(const ValueKey('markdown-body-conversation-long-159')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('conversation-expand-long-159')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.position.pixels, closeTo(beforeExpandOffset, 1));
+    },
+  );
 
   testWidgets('user send scrolls to latest while reading older history', (
     tester,

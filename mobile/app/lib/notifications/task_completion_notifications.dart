@@ -135,11 +135,158 @@ class TaskCompletionSeenDedupeStore {
     if (raw == null || raw.trim().isEmpty) {
       return [];
     }
-    final decoded = jsonDecode(raw);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } on FormatException {
+      return [];
+    }
     if (decoded is Iterable) {
       return [for (final item in decoded) item.toString()];
     }
     return [];
+  }
+}
+
+class TaskCompletionUnreadItem {
+  const TaskCompletionUnreadItem({
+    required this.projectId,
+    required this.projectShortName,
+    required this.agent,
+    required this.completedAt,
+    required this.dedupeKey,
+  });
+
+  final String projectId;
+  final String projectShortName;
+  final String agent;
+  final DateTime completedAt;
+  final String dedupeKey;
+
+  factory TaskCompletionUnreadItem.fromEvent(
+    TaskCompletionNotificationEvent event,
+  ) {
+    return TaskCompletionUnreadItem(
+      projectId: event.projectId,
+      projectShortName: event.projectShortName,
+      agent: event.agent,
+      completedAt: event.completedAt,
+      dedupeKey: event.dedupeKey,
+    );
+  }
+
+  factory TaskCompletionUnreadItem.fromJson(Map<String, Object?> json) {
+    return TaskCompletionUnreadItem(
+      projectId: _requiredText(json['project_id'], 'project_id'),
+      projectShortName: _requiredText(
+        json['project_short_name'],
+        'project_short_name',
+      ),
+      agent: _requiredText(json['agent'], 'agent'),
+      completedAt: _requiredDateTime(json['completed_at'], 'completed_at'),
+      dedupeKey: _requiredText(json['dedupe_key'], 'dedupe_key'),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      'project_id': projectId,
+      'project_short_name': projectShortName,
+      'agent': agent,
+      'completed_at': completedAt.toUtc().toIso8601String(),
+      'dedupe_key': dedupeKey,
+    };
+  }
+}
+
+class TaskCompletionUnreadStore {
+  TaskCompletionUnreadStore({
+    GatewaySecureStore? secureStore,
+    int maxItems = 256,
+    String key = _defaultKey,
+  }) : _secureStore = secureStore ?? FlutterGatewaySecureStore(),
+       _maxItems = maxItems < 1 ? 1 : maxItems,
+       _key = key;
+
+  static const _defaultKey = 'ccb_mobile.task_completion.unread_items';
+
+  final GatewaySecureStore _secureStore;
+  final int _maxItems;
+  final String _key;
+
+  Future<List<TaskCompletionUnreadItem>> addIfNew(
+    TaskCompletionNotificationEvent event,
+  ) async {
+    final items = await readUnreadItems();
+    if (items.any((item) => item.dedupeKey == event.dedupeKey)) {
+      return items;
+    }
+    final next = [...items, TaskCompletionUnreadItem.fromEvent(event)];
+    final bounded =
+        next.length <= _maxItems ? next : next.sublist(next.length - _maxItems);
+    await _writeItems(bounded);
+    return bounded;
+  }
+
+  Future<List<TaskCompletionUnreadItem>> clearAgent({
+    required String projectId,
+    required String agent,
+  }) async {
+    final wantedProject = projectId.trim();
+    final wantedAgent = agent.trim();
+    final next = [
+      for (final item in await readUnreadItems())
+        if (item.projectId != wantedProject || item.agent != wantedAgent) item,
+    ];
+    await _writeItems(next);
+    return next;
+  }
+
+  Future<List<TaskCompletionUnreadItem>> readUnreadItems() async {
+    final String? raw;
+    try {
+      raw = await _secureStore.read(key: _key);
+    } on MissingPluginException {
+      return [];
+    } on PlatformException {
+      return [];
+    }
+    if (raw == null || raw.trim().isEmpty) {
+      return [];
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Iterable) {
+      return [];
+    }
+    final items = <TaskCompletionUnreadItem>[];
+    for (final item in decoded) {
+      if (item is! Map) {
+        continue;
+      }
+      try {
+        items.add(
+          TaskCompletionUnreadItem.fromJson({
+            for (final entry in item.entries) entry.key.toString(): entry.value,
+          }),
+        );
+      } on FormatException {
+        continue;
+      }
+    }
+    return items;
+  }
+
+  Future<void> _writeItems(List<TaskCompletionUnreadItem> items) async {
+    try {
+      await _secureStore.write(
+        key: _key,
+        value: jsonEncode([for (final item in items) item.toJson()]),
+      );
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    }
   }
 }
 
@@ -325,24 +472,50 @@ enum TaskCompletionNotificationSubscriptionStatus {
   permissionDenied,
 }
 
+typedef TaskCompletionNotificationEventHandler =
+    FutureOr<void> Function(TaskCompletionNotificationEvent event);
+
+typedef TaskCompletionNotificationPredicate =
+    bool Function(TaskCompletionNotificationEvent event);
+
 class TaskCompletionNotificationController {
   TaskCompletionNotificationController({
     required GatewayTaskCompletionNotificationStreamClient streamClient,
     required TaskCompletionLocalNotifications localNotifications,
     required TaskCompletionSeenDedupeStore seenStore,
     required void Function(TaskCompletionNotificationTap tap) onTap,
+    TaskCompletionNotificationEventHandler? onLiveEvent,
+    TaskCompletionNotificationPredicate? shouldShowNotification,
+    DateTime Function()? clock,
+    Duration initialReconnectDelay = const Duration(seconds: 1),
+    Duration maxReconnectDelay = const Duration(seconds: 30),
   }) : _streamClient = streamClient,
        _localNotifications = localNotifications,
-       _seenStore = seenStore {
+       _seenStore = seenStore,
+       _onLiveEvent = onLiveEvent,
+       _shouldShowNotification = shouldShowNotification,
+       _clock = clock ?? DateTime.now,
+       _initialReconnectDelay = initialReconnectDelay,
+       _maxReconnectDelay = maxReconnectDelay {
     _tapSubscription = _localNotifications.taps.listen(onTap);
   }
 
   final GatewayTaskCompletionNotificationStreamClient _streamClient;
   final TaskCompletionLocalNotifications _localNotifications;
   final TaskCompletionSeenDedupeStore _seenStore;
+  final TaskCompletionNotificationEventHandler? _onLiveEvent;
+  final TaskCompletionNotificationPredicate? _shouldShowNotification;
+  final DateTime Function() _clock;
+  final Duration _initialReconnectDelay;
+  final Duration _maxReconnectDelay;
   StreamSubscription<TaskCompletionNotificationEvent>? _eventSubscription;
   late final StreamSubscription<TaskCompletionNotificationTap> _tapSubscription;
   TaskCompletionLocalNotificationPermissionStatus? _permissionStatus;
+  GatewayPairedHost? _activeHost;
+  DateTime? _liveBaselineCompletedAt;
+  Timer? _reconnectTimer;
+  late Duration _nextReconnectDelay = _initialReconnectDelay;
+  bool _started = false;
 
   Future<TaskCompletionNotificationSubscriptionStatus> start(
     GatewayPairedHost host,
@@ -351,10 +524,12 @@ class TaskCompletionNotificationController {
     if (!host.profile.scopes.contains('notify')) {
       return TaskCompletionNotificationSubscriptionStatus.missingNotifyScope;
     }
+    _started = true;
+    _activeHost = host;
+    _liveBaselineCompletedAt = _clock().toUtc();
+    _nextReconnectDelay = _initialReconnectDelay;
     _permissionStatus = await _localNotifications.requestPermissionIfNeeded();
-    _eventSubscription = _streamClient
-        .subscribe(host)
-        .listen((event) => unawaited(_handleEvent(event)), onError: (_) {});
+    _connect();
     return _permissionStatus ==
             TaskCompletionLocalNotificationPermissionStatus.granted
         ? TaskCompletionNotificationSubscriptionStatus.subscribed
@@ -362,6 +537,10 @@ class TaskCompletionNotificationController {
   }
 
   Future<void> stop() async {
+    _started = false;
+    _activeHost = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     await _eventSubscription?.cancel();
     _eventSubscription = null;
   }
@@ -371,17 +550,70 @@ class TaskCompletionNotificationController {
     await _tapSubscription.cancel();
   }
 
+  void _connect() {
+    final host = _activeHost;
+    if (!_started || host == null) {
+      return;
+    }
+    try {
+      _eventSubscription = _streamClient
+          .subscribe(host)
+          .listen(
+            (event) => unawaited(_handleEvent(event)),
+            onError: (_, _) {
+              _scheduleReconnect();
+            },
+            onDone: _scheduleReconnect,
+          );
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
+  void _scheduleReconnect() {
+    if (!_started || _reconnectTimer != null) {
+      return;
+    }
+    unawaited(_eventSubscription?.cancel());
+    _eventSubscription = null;
+    final delay = _nextReconnectDelay;
+    _nextReconnectDelay = _nextDelayAfter(delay);
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      _connect();
+    });
+  }
+
+  Duration _nextDelayAfter(Duration current) {
+    final doubled = current * 2;
+    return doubled > _maxReconnectDelay ? _maxReconnectDelay : doubled;
+  }
+
   Future<void> _handleEvent(TaskCompletionNotificationEvent event) async {
     if (!event.isTaskCompleted) {
       return;
     }
+    _nextReconnectDelay = _initialReconnectDelay;
+    if (_isBaselineEvent(event)) {
+      await _seenStore.markSeenIfNew(event.dedupeKey);
+      return;
+    }
     final fresh = await _seenStore.markSeenIfNew(event.dedupeKey);
-    if (!fresh ||
-        _permissionStatus !=
-            TaskCompletionLocalNotificationPermissionStatus.granted) {
+    if (!fresh) {
+      return;
+    }
+    await _onLiveEvent?.call(event);
+    if (_permissionStatus !=
+            TaskCompletionLocalNotificationPermissionStatus.granted ||
+        _shouldShowNotification?.call(event) == false) {
       return;
     }
     await _localNotifications.showTaskCompletion(event);
+  }
+
+  bool _isBaselineEvent(TaskCompletionNotificationEvent event) {
+    final baseline = _liveBaselineCompletedAt;
+    return baseline != null && !event.completedAt.isAfter(baseline);
   }
 }
 

@@ -92,6 +92,30 @@ def test_task_complete_is_free(tmp_path: Path) -> None:
     assert status.reason == "codex_session_task_complete"
 
 
+def test_turn_aborted_after_task_started_is_interrupted(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    session = tmp_path / "sessions" / "2026" / "06" / "29" / "rollout-demo.jsonl"
+    _write_jsonl(session, [_meta(work_dir), _event("task_started"), _event("turn_aborted")])
+
+    status = read_codex_session_status(tmp_path / "sessions", work_dir=work_dir)
+
+    assert status.state == "interrupted"
+    assert status.reason == "codex_session_turn_aborted"
+    assert status.matched_patterns == ("turn_aborted",)
+
+
+def test_thread_rolled_back_after_task_started_is_interrupted(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    session = tmp_path / "sessions" / "2026" / "06" / "29" / "rollout-demo.jsonl"
+    _write_jsonl(session, [_meta(work_dir), _event("task_started"), _event("thread_rolled_back")])
+
+    status = read_codex_session_status(tmp_path / "sessions", work_dir=work_dir)
+
+    assert status.state == "interrupted"
+    assert status.reason == "codex_session_thread_rolled_back"
+    assert status.matched_patterns == ("thread_rolled_back",)
+
+
 def test_assistant_message_without_task_complete_stays_unknown(tmp_path: Path) -> None:
     work_dir = tmp_path / "work"
     session = tmp_path / "sessions" / "2026" / "06" / "29" / "rollout-demo.jsonl"
@@ -140,3 +164,16 @@ def test_runtime_does_not_mark_empty_capture_free(tmp_path: Path) -> None:
 
     assert runtime.state == "unknown"
     assert runtime.reason == "empty_capture"
+
+
+def test_runtime_uses_session_interrupted_when_pane_is_unknown(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    session = tmp_path / "sessions" / "2026" / "06" / "29" / "rollout-demo.jsonl"
+    _write_jsonl(session, [_meta(work_dir), _event("task_started"), _event("turn_aborted")])
+    session_status = read_codex_session_status(tmp_path / "sessions", work_dir=work_dir)
+
+    runtime = compose_codex_runtime_status(PaneStatus("unknown", "no_known_status_pattern"), session_status)
+
+    assert runtime.state == "interrupted"
+    assert runtime.reason == "codex_session_turn_aborted"
+    assert runtime.source == "session"

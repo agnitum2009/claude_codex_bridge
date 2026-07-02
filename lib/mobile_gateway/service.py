@@ -1603,17 +1603,30 @@ def _agent_conversation_items(
         )
         if not body:
             continue
+        reply_item = {
+            'id': f'reply-{content_id}',
+            'agent': agent,
+            'kind': 'agent_reply',
+            'title': _optional_text(content_item.get('title')) or 'Agent reply',
+            'body': body,
+            'format': _optional_text(content_item.get('format')) or 'plain',
+            'content_id': content_id,
+            'source': _optional_text(content_item.get('source')) or 'content',
+        }
+        _apply_mobile_conversation_timing(
+            reply_item,
+            sent_at=content_item.get('sent_at') or content_item.get('created_at'),
+            started_at=content_item.get('started_at') or content_item.get('execution_started_at'),
+            completed_at=(
+                content_item.get('completed_at')
+                or content_item.get('finished_at')
+                or content_item.get('execution_completed_at')
+            ),
+            duration_ms=content_item.get('duration_ms'),
+            duration_seconds=content_item.get('duration_seconds'),
+        )
         items.append(
-            {
-                'id': f'reply-{content_id}',
-                'agent': agent,
-                'kind': 'agent_reply',
-                'title': _optional_text(content_item.get('title')) or 'Agent reply',
-                'body': body,
-                'format': _optional_text(content_item.get('format')) or 'plain',
-                'content_id': content_id,
-                'source': _optional_text(content_item.get('source')) or 'content',
-            }
+            reply_item
         )
     seen_item_ids = {str(item.get('id') or '') for item in items}
 
@@ -1666,40 +1679,64 @@ def _agent_conversation_items(
         reply = str(reply_dict.get('body') or '')
         reply_attachments = _attachment_records(reply_dict.get('attachments'))
         attachments = _attachment_records(comm.get('attachments'))
+        comm_created_at = _first_mobile_conversation_timestamp(
+            comm.get('sent_at'),
+            comm.get('created_at'),
+            comm.get('updated_at'),
+        )
+        reply_completed_at = _first_mobile_conversation_timestamp(
+            reply_dict.get('completed_at'),
+            reply_dict.get('sent_at'),
+            comm.get('completed_at'),
+            comm.get('finished_at'),
+            comm.get('updated_at'),
+            comm_created_at,
+        )
         if reply:
             comm_id = str(comm.get('id') or f'comms-{len(items)}')
             if body:
                 user_id = f'user-{comm_id}'
                 if user_id in seen_item_ids:
                     continue
+                user_item = {
+                    'id': user_id,
+                    'agent': agent,
+                    'kind': 'user_message',
+                    'title': 'You',
+                    'body': body,
+                    'format': _optional_text(comm.get('format')) or 'markdown',
+                    'source': 'mobile',
+                    'state': 'sent',
+                    'attachments': attachments,
+                }
+                _apply_mobile_conversation_timing(user_item, sent_at=comm_created_at)
                 items.append(
-                    {
-                        'id': user_id,
-                        'agent': agent,
-                        'kind': 'user_message',
-                        'title': 'You',
-                        'body': body,
-                        'format': _optional_text(comm.get('format')) or 'markdown',
-                        'source': 'mobile',
-                        'state': 'sent',
-                        'attachments': attachments,
-                    }
+                    user_item
                 )
                 seen_item_ids.add(user_id)
             reply_id = f'reply-{comm_id}'
             if reply_id in seen_item_ids:
                 continue
+            reply_item = {
+                'id': reply_id,
+                'agent': agent,
+                'kind': 'agent_reply',
+                'title': _optional_text(comm.get('title')) or 'Agent reply',
+                'body': reply,
+                'format': 'markdown',
+                'source': 'completion_snapshot',
+                'attachments': reply_attachments,
+            }
+            _apply_mobile_conversation_timing(
+                reply_item,
+                sent_at=reply_completed_at,
+                started_at=reply_dict.get('started_at') or comm_created_at,
+                completed_at=reply_completed_at,
+                duration_ms=reply_dict.get('duration_ms'),
+                duration_seconds=reply_dict.get('duration_seconds'),
+            )
             items.append(
-                {
-                    'id': reply_id,
-                    'agent': agent,
-                    'kind': 'agent_reply',
-                    'title': _optional_text(comm.get('title')) or 'Agent reply',
-                    'body': reply,
-                    'format': 'markdown',
-                    'source': 'completion_snapshot',
-                    'attachments': reply_attachments,
-                }
+                reply_item
             )
             seen_item_ids.add(reply_id)
             continue
@@ -1709,17 +1746,19 @@ def _agent_conversation_items(
         item_id = f'comms-{comm_id}'
         if item_id in seen_item_ids:
             continue
+        comm_item = {
+            'id': item_id,
+            'agent': agent,
+            'kind': 'comms_item',
+            'title': _optional_text(comm.get('title')) or 'Comms',
+            'body': body,
+            'format': _optional_text(comm.get('format')) or 'plain',
+            'source': _optional_text(comm.get('source')) or 'project_view',
+            'attachments': attachments,
+        }
+        _apply_mobile_conversation_timing(comm_item, sent_at=comm_created_at)
         items.append(
-            {
-                'id': item_id,
-                'agent': agent,
-                'kind': 'comms_item',
-                'title': _optional_text(comm.get('title')) or 'Comms',
-                'body': body,
-                'format': _optional_text(comm.get('format')) or 'plain',
-                'source': _optional_text(comm.get('source')) or 'project_view',
-                'attachments': attachments,
-            }
+            comm_item
         )
         seen_item_ids.add(item_id)
     return items
@@ -2001,14 +2040,128 @@ def _set_native_sort_fields(
     thread_order: int,
     line_number: int,
 ) -> None:
-    payload = _map(record.get('payload'))
-    item['_native_sort_timestamp'] = (
-        _optional_text(record.get('timestamp'))
-        or _optional_text(payload.get('timestamp'))
-        or fallback_timestamp
-    )
+    timestamp = _native_record_timestamp(record) or fallback_timestamp
+    created_at = _mobile_conversation_timestamp(timestamp)
+    item['_native_sort_timestamp'] = created_at or timestamp
     item['_native_thread_order'] = thread_order
     item['_native_line_number'] = line_number
+    if created_at:
+        item.setdefault('created_at', created_at)
+        if item.get('kind') == 'user_message':
+            item.setdefault('sent_at', created_at)
+        elif item.get('kind') == 'agent_reply':
+            item.setdefault('sent_at', created_at)
+            item.setdefault('completed_at', created_at)
+
+
+def _native_record_timestamp(record: dict[str, object]) -> str | None:
+    payload = _map(record.get('payload'))
+    return _optional_text(record.get('timestamp')) or _optional_text(
+        payload.get('timestamp')
+    )
+
+
+def _mobile_conversation_timestamp(value: object) -> str | None:
+    text = _optional_text(value)
+    if not text:
+        return None
+    if re.fullmatch(r'\d+(\.\d+)?', text):
+        try:
+            return (
+                datetime.fromtimestamp(float(text), timezone.utc)
+                .isoformat()
+                .replace('+00:00', 'Z')
+            )
+        except Exception:
+            return None
+    if 'T' not in text:
+        return None
+    return text
+
+
+def _mobile_conversation_duration_ms(
+    started_at: object,
+    completed_at: object,
+) -> int | None:
+    started = _parse_mobile_conversation_timestamp(started_at)
+    completed = _parse_mobile_conversation_timestamp(completed_at)
+    if started is None or completed is None:
+        return None
+    duration_ms = int((completed - started).total_seconds() * 1000)
+    return duration_ms if duration_ms >= 0 else None
+
+
+def _first_mobile_conversation_timestamp(*values: object) -> str | None:
+    for value in values:
+        timestamp = _mobile_conversation_timestamp(value)
+        if timestamp:
+            return timestamp
+    return None
+
+
+def _explicit_mobile_conversation_duration_ms(
+    *,
+    duration_ms: object = None,
+    duration_seconds: object = None,
+) -> int | None:
+    if duration_ms is not None:
+        try:
+            value = int(duration_ms)
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and value >= 0:
+            return value
+    if duration_seconds is not None:
+        try:
+            value = int(float(duration_seconds) * 1000)
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and value >= 0:
+            return value
+    return None
+
+
+def _apply_mobile_conversation_timing(
+    item: dict[str, object],
+    *,
+    sent_at: object = None,
+    started_at: object = None,
+    completed_at: object = None,
+    duration_ms: object = None,
+    duration_seconds: object = None,
+) -> None:
+    sent_timestamp = _mobile_conversation_timestamp(sent_at)
+    started_timestamp = _mobile_conversation_timestamp(started_at)
+    completed_timestamp = _mobile_conversation_timestamp(completed_at)
+    if sent_timestamp:
+        item.setdefault('sent_at', sent_timestamp)
+    if started_timestamp:
+        item.setdefault('started_at', started_timestamp)
+    if completed_timestamp:
+        item.setdefault('completed_at', completed_timestamp)
+        if item.get('kind') == 'agent_reply':
+            item.setdefault('sent_at', completed_timestamp)
+    explicit_duration = _explicit_mobile_conversation_duration_ms(
+        duration_ms=duration_ms,
+        duration_seconds=duration_seconds,
+    )
+    computed_duration = _mobile_conversation_duration_ms(
+        started_timestamp,
+        completed_timestamp,
+    )
+    final_duration = explicit_duration if explicit_duration is not None else computed_duration
+    if final_duration is not None:
+        item.setdefault('duration_ms', final_duration)
+
+
+def _parse_mobile_conversation_timestamp(value: object) -> datetime | None:
+    text = _mobile_conversation_timestamp(value)
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except Exception:
+        return None
 
 
 def _without_native_sort_fields(item: dict[str, object]) -> dict[str, object]:
@@ -2051,6 +2204,24 @@ def _coalesce_codex_native_agent_replies(
             pending.get('attachments'),
             item.get('attachments'),
         )
+        started_at = (
+            _optional_text(pending.get('started_at'))
+            or _optional_text(pending.get('created_at'))
+            or _optional_text(pending.get('sent_at'))
+        )
+        completed_at = (
+            _optional_text(item.get('completed_at'))
+            or _optional_text(item.get('sent_at'))
+            or _optional_text(item.get('created_at'))
+        )
+        if started_at:
+            pending['started_at'] = started_at
+        if completed_at:
+            pending['sent_at'] = completed_at
+            pending['completed_at'] = completed_at
+        duration_ms = _mobile_conversation_duration_ms(started_at, completed_at)
+        if duration_ms is not None:
+            pending['duration_ms'] = duration_ms
         pending['_native_line_number'] = item.get('_native_line_number')
         pending['_native_sort_timestamp'] = item.get('_native_sort_timestamp')
     flush_pending()
@@ -2312,19 +2483,31 @@ def _agent_history_conversation_items(
         request = _map(record.get('request'))
         body = _optional_text(request.get('body')) or ''
         job_id = _optional_text(record.get('job_id')) or f'history-{len(items)}'
+        started_at = _first_mobile_conversation_timestamp(
+            record.get('started_at'),
+            record.get('created_at'),
+        )
+        completed_at = _first_mobile_conversation_timestamp(
+            record.get('completed_at'),
+            record.get('finished_at'),
+            record.get('updated_at'),
+            started_at,
+        )
         if body:
+            user_item = {
+                'id': f'user-{job_id}',
+                'agent': agent,
+                'kind': 'user_message',
+                'title': 'You',
+                'body': body,
+                'format': 'markdown',
+                'source': _history_source(record),
+                'state': 'sent' if status == 'completed' else status,
+                'attachments': [],
+            }
+            _apply_mobile_conversation_timing(user_item, sent_at=started_at)
             items.append(
-                {
-                    'id': f'user-{job_id}',
-                    'agent': agent,
-                    'kind': 'user_message',
-                    'title': 'You',
-                    'body': body,
-                    'format': 'markdown',
-                    'source': _history_source(record),
-                    'state': 'sent' if status == 'completed' else status,
-                    'attachments': [],
-                }
+                user_item
             )
         reply_dict = _completion_reply_from_history_job(
             project_root,
@@ -2334,17 +2517,35 @@ def _agent_history_conversation_items(
         )
         reply = str(reply_dict.get('body') or '')
         if reply:
+            reply_started_at = _first_mobile_conversation_timestamp(
+                reply_dict.get('started_at'),
+                started_at,
+            )
+            reply_completed_at = _first_mobile_conversation_timestamp(
+                reply_dict.get('completed_at'),
+                reply_dict.get('sent_at'),
+                completed_at,
+            )
+            reply_item = {
+                'id': f'reply-{job_id}',
+                'agent': agent,
+                'kind': 'agent_reply',
+                'title': 'Agent reply',
+                'body': reply,
+                'format': 'markdown',
+                'source': 'completion_snapshot',
+                'attachments': _attachment_records(reply_dict.get('attachments')),
+            }
+            _apply_mobile_conversation_timing(
+                reply_item,
+                sent_at=reply_completed_at,
+                started_at=reply_started_at,
+                completed_at=reply_completed_at,
+                duration_ms=reply_dict.get('duration_ms'),
+                duration_seconds=reply_dict.get('duration_seconds'),
+            )
             items.append(
-                {
-                    'id': f'reply-{job_id}',
-                    'agent': agent,
-                    'kind': 'agent_reply',
-                    'title': 'Agent reply',
-                    'body': reply,
-                    'format': 'markdown',
-                    'source': 'completion_snapshot',
-                    'attachments': _attachment_records(reply_dict.get('attachments')),
-                }
+                reply_item
             )
     return items
 
@@ -2453,6 +2654,34 @@ def _completion_reply_for_job(
         or _optional_text(payload.get('latest_reply_preview'))
         or ''
     )
+    started_at = _first_mobile_conversation_timestamp(
+        latest_decision.get('started_at'),
+        latest_decision.get('execution_started_at'),
+        payload.get('started_at'),
+        payload.get('execution_started_at'),
+        payload.get('created_at'),
+    )
+    completed_at = _first_mobile_conversation_timestamp(
+        latest_decision.get('completed_at'),
+        latest_decision.get('finished_at'),
+        latest_decision.get('execution_completed_at'),
+        latest_decision.get('created_at'),
+        payload.get('completed_at'),
+        payload.get('finished_at'),
+        payload.get('execution_completed_at'),
+        payload.get('updated_at'),
+        payload.get('created_at'),
+    )
+    duration_ms = (
+        _explicit_mobile_conversation_duration_ms(
+            duration_ms=latest_decision.get('duration_ms') or payload.get('duration_ms'),
+            duration_seconds=(
+                latest_decision.get('duration_seconds')
+                or payload.get('duration_seconds')
+            ),
+        )
+        or _mobile_conversation_duration_ms(started_at, completed_at)
+    )
 
     attachments = []
     payload_obj = _map(latest_decision.get('payload'))
@@ -2465,7 +2694,15 @@ def _completion_reply_for_job(
             project_id=project_id,
             agent=agent,
         )
-    return {'body': body, 'attachments': attachments}
+    result: dict[str, object] = {'body': body, 'attachments': attachments}
+    if started_at:
+        result['started_at'] = started_at
+    if completed_at:
+        result['sent_at'] = completed_at
+        result['completed_at'] = completed_at
+    if duration_ms is not None:
+        result['duration_ms'] = duration_ms
+    return result
 
 
 def _artifact_link_attachments(

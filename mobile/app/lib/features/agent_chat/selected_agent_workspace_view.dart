@@ -113,6 +113,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
               isLoading: model.isLoadingConversation,
               controller: timelineController,
               expandedItemIds: model.expandedItemIds,
+              workingItemId: model.workingReplyItemId,
               downloadingAttachmentIds: downloadingAttachmentIds,
               downloadedAttachmentIds: downloadedAttachmentIds,
               onRetry: onRetry,

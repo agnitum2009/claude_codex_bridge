@@ -1728,6 +1728,35 @@ configure_input_method_env() {{
       ;;
   esac
 }}
+check_linux_inotify_capacity() {{
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  probe_status=0
+  python3 -c 'import ctypes, errno, os, sys
+libc = ctypes.CDLL(None, use_errno=True)
+fd = libc.inotify_init1(0o2000000)
+if fd >= 0:
+    os.close(fd)
+    raise SystemExit(0)
+err = ctypes.get_errno()
+raise SystemExit(75 if err in (errno.EMFILE, errno.ENFILE) else 0)
+' >/dev/null 2>&1 || probe_status=$?
+  if [ "$probe_status" = 75 ]; then
+    proc_root="${{CCB_WORKBENCH_PROC_ROOT:-/proc}}"
+    limit_file="$proc_root/sys/fs/inotify/max_user_instances"
+    limit="unknown"
+    if [ -r "$limit_file" ]; then
+      limit="$(cat "$limit_file" 2>/dev/null || printf '%s' unknown)"
+    fi
+    printf '%s\\n' "ccb-workbench terminal cannot start a new WezTerm window: Linux inotify instance allocation failed (max_user_instances=$limit)." >&2
+    printf '%s\\n' "temporary_fix: sudo sysctl -w fs.inotify.max_user_instances=1024" >&2
+    printf '%s\\n' "persistent_fix: echo fs.inotify.max_user_instances=1024 | sudo tee /etc/sysctl.d/99-ccb-inotify.conf && sudo sysctl --system" >&2
+    printf '%s\\n' "workaround: reuse an existing CCB WezTerm window or close idle file-manager/Codex/CCB windows." >&2
+    return 75
+  fi
+  return 0
+}}
 normalize_workbench_theme() {{
   key="$(printf '%s' "${{1:-}}" | tr '[:upper:]' '[:lower:]' | tr '_' '-' | tr ' ' '-')"
   case "$key" in
@@ -1935,6 +1964,7 @@ case "$cmd" in
         CCB_WORKBENCH_FORCE_RICH=1 \
         "$@"
     fi
+    check_linux_inotify_capacity
     exec "$wezterm_bin" --config-file {_shell_quote(str(paths['wezterm_config']))} \
       start --always-new-process --no-auto-connect --cwd "$PWD" -- env \
       -u TMUX \

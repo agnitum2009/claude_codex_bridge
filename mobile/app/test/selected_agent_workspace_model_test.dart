@@ -195,7 +195,7 @@ void main() {
     expect(model.executionStatus?.isRefreshing, isFalse);
   });
 
-  test('reports interrupted codex activity as exception', () {
+  test('current pending activity is working even with interrupted reason', () {
     final chatController = AgentChatController();
     final agent = _agent(
       activityState: 'pending',
@@ -210,32 +210,56 @@ void main() {
       isAwaitingAgentResponse: false,
     );
 
-    expect(model.executionStatus?.label, 'Exception');
-    expect(model.executionStatus?.state, 'exception');
-    expect(model.executionStatus?.isRefreshing, isFalse);
+    expect(model.executionStatus?.label, 'Working');
+    expect(model.executionStatus?.state, 'working');
+    expect(model.executionStatus?.isRefreshing, isTrue);
   });
 
-  test('project view exception overrides local awaiting response status', () {
+  test(
+    'project view failed activity overrides local awaiting response status',
+    () {
+      final chatController = AgentChatController();
+      final agent = _agent(
+        activityState: 'failed',
+        activitySource: 'codex_runtime',
+        activityReason: 'provider_api_error',
+      );
+
+      final model = selectedAgentWorkspaceModel(
+        view: _view(agent: agent),
+        agent: agent,
+        chatController: chatController,
+        isAwaitingAgentResponse: true,
+      );
+
+      expect(model.executionStatus?.label, 'Exception');
+      expect(model.executionStatus?.state, 'exception');
+      expect(model.executionStatus?.isRefreshing, isFalse);
+    },
+  );
+
+  test('project view working activity overrides stale local exception', () {
     final chatController = AgentChatController();
     final agent = _agent(
-      activityState: 'pending',
+      activityState: 'active',
       activitySource: 'codex_runtime',
-      activityReason: 'conversation_interrupted',
+      activityReason: 'codex_working_status_line',
     );
 
     final model = selectedAgentWorkspaceModel(
       view: _view(agent: agent),
       agent: agent,
       chatController: chatController,
-      isAwaitingAgentResponse: true,
+      isAwaitingAgentResponse: false,
+      hasLocalExecutionException: true,
     );
 
-    expect(model.executionStatus?.label, 'Exception');
-    expect(model.executionStatus?.state, 'exception');
+    expect(model.executionStatus?.label, 'Working');
+    expect(model.executionStatus?.state, 'working');
     expect(model.executionStatus?.isRefreshing, isFalse);
   });
 
-  test('local terminal exception overrides awaiting response status', () {
+  test('reports local terminal exception when no current work is visible', () {
     final chatController = AgentChatController();
     final agent = _agent();
 
@@ -243,7 +267,7 @@ void main() {
       view: _view(agent: agent),
       agent: agent,
       chatController: chatController,
-      isAwaitingAgentResponse: true,
+      isAwaitingAgentResponse: false,
       hasLocalExecutionException: true,
     );
 
@@ -309,6 +333,203 @@ void main() {
     expect(model.executionStatus?.label, 'Working');
     expect(model.executionStatus?.state, 'working');
     expect(model.executionStatus?.isRefreshing, isFalse);
+  });
+
+  test('marks only the latest unfinished reply as working', () {
+    final chatController = AgentChatController();
+    final view = _view();
+    final agent = _agent(
+      activityState: 'active',
+      activitySource: 'codex_runtime',
+      activityReason: 'codex_working_status_line',
+    );
+    chatController.applyRemoteConversation(
+      agentName: agent.name,
+      shouldScroll: true,
+      conversation: CcbAgentConversation(
+        projectId: view.project.id,
+        agentName: agent.name,
+        namespaceEpoch: view.namespaceEpoch!,
+        items: [
+          CcbConversationItem(
+            id: 'user-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.userMessage,
+            title: 'You',
+            body: 'first',
+            sentAt: DateTime.utc(2026, 7, 1, 9),
+          ),
+          CcbConversationItem(
+            id: 'reply-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Agent reply',
+            body: 'done',
+            sentAt: DateTime.utc(2026, 7, 1, 9, 1),
+            completedAt: DateTime.utc(2026, 7, 1, 10),
+          ),
+          CcbConversationItem(
+            id: 'user-2',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.userMessage,
+            title: 'You',
+            body: 'second',
+            sentAt: DateTime.utc(2026, 7, 1, 10, 30),
+          ),
+          CcbConversationItem(
+            id: 'reply-2',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Agent reply',
+            body: 'still streaming',
+            startedAt: DateTime.utc(2026, 7, 1, 10, 31),
+          ),
+        ],
+        generatedAt: DateTime.utc(2026, 7, 1),
+      ),
+    );
+
+    final model = selectedAgentWorkspaceModel(
+      view: _view(agent: agent),
+      agent: agent,
+      chatController: chatController,
+      isAwaitingAgentResponse: false,
+    );
+
+    expect(model.executionStatus?.state, 'working');
+    expect(model.workingReplyItemId, 'reply-2');
+  });
+
+  test('does not mark historical reply without timing metadata as working', () {
+    final chatController = AgentChatController();
+    final view = _view();
+    final agent = _agent(
+      activityState: 'active',
+      activitySource: 'codex_runtime',
+      activityReason: 'codex_working_status_line',
+    );
+    chatController.applyRemoteConversation(
+      agentName: agent.name,
+      shouldScroll: true,
+      conversation: CcbAgentConversation(
+        projectId: view.project.id,
+        agentName: agent.name,
+        namespaceEpoch: view.namespaceEpoch!,
+        items: const [
+          CcbConversationItem(
+            id: 'user-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.userMessage,
+            title: 'You',
+            body: 'old request',
+          ),
+          CcbConversationItem(
+            id: 'reply-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Agent reply',
+            body: 'old answer from legacy history',
+          ),
+        ],
+        generatedAt: DateTime.utc(2026, 7, 1),
+      ),
+    );
+
+    final model = selectedAgentWorkspaceModel(
+      view: _view(agent: agent),
+      agent: agent,
+      chatController: chatController,
+      isAwaitingAgentResponse: false,
+    );
+
+    expect(model.executionStatus?.state, 'working');
+    expect(model.workingReplyItemId, isNull);
+  });
+
+  test('marks latest terminal output block as working fallback', () {
+    final chatController = AgentChatController();
+    final view = _view();
+    final agent = _agent(
+      activityState: 'active',
+      activitySource: 'codex_runtime',
+      activityReason: 'codex_working_status_line',
+    );
+    chatController.applyRemoteConversation(
+      agentName: agent.name,
+      shouldScroll: true,
+      conversation: CcbAgentConversation(
+        projectId: view.project.id,
+        agentName: agent.name,
+        namespaceEpoch: view.namespaceEpoch!,
+        items: const [
+          CcbConversationItem(
+            id: 'terminal-history-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Log',
+            body: 'Brewed for 5s',
+            source: 'tmux output / tmux_scrollback / %2',
+          ),
+        ],
+        generatedAt: DateTime.utc(2026, 7, 1),
+      ),
+    );
+
+    final model = selectedAgentWorkspaceModel(
+      view: _view(agent: agent),
+      agent: agent,
+      chatController: chatController,
+      isAwaitingAgentResponse: false,
+    );
+
+    expect(model.executionStatus?.state, 'working');
+    expect(model.workingReplyItemId, 'terminal-history-1');
+  });
+
+  test('does not mark stale reply when latest item is user message', () {
+    final chatController = AgentChatController();
+    final view = _view();
+    final agent = _agent(
+      activityState: 'active',
+      activitySource: 'codex_runtime',
+      activityReason: 'codex_working_status_line',
+    );
+    chatController.applyRemoteConversation(
+      agentName: agent.name,
+      shouldScroll: true,
+      conversation: CcbAgentConversation(
+        projectId: view.project.id,
+        agentName: agent.name,
+        namespaceEpoch: view.namespaceEpoch!,
+        items: const [
+          CcbConversationItem(
+            id: 'reply-1',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.agentReply,
+            title: 'Agent reply',
+            body: 'old answer',
+          ),
+          CcbConversationItem(
+            id: 'user-2',
+            agentName: 'mobile',
+            kind: CcbConversationItemKind.userMessage,
+            title: 'You',
+            body: 'new request',
+          ),
+        ],
+        generatedAt: DateTime.utc(2026, 7, 1),
+      ),
+    );
+
+    final model = selectedAgentWorkspaceModel(
+      view: _view(agent: agent),
+      agent: agent,
+      chatController: chatController,
+      isAwaitingAgentResponse: false,
+    );
+
+    expect(model.executionStatus?.state, 'working');
+    expect(model.workingReplyItemId, isNull);
   });
 }
 

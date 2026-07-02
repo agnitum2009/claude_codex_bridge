@@ -131,6 +131,14 @@ Carry forward the current hard rules:
   not imply `idle`, `working`, or `completed`;
 - `Conversation interrupted` is historical pane text unless paired with a
   current hard marker.
+- ProjectView may apply an explicitly designed display stabilizer for Codex
+  rows only after active pane evidence disappears: a visible Codex
+  `Working (...)`, tool-running, or reconnecting status line remains active no
+  matter how long it stays visible; if no active status line is present and pane
+  content is unchanged for 60s, display runtime becomes `free` with reason
+  `codex_pane_no_active_stale_no_progress`. This does not change parser
+  output, does not imply completion, and must preserve raw state/reason in
+  diagnostics.
 
 Tighten during extraction rather than preserving known weak signals:
 
@@ -319,6 +327,10 @@ Stabilization is intentionally separate from parsing:
 - pane parser output remains strict and raw;
 - session output remains explicit and raw;
 - `runtime_status` is the only state that applies bounded time extension;
+- Codex ProjectView display may also collapse no-active pane status to `free`
+  after 60s of unchanged pane content; visible active status lines such as
+  `Working (...)`, tool-running, and reconnecting are never collapsed by this
+  timer;
 - snapshots and metrics retain raw runtime, pane, and session streams for
   diagnostics.
 

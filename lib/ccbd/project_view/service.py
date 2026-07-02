@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
@@ -16,7 +17,8 @@ from ccbd.project_focus.tmux import backend_for_namespace, refresh_sidebar_panes
 from ccbd.services.dispatcher_runtime import comms_recoverability_for_job
 from ccbd.system import parse_utc_timestamp, utc_now
 from message_bureau import CallbackEdgeState
-from provider_pane_status.codex_pane import parse_codex_pane_status
+from provider_backends.codex.launcher_runtime.command_runtime.home import resolve_codex_home_layout
+from provider_pane_status.codex_pane import ACTIVE_STATES, normalize_screen, parse_codex_pane_status
 from provider_pane_status.codex_session import CodexRuntimeStatus, compose_codex_runtime_status, read_codex_session_status
 from storage.paths import PathLayout
 
@@ -36,6 +38,7 @@ PROJECT_VIEW_SCHEMA_VERSION = 1
 PROJECT_VIEW_TTL_MS = 1000
 PROJECT_VIEW_IDLE_TTL_MS = 5000
 PROJECT_VIEW_COMMS_LIMIT = 8
+CODEX_ACTIVE_NO_PROGRESS_FREE_AFTER_S = 60.0
 _RECENT_JOB_RESULT_LIMIT = PROJECT_VIEW_COMMS_LIMIT * 8
 _RECENT_JOB_SCAN_LIMIT_PER_AGENT = 128
 _RECENT_JOB_INITIAL_SCAN_MIN = 8
@@ -249,10 +252,70 @@ class _CachedProjectViewResponse:
     drain_revision: tuple[int, int] | None
 
 
+@dataclass
+class _CodexPaneProgressRecord:
+    digest: str
+    changed_at_s: float
+
+
+class _CodexPaneProgressTracker:
+    def __init__(self, *, stale_after_s: float = CODEX_ACTIVE_NO_PROGRESS_FREE_AFTER_S) -> None:
+        self._stale_after_s = max(0.0, float(stale_after_s))
+        self._records: dict[tuple[str, str], _CodexPaneProgressRecord] = {}
+
+    def status_for(
+        self,
+        *,
+        agent_name: str,
+        pane_id: object,
+        pane_text: str | None,
+        raw_status: CodexRuntimeStatus,
+        generated_at: str,
+    ) -> CodexRuntimeStatus:
+        key = self._key(agent_name, pane_id)
+        if raw_status.pane_state in ACTIVE_STATES:
+            self._records.pop(key, None)
+            return raw_status
+        if raw_status.state not in {'unknown', 'working', 'tool_running'}:
+            self._records.pop(key, None)
+            return raw_status
+        now_s = _timestamp_s(generated_at)
+        if now_s is None:
+            return raw_status
+        digest = _codex_meaningful_pane_digest(pane_text)
+        record = self._records.get(key)
+        if record is None or record.digest != digest:
+            self._records[key] = _CodexPaneProgressRecord(digest=digest, changed_at_s=now_s)
+            return raw_status
+        stale_s = max(0.0, now_s - record.changed_at_s)
+        if stale_s < self._stale_after_s:
+            return raw_status
+        return CodexRuntimeStatus(
+            'free',
+            'codex_pane_no_active_stale_no_progress',
+            'stabilizer',
+            raw_status.pane_state,
+            raw_status.pane_reason,
+            raw_status.session_state,
+            raw_status.session_reason,
+            notes=(
+                *raw_status.notes,
+                f'raw_state={raw_status.state}',
+                f'raw_reason={raw_status.reason}',
+                f'no_progress_s={round(stale_s, 3)}',
+            ),
+        )
+
+    @staticmethod
+    def _key(agent_name: str, pane_id: object) -> tuple[str, str]:
+        return (str(agent_name or '').strip(), str(pane_id or '').strip())
+
+
 class ProjectViewService:
     def __init__(self, deps: ProjectViewDependencies) -> None:
         self._deps = deps
         self._sequence_cache = deps.sequence_cache or ProjectViewSequenceCache()
+        self._codex_pane_progress = _CodexPaneProgressTracker()
         self._cached_response: _CachedProjectViewResponse | None = None
         self._sidebar_refresh_lock = threading.Lock()
         self._sidebar_refresh_pending = False
@@ -296,7 +359,12 @@ class ProjectViewService:
             did_refresh_sidebar = self._refresh_sidebar_panes(refresh_started=sidebar_refresh_started)
         generated_at = self._deps.clock()
         build_started = monotonic()
-        view = build_project_view(self._deps, generated_at=generated_at, metrics_context=metrics_context)
+        view = build_project_view(
+            self._deps,
+            generated_at=generated_at,
+            metrics_context=metrics_context,
+            codex_pane_progress=self._codex_pane_progress,
+        )
         response = {
             'view': view,
             'cache': {
@@ -360,6 +428,7 @@ def build_project_view(
     *,
     generated_at: str,
     metrics_context: _ProjectViewMetricsContext | None = None,
+    codex_pane_progress: _CodexPaneProgressTracker | None = None,
 ) -> dict[str, object]:
     lease = deps.mount_manager.load_state()
     namespace = deps.namespace_state_store.load()
@@ -390,6 +459,7 @@ def build_project_view(
             callback_wait=callback_waits.get(agent_name),
             provider_runtimes=provider_runtime_by_agent.get(agent_name, ()),
             reload_drain=active_drain_by_agent.get(agent_name),
+            codex_pane_progress=codex_pane_progress,
         )
         for order, agent_name in enumerate(_agent_order(deps.config))
     ]
@@ -530,6 +600,7 @@ def _agent_view(
     active: bool = False,
     provider_runtimes: tuple[dict[str, object], ...] = (),
     reload_drain: dict[str, object] | None = None,
+    codex_pane_progress: _CodexPaneProgressTracker | None = None,
 ) -> dict[str, object]:
     spec = deps.config.agents[agent_name]
     runtime = deps.registry.get(agent_name)
@@ -563,6 +634,8 @@ def _agent_view(
                 runtime=runtime,
                 pane_text=pane_text,
                 current_job=job,
+                generated_at=generated_at,
+                progress_tracker=codex_pane_progress,
             )
     elif provider_activity is None or _provider_activity_needs_pane_error_probe(provider_activity, generated_at):
         pane_text = context.pane_text_hint(getattr(runtime, 'pane_id', None) if runtime is not None else None)
@@ -643,6 +716,8 @@ def _codex_runtime_status(
     runtime: object | None,
     pane_text: str | None,
     current_job,
+    generated_at: str,
+    progress_tracker: _CodexPaneProgressTracker | None = None,
 ) -> CodexRuntimeStatus | None:
     if not _is_codex_provider(provider):
         return None
@@ -662,6 +737,14 @@ def _codex_runtime_status(
         min_mtime_s=_job_updated_epoch_for_session_floor(current_job),
     )
     raw_status = compose_codex_runtime_status(pane_status, session_status)
+    if progress_tracker is not None:
+        raw_status = progress_tracker.status_for(
+            agent_name=agent_name,
+            pane_id=getattr(runtime, 'pane_id', None) if runtime is not None else None,
+            pane_text=pane_text,
+            raw_status=raw_status,
+            generated_at=generated_at,
+        )
     if (
         _job_is_running(current_job)
         and raw_status.state == 'unknown'
@@ -696,10 +779,6 @@ def _codex_session_root(
         return None
     try:
         runtime_dir = Path(runtime_dir_resolver(agent_name, provider))
-        from provider_backends.codex.launcher_runtime.command_runtime.home import (
-            resolve_codex_home_layout,
-        )
-
         return resolve_codex_home_layout(runtime_dir, provider_profile).session_root
     except Exception:
         return None
@@ -720,6 +799,18 @@ def _job_is_running(job) -> bool:
 
 def _clean_pane_state(value: object) -> str:
     return str(value or '').strip().lower()
+
+
+def _timestamp_s(value: str) -> float | None:
+    try:
+        return parse_utc_timestamp(str(value or '')).timestamp()
+    except ValueError:
+        return None
+
+
+def _codex_meaningful_pane_digest(pane_text: str | None) -> str:
+    normalized = normalize_screen(pane_text or '')
+    return hashlib.sha256(normalized.encode('utf-8', errors='replace')).hexdigest()
 
 
 def _active_reload_drains_by_agent(reload_drains: dict[str, object]) -> dict[str, dict[str, object]]:

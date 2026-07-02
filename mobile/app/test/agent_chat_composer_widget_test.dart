@@ -318,7 +318,7 @@ void main() {
     expect(find.text('Working'), findsOneWidget);
   });
 
-  testWidgets('refresh shows interrupted codex status as exception', (
+  testWidgets('refresh keeps pending interrupted codex status working', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -341,8 +341,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byKey(const ValueKey('agent-working-status')), findsOneWidget);
-    expect(find.text('Exception'), findsOneWidget);
-    expect(find.text('Working'), findsNothing);
+    expect(find.text('Working'), findsOneWidget);
+    expect(find.text('Exception'), findsNothing);
   });
 
   testWidgets('message composer shows attachment tray and picker sheet', (
@@ -1153,6 +1153,37 @@ void main() {
     expect(preview.data, 'Pane sync visible');
   });
 
+  testWidgets(
+    'user scrolling near latest does not refresh status or timeline',
+    (tester) async {
+      await setTestSurfaceSize(tester, const Size(390, 844));
+      final repository = LongConversationRepository(messageCount: 36);
+      await tester.pumpWidget(
+        MaterialApp(home: ProjectHomeScreen(repository: repository)),
+      );
+      await tester.pumpAndSettle();
+      await openCurrentProject(tester);
+
+      final initialViewCalls = repository.getProjectViewCalls;
+      final initialConversationCalls = repository.conversationCalls.length;
+      final initialTerminalHistoryCalls =
+          repository.terminalHistoryCalls.length;
+
+      await tester.drag(
+        find.byKey(const ValueKey('agent-chat-timeline')),
+        const Offset(0, -700),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(repository.getProjectViewCalls, initialViewCalls);
+      expect(repository.conversationCalls.length, initialConversationCalls);
+      expect(
+        repository.terminalHistoryCalls.length,
+        initialTerminalHistoryCalls,
+      );
+    },
+  );
+
   testWidgets('opened agent with pane conversation skips terminal fallback', (
     tester,
   ) async {
@@ -1413,7 +1444,7 @@ void main() {
   });
 
   testWidgets(
-    'paired terminal interrupted output updates status to exception',
+    'paired terminal interrupted output does not override active source status',
     (tester) async {
       final secureStore = MemorySecureStore();
       final profileStore = GatewayHostProfileStore(secureStore: secureStore);
@@ -1472,14 +1503,97 @@ void main() {
         find.byKey(const ValueKey('agent-working-status')),
         findsOneWidget,
       );
-      expect(find.text('Exception'), findsOneWidget);
-      expect(find.text('Working'), findsNothing);
+      expect(find.text('Working'), findsOneWidget);
+      expect(find.text('Exception'), findsNothing);
       expect(find.textContaining('Conversation interrupted'), findsNothing);
+
+      terminalTransport.sessions.single.addOutput('Working time 00:12\n');
+      await tester.pump();
+
+      expect(find.text('Working'), findsOneWidget);
+      expect(find.text('Exception'), findsNothing);
     },
   );
 
+  testWidgets('scheduled refresh ignores early stale idle after pane send', (
+    tester,
+  ) async {
+    final terminalTransport = RecordingTerminalTransport();
+    var refreshCalls = 0;
+    var view = _workspaceView(
+      _statusAgent(
+        activityState: 'idle',
+        activitySource: 'provider_pane',
+        activityReason: 'provider_prompt_idle',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              final agent = view.agentByName('mobile')!;
+              return SelectedAgentWorkspace(
+                repository: FakeMobileCcbRepository.demo(),
+                terminalTransport: terminalTransport,
+                usePaneInputForMessages: true,
+                view: view,
+                agent: agent,
+                enableComposerCollapse: true,
+                onRefreshView: () async {
+                  refreshCalls += 1;
+                  final refreshed = _workspaceView(
+                    _statusAgent(
+                      activityState: 'idle',
+                      activitySource: 'provider_pane',
+                      activityReason: 'provider_prompt_idle',
+                    ),
+                  );
+                  setState(() {
+                    view = refreshed;
+                  });
+                  return refreshed;
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Idle'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('agent-message-composer')),
+      'work then idle',
+    );
+    await tester.tap(find.byKey(const ValueKey('agent-message-send-button')));
+    await tester.pump();
+
+    expect(terminalTransport.sessions.single.pasted, ['work then idle']);
+    expect(find.text('Working'), findsOneWidget);
+
+    terminalTransport.sessions.single.addOutput('work then idle\n');
+    await tester.pump();
+
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(refreshCalls, greaterThanOrEqualTo(1));
+    expect(find.text('Working'), findsOneWidget);
+    expect(find.text('mobile completed'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Idle'), findsOneWidget);
+    expect(find.text('Working'), findsNothing);
+    expect(find.text('mobile completed'), findsNothing);
+  });
+
   testWidgets(
-    'scheduled refresh clears working status when project view is idle',
+    'scheduled refresh completes only after observed working returns idle',
     (tester) async {
       final terminalTransport = RecordingTerminalTransport();
       var refreshCalls = 0;
@@ -1507,11 +1621,17 @@ void main() {
                   onRefreshView: () async {
                     refreshCalls += 1;
                     final refreshed = _workspaceView(
-                      _statusAgent(
-                        activityState: 'idle',
-                        activitySource: 'provider_pane',
-                        activityReason: 'provider_prompt_idle',
-                      ),
+                      refreshCalls == 1
+                          ? _statusAgent(
+                            activityState: 'active',
+                            activitySource: 'codex_runtime',
+                            activityReason: 'codex_working_status_line',
+                          )
+                          : _statusAgent(
+                            activityState: 'idle',
+                            activitySource: 'provider_pane',
+                            activityReason: 'provider_prompt_idle',
+                          ),
                     );
                     setState(() {
                       view = refreshed;
@@ -1526,22 +1646,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Idle'), findsOneWidget);
-
       await tester.enterText(
         find.byKey(const ValueKey('agent-message-composer')),
-        'work then idle',
+        'work then really idle',
       );
       await tester.tap(find.byKey(const ValueKey('agent-message-send-button')));
       await tester.pump();
 
-      expect(terminalTransport.sessions.single.pasted, ['work then idle']);
       expect(find.text('Working'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 120));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      expect(refreshCalls, greaterThanOrEqualTo(1));
+      expect(refreshCalls, 1);
+      expect(find.text('Working'), findsOneWidget);
+      expect(find.text('mobile completed'), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 180));
+      await tester.pump();
+
+      expect(refreshCalls, greaterThanOrEqualTo(2));
       expect(find.text('Idle'), findsOneWidget);
       expect(find.text('Working'), findsNothing);
       expect(find.text('mobile completed'), findsOneWidget);

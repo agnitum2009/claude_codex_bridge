@@ -11,6 +11,8 @@ class ProjectListScaffold extends StatelessWidget {
     required this.onOpenProject,
     required this.onOpenNotifications,
     required this.onOpenConnectionDetails,
+    this.hasUnreadTaskCompletion = false,
+    this.hasWorkingAgents = false,
     super.key,
   });
 
@@ -19,6 +21,8 @@ class ProjectListScaffold extends StatelessWidget {
   final VoidCallback onOpenProject;
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenConnectionDetails;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +69,8 @@ class ProjectListScaffold extends StatelessWidget {
                       view: view,
                       selectedAgent: selectedAgent,
                       selected: false,
+                      hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+                      hasWorkingAgents: hasWorkingAgents,
                       onOpen: onOpenProject,
                     );
                   },
@@ -84,6 +90,8 @@ class ProjectListTile extends StatelessWidget {
     required this.selectedAgent,
     required this.selected,
     required this.onOpen,
+    this.hasUnreadTaskCompletion = false,
+    this.hasWorkingAgents = false,
     super.key,
   });
 
@@ -91,6 +99,8 @@ class ProjectListTile extends StatelessWidget {
   final CcbAgent? selectedAgent;
   final bool selected;
   final VoidCallback onOpen;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
 
   @override
   Widget build(BuildContext context) {
@@ -104,9 +114,11 @@ class ProjectListTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       selected: selected,
       selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-      leading: CircleAvatar(
-        radius: 22,
-        child: Icon(view.project.favorite ? Icons.star : Icons.terminal),
+      leading: ProjectAttentionAvatar(
+        projectId: view.project.id,
+        favorite: view.project.favorite,
+        hasUnreadTaskCompletion: hasUnreadTaskCompletion,
+        hasWorkingAgents: hasWorkingAgents,
       ),
       title: Text(
         view.project.displayName,
@@ -139,6 +151,62 @@ class ProjectListTile extends StatelessWidget {
         ],
       ),
       onTap: onOpen,
+    );
+  }
+}
+
+class ProjectAttentionAvatar extends StatelessWidget {
+  const ProjectAttentionAvatar({
+    required this.projectId,
+    required this.favorite,
+    required this.hasUnreadTaskCompletion,
+    required this.hasWorkingAgents,
+    super.key,
+  });
+
+  final String projectId;
+  final bool favorite;
+  final bool hasUnreadTaskCompletion;
+  final bool hasWorkingAgents;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Center(
+            child: Container(
+              key:
+                  hasWorkingAgents
+                      ? ValueKey('project-working-ring-$projectId')
+                      : null,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border:
+                    hasWorkingAgents
+                        ? Border.all(color: colorScheme.tertiary, width: 2)
+                        : null,
+              ),
+              child: CircleAvatar(
+                radius: 22,
+                child: Icon(favorite ? Icons.star : Icons.terminal),
+              ),
+            ),
+          ),
+          if (hasUnreadTaskCompletion)
+            Positioned(
+              key: ValueKey('project-unread-star-$projectId'),
+              right: 0,
+              top: 0,
+              child: Icon(Icons.star, size: 15, color: colorScheme.error),
+            ),
+        ],
+      ),
     );
   }
 }
