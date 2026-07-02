@@ -172,7 +172,11 @@ def resolve_no_reply_reason(
     explicit = str(diagnostics.get("no_reply_reason") or "").strip()
     if explicit:
         try:
-            return NoReplyReason(explicit), {"source": "explicit", "no_reply_reason": explicit}
+            detail = {"source": "explicit", "no_reply_reason": explicit}
+            provider_detail = diagnostics.get("no_reply_detail")
+            if isinstance(provider_detail, dict):
+                detail.update(provider_detail)
+            return NoReplyReason(explicit), detail
         except ValueError:
             pass
 

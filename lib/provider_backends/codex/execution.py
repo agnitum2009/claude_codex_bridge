@@ -25,12 +25,15 @@ from .session import load_project_session
 from .session_runtime.follow_policy import codex_session_root_path, should_follow_workspace_sessions
 
 
+CODEX_NO_TERMINAL_TIMEOUT_SECS = 900.0
+
+
 class CodexProviderAdapter:
     provider = 'codex'
     completion_reliability_policy = CompletionReliabilityPolicy(
         provider='codex',
         primary_authority='protocol_log',
-        no_terminal_timeout_s=0.0,
+        no_terminal_timeout_s=CODEX_NO_TERMINAL_TIMEOUT_SECS,
     )
 
     def start(self, job: JobRecord, *, context: ProviderRuntimeContext | None, now: str) -> ProviderSubmission:
